@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
+import axios from 'axios';
 import { 
   MapPin, 
   Clock, 
@@ -37,6 +38,45 @@ interface Post {
 
 export default function Home() {
   const [featuredPosts, setFeaturedPosts] = useState<Post[]>([]);
+  const [latestVideo, setLatestVideo] = useState<any>(null);
+  const [isLoadingVideo, setIsLoadingVideo] = useState(true);
+
+  useEffect(() => {
+    const fetchLatestVideo = async () => {
+      const apiKey = (import.meta as any).env.VITE_YOUTUBE_API_KEY;
+      const channelHandle = '@huelvachurch';
+      
+      if (!apiKey) {
+        setIsLoadingVideo(false);
+        return;
+      }
+
+      try {
+        // First, get channel ID from handle
+        const channelRes = await axios.get(`https://www.googleapis.com/youtube/v3/channels?part=id&forHandle=${channelHandle}&key=${apiKey}`);
+        const channelId = channelRes.data.items?.[0]?.id;
+
+        if (channelId) {
+          // Then get the latest stream/video
+          const videoRes = await axios.get(`https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&order=date&maxResults=1&type=video&key=${apiKey}`);
+          const video = videoRes.data.items?.[0];
+          if (video) {
+            setLatestVideo({
+              id: video.id.videoId,
+              title: video.snippet.title,
+              thumbnail: video.snippet.thumbnails.high.url
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching YouTube video:", error);
+      } finally {
+        setIsLoadingVideo(false);
+      }
+    };
+
+    fetchLatestVideo();
+  }, []);
 
   useEffect(() => {
     const q = query(
@@ -247,23 +287,41 @@ export default function Home() {
               className="relative"
             >
               <div className="aspect-video bg-slate-900 rounded-2xl overflow-hidden shadow-2xl relative group cursor-pointer">
-                <img 
-                  src="https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&q=80&w=1000" 
-                  alt="YouTube Stream Preview" 
-                  className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-20 h-20 bg-red-600 rounded-full flex items-center justify-center text-white shadow-2xl group-hover:scale-110 transition-transform">
-                    <Play className="w-8 h-8 fill-current ml-1" />
-                  </div>
-                </div>
-                <div className="absolute bottom-6 left-6 right-6">
-                  <div className="bg-black/40 backdrop-blur-md p-4 rounded-xl border border-white/10">
-                    <p className="text-white font-medium">Última retransmisión</p>
-                    <p className="text-white/70 text-sm">Culto Dominical - "Viviendo con Propósito"</p>
-                  </div>
-                </div>
+                {latestVideo ? (
+                  <iframe
+                    className="w-full h-full"
+                    src={`https://www.youtube.com/embed/${latestVideo.id}`}
+                    title={latestVideo.title}
+                    frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  ></iframe>
+                ) : (
+                  <>
+                    <img 
+                      src="https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&q=80&w=1000" 
+                      alt="YouTube Stream Preview" 
+                      className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700"
+                      referrerPolicy="no-referrer"
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <a 
+                        href="https://www.youtube.com/@huelvachurch/streams" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="w-20 h-20 bg-red-600 rounded-full flex items-center justify-center text-white shadow-2xl group-hover:scale-110 transition-transform"
+                      >
+                        <Play className="w-8 h-8 fill-current ml-1" />
+                      </a>
+                    </div>
+                    <div className="absolute bottom-6 left-6 right-6">
+                      <div className="bg-black/40 backdrop-blur-md p-4 rounded-xl border border-white/10">
+                        <p className="text-white font-medium">Última retransmisión</p>
+                        <p className="text-white/70 text-sm">Culto Dominical - "Viviendo con Propósito"</p>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </motion.div>
           </div>
