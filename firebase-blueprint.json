@@ -1,0 +1,105 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User profile with roles and basic info",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string", "format": "uri" },
+        "roles": { 
+          "type": "array", 
+          "items": {
+            "type": "string", 
+            "enum": ["admin", "comunicador", "profesor", "alumno"]
+          },
+          "description": "User roles for access control"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "active", "blocked"],
+          "description": "Account status"
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "roles"]
+    },
+    "Post": {
+      "title": "Blog Post",
+      "description": "Blog post or activity entry",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "slug": { "type": "string" },
+        "excerpt": { "type": "string" },
+        "content": { "type": "string" },
+        "imageUrl": { "type": "string", "format": "uri" },
+        "category": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "featured": { "type": "boolean" },
+        "publishedAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "slug", "content", "authorId"]
+    },
+    "Course": {
+      "title": "Course",
+      "description": "Educational course with modality and content",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "instructorId": { "type": "string" },
+        "instructorName": { "type": "string" },
+        "modality": { "type": "string", "enum": ["self-paced", "scheduled"] },
+        "durationMode": { "type": "string", "enum": ["unlimited", "limited", "flexible", "fixed"] },
+        "startDate": { "type": "string", "format": "date-time" },
+        "endDate": { "type": "string", "format": "date-time" },
+        "timeLimitDays": { "type": "number" },
+        "imageUrl": { "type": "string", "format": "uri" },
+        "status": { "type": "string", "enum": ["draft", "published", "archived"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "instructorId", "modality", "durationMode"]
+    },
+    "Enrollment": {
+      "title": "Enrollment",
+      "description": "Student enrollment in a course",
+      "type": "object",
+      "properties": {
+        "courseId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "active", "completed", "dropped"] },
+        "grade": { "type": "number" },
+        "progress": { "type": "number" },
+        "enrolledAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["courseId", "studentId", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of user profiles"
+    },
+    "/posts/{postId}": {
+      "schema": "Post",
+      "description": "Collection of blog posts and activities"
+    },
+    "/courses/{courseId}": {
+      "schema": "Course",
+      "description": "Collection of courses"
+    },
+    "/enrollments/{enrollmentId}": {
+      "schema": "Enrollment",
+      "description": "Collection of course enrollments"
+    }
+  }
+}

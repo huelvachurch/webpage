@@ -1,0 +1,142 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId (UID)
+    // Fields:
+    //   - uid: string (required) - Firebase Auth UID
+    //   - email: string (required, format: email) - User email
+    //   - displayName: string (optional) - User display name
+    //   - photoURL: string (optional, format: uri) - User photo URL
+    //   - roles: list (required, items: ['admin', 'comunicador', 'profesor', 'alumno']) - User roles
+    //   - status: string (required, enum: ['pending', 'active', 'blocked']) - Account status
+    //   - createdAt: timestamp (required) - Account creation time
+    //
+    // Collection: posts
+    // Document ID: postId (auto-generated)
+    // Fields:
+    //   - title: string (required) - Post title
+    //   - slug: string (required) - URL slug
+    //   - excerpt: string (optional) - Short summary
+    //   - content: string (required) - Main content (HTML/Markdown)
+    //   - imageUrl: string (optional, format: uri) - Main image URL
+    //   - category: string (optional) - Post category
+    //   - tags: list (optional) - List of tags
+    //   - authorId: string (required) - UID of the author
+    //   - authorName: string (optional) - Name of the author
+    //   - featured: bool (optional) - If the post is featured
+    //   - publishedAt: timestamp (required) - Publication time
+    //   - updatedAt: timestamp (required) - Last update time
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        ('admin' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles) ||
+        (request.auth.token.email == "huelvachurch@gmail.com" && request.auth.token.email_verified == true)
+      );
+    }
+
+    function isComunicador() {
+      return isAuthenticated() && (
+        isAdmin() ||
+        ('comunicador' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles)
+      );
+    }
+
+    function isProfesor() {
+      return isAuthenticated() && (
+        isAdmin() ||
+        ('profesor' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles)
+      );
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'roles', 'status']) &&
+             data.uid is string &&
+             data.email is string &&
+             data.roles is list &&
+             data.status in ['pending', 'active', 'blocked'];
+    }
+
+    function isValidPost(data) {
+      return data.keys().hasAll(['title', 'slug', 'content', 'authorId']) &&
+             data.title is string && data.title.size() < 200 &&
+             data.slug is string && data.slug.size() < 200 &&
+             data.content is string && data.content.size() < 50000 &&
+             data.authorId is string;
+    }
+
+    function isValidCourse(data) {
+      return data.keys().hasAll(['title', 'instructorId', 'modality', 'durationMode']) &&
+             data.title is string && data.title.size() < 200 &&
+             data.instructorId is string &&
+             data.modality in ['self-paced', 'scheduled'] &&
+             data.durationMode in ['unlimited', 'limited', 'flexible', 'fixed'];
+    }
+
+    function isValidEnrollment(data) {
+      return data.keys().hasAll(['courseId', 'studentId', 'status']) &&
+             data.courseId is string &&
+             data.studentId is string &&
+             data.status in ['pending', 'active', 'completed', 'dropped'];
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (
+        (isOwner(userId) && request.resource.data.roles == ['alumno'] && request.resource.data.status == 'pending') || 
+        isAdmin()
+      );
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && (
+        (isOwner(userId) && request.resource.data.roles == resource.data.roles && request.resource.data.status == resource.data.status) || 
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /posts/{postId} {
+      allow read: if true; // Publicly readable
+      allow create: if isComunicador() && isValidPost(request.resource.data);
+      allow update: if isComunicador() && isValidPost(request.resource.data);
+      allow delete: if isComunicador();
+    }
+
+    match /courses/{courseId} {
+      allow read: if true; // Courses are public
+      allow create: if isProfesor() && isValidCourse(request.resource.data);
+      allow update: if isProfesor() && isValidCourse(request.resource.data) && (request.resource.data.instructorId == resource.data.instructorId || isAdmin());
+      allow delete: if isProfesor() && (resource.data.instructorId == request.auth.uid || isAdmin());
+    }
+
+    match /enrollments/{enrollmentId} {
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.studentId || isProfesor());
+      allow create: if isAuthenticated() && isValidEnrollment(request.resource.data) && request.resource.data.studentId == request.auth.uid;
+      allow update: if isAuthenticated() && isValidEnrollment(request.resource.data) && (
+        (request.auth.uid == resource.data.studentId && request.resource.data.status == 'dropped') ||
+        isProfesor()
+      );
+      allow delete: if isAdmin();
+    }
+  }
+}

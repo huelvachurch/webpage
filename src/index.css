@@ -1,0 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=Calistoga&family=Marcellus&family=Outfit:wght@100..900&family=Yellowtail&family=Lato:wght@300;400;700;900&display=swap');
+@import "tailwindcss";
+
+@font-face {
+  font-family: 'Kenao';
+  src: url('/fonts/Kenao.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Gordita';
+  src: url('/fonts/Gordita-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --color-primary: #2D4B73;
+  --color-secondary: #D9B70D;
+  
+  --font-kenao: "Calistoga", "Kenao", "Marcellus", serif;
+  --font-gordita: "Lato", "Gordita", "Outfit", sans-serif;
+  --font-script: "Yellowtail", cursive;
+}
+
+body {
+  font-family: var(--font-gordita);
+  background-color: #f8fafc;
+  color: var(--color-primary);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-kenao);
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
