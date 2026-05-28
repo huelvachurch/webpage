@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MapPin, Users, Heart, BookOpen, Music, Target, FileText, Map } from 'lucide-react';
+import { MapPin, Users, Heart, BookOpen, Music, Target, FileText, Map, Smile } from 'lucide-react';
 import { Celula } from './admin/AdminCelulas';
 import { useTranslation } from 'react-i18next';
 
@@ -14,7 +14,15 @@ export default function Celulas() {
       icon: <Users className="w-6 h-6" />,
       heading: t('cells.cellFeatures.commTitle'),
       description: t('cells.cellFeatures.commDesc'),
-      image: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?auto=format&fit=crop&q=80&w=1200'
+      image: '/images/Celula%20Comunion.jpg'
+    },
+    {
+      id: 'rompehielo',
+      title: t('cells.cellFeatures.icebreakerTitle'),
+      icon: <Smile className="w-6 h-6" />,
+      heading: t('cells.cellFeatures.icebreakerTitle'),
+      description: t('cells.cellFeatures.icebreakerDesc'),
+      image: '/images/Celula%20Rompehielo.jpg'
     },
     {
       id: 'alabanza',
@@ -22,7 +30,7 @@ export default function Celulas() {
       icon: <Music className="w-6 h-6" />,
       heading: t('cells.cellFeatures.worshipTitle'),
       description: t('cells.cellFeatures.worshipDesc'),
-      image: 'https://images.unsplash.com/photo-1510914946394-1a9fbdf30bf9?auto=format&fit=crop&q=80&w=1200'
+      image: '/images/Celula%20Alabanza.jpg'
     },
     {
       id: 'estudio',
@@ -30,7 +38,7 @@ export default function Celulas() {
       icon: <BookOpen className="w-6 h-6" />,
       heading: t('cells.cellFeatures.studyTitle'),
       description: t('cells.cellFeatures.studyDesc'),
-      image: 'https://images.unsplash.com/photo-1529070538774-1843cb3265df?auto=format&fit=crop&q=80&w=1200'
+      image: '/images/Celula%20Estudio.jpg'
     },
     {
       id: 'oracion',
@@ -38,7 +46,7 @@ export default function Celulas() {
       icon: <Heart className="w-6 h-6" />,
       heading: t('cells.cellFeatures.prayerTitle'),
       description: t('cells.cellFeatures.prayerDesc'),
-      image: 'https://images.unsplash.com/photo-1518335359779-7a32af4101e4?auto=format&fit=crop&q=80&w=1200'
+      image: '/images/Celula%20Oracion.jpg'
     },
     {
       id: 'desafio',
@@ -46,7 +54,7 @@ export default function Celulas() {
       icon: <Target className="w-6 h-6" />,
       heading: t('cells.cellFeatures.challengeTitle'),
       description: t('cells.cellFeatures.challengeDesc'),
-      image: 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&q=80&w=1200'
+      image: '/images/Celula%20Desafio.jpg'
     }
   ];
 
@@ -184,13 +192,14 @@ export default function Celulas() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.3 }}
+              className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12 items-center"
             >
-              <div className="aspect-[16/9] md:aspect-[21/9] w-full rounded-2xl overflow-hidden mb-8 grayscale hover:grayscale-0 transition-all duration-700">
+              <div className="md:col-span-5 w-full aspect-[3/4] bg-slate-200 lg:aspect-[2/3] rounded-2xl overflow-hidden grayscale hover:grayscale-0 transition-all duration-700 shadow-sm shrink-0">
                 <img src={activeStep.image} alt={activeStep.title} className="w-full h-full object-cover" />
               </div>
-              <div className="text-center max-w-3xl mx-auto">
+              <div className="md:col-span-7 text-center md:text-left">
                 <h3 className="text-3xl md:text-4xl font-kenao text-primary mb-4">{activeStep.heading}</h3>
-                <p className="text-lg md:text-2xl text-primary/80 leading-relaxed font-gordita">
+                <p className="text-lg md:text-xl text-primary/80 leading-relaxed font-gordita">
                   {activeStep.description}
                 </p>
               </div>

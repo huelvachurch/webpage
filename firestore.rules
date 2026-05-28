@@ -48,22 +48,22 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && (
-        ('admin' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles) ||
-        (request.auth.token.email == "huelvachurch@gmail.com" && request.auth.token.email_verified == true)
+        (request.auth.token.email == "huelvachurch@gmail.com" && request.auth.token.email_verified == true) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 'admin' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles)
       );
     }
 
     function isComunicador() {
       return isAuthenticated() && (
         isAdmin() ||
-        ('comunicador' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles)
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 'comunicador' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles)
       );
     }
 
     function isProfesor() {
       return isAuthenticated() && (
         isAdmin() ||
-        ('profesor' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles)
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 'profesor' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles)
       );
     }
 

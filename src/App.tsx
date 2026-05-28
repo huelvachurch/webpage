@@ -14,8 +14,11 @@ import Login from './pages/Login';
 import AdminComunicaciones from './pages/admin/AdminComunicaciones';
 import AdminUsuarios from './pages/admin/AdminUsuarios';
 import AdminCursos from './pages/admin/AdminCursos';
+import AdminNewsletter from './pages/admin/AdminNewsletter';
 import Cursos from './pages/Cursos';
 import MisCursos from './pages/MisCursos';
+import Legal from './pages/Legal';
+import CookieBanner from './components/CookieBanner';
 import { AuthProvider, ErrorBoundary } from './AuthContext';
 
 // Scroll to top on route change
@@ -47,15 +50,18 @@ export default function App() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/cursos" element={<Cursos />} />
                 <Route path="/mis-cursos" element={<MisCursos />} />
+                <Route path="/legal" element={<Legal />} />
                 
                 {/* Admin Routes */}
                 <Route path="/admin/comunicaciones" element={<AdminComunicaciones />} />
                 <Route path="/admin/usuarios" element={<AdminUsuarios />} />
                 <Route path="/admin/celulas" element={<AdminCelulas />} />
                 <Route path="/admin/cursos" element={<AdminCursos />} />
+                <Route path="/admin/newsletter" element={<AdminNewsletter />} />
               </Routes>
             </main>
             <Footer />
+            <CookieBanner />
           </div>
         </Router>
       </AuthProvider>

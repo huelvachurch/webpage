@@ -21,10 +21,11 @@ import {
   MessageCircle,
   ExternalLink,
   Play,
-  ArrowRight
+  ArrowRight,
+  Video
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, onSnapshot, addDoc, getDocs, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 
 interface Post {
@@ -42,6 +43,98 @@ export default function Home() {
   const currentLang = i18n.language.substring(0, 2);
 
   const [featuredPosts, setFeaturedPosts] = useState<Post[]>([]);
+  const [prayerStatus, setPrayerStatus] = useState({ status: 'inactive', textKey: 'home.prayerStatusInactive' });
+
+  const [subEmail, setSubEmail] = useState('');
+  const [subscribing, setSubscribing] = useState(false);
+  const [subSuccess, setSubSuccess] = useState(false);
+  const [subError, setSubError] = useState('');
+
+  const handleNewsletterSubscribe = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!subEmail.trim()) return;
+    setSubscribing(true);
+    setSubError('');
+    try {
+      const q = query(collection(db, 'subscribers'), where('email', '==', subEmail.toLowerCase().trim()));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        setSubSuccess(true);
+        setSubscribing(false);
+        return;
+      }
+
+      await addDoc(collection(db, 'subscribers'), {
+        email: subEmail.toLowerCase().trim(),
+        active: true,
+        subscribedAt: serverTimestamp()
+      });
+
+      setSubSuccess(true);
+      setSubEmail('');
+    } catch (err) {
+      console.error(err);
+      setSubError('Error al completar la suscripción. Inténtalo de nuevo.');
+    } finally {
+      setSubscribing(false);
+    }
+  };
+
+  useEffect(() => {
+    const checkPrayerStatus = () => {
+      const now = new Date();
+      try {
+        const huelvasTimeString = now.toLocaleString("en-US", { timeZone: "Europe/Madrid" });
+        const huelvaDate = new Date(huelvasTimeString);
+        
+        const dayOfWeek = huelvaDate.getDay(); // 0 is Sunday, 1 is Monday, ..., 4 is Thursday, 5 is Friday, 6 is Saturday
+        const hours = huelvaDate.getHours();
+        const minutes = huelvaDate.getMinutes();
+        const totalMinutes = hours * 60 + minutes;
+        
+        const isPrayerDay = dayOfWeek >= 1 && dayOfWeek <= 4; // Monday to Thursday
+        
+        // Start: 23:00 = 1380
+        // End: 23:30 = 1410
+        // Soon reminder: 22:30 = 1350
+        
+        if (!isPrayerDay) {
+          setPrayerStatus({ status: 'inactive', textKey: 'home.prayerStatusInactive' });
+          return;
+        }
+        
+        if (totalMinutes >= 1380 && totalMinutes < 1410) {
+          setPrayerStatus({ status: 'active', textKey: 'home.prayerStatusActive' });
+        } else if (totalMinutes >= 1350 && totalMinutes < 1380) {
+          setPrayerStatus({ status: 'soon', textKey: 'home.prayerStatusSoon' });
+        } else {
+          setPrayerStatus({ status: 'inactive', textKey: 'home.prayerStatusInactive' });
+        }
+      } catch (e) {
+        console.error("Error setting prayer status:", e);
+        const dayOfWeek = now.getDay();
+        const isPrayerDay = dayOfWeek >= 1 && dayOfWeek <= 4;
+        const hours = now.getHours();
+        const minutes = now.getMinutes();
+        const totalMinutes = hours * 60 + minutes;
+        if (!isPrayerDay) {
+          setPrayerStatus({ status: 'inactive', textKey: 'home.prayerStatusInactive' });
+          return;
+        }
+        if (totalMinutes >= 1380 && totalMinutes < 1410) {
+          setPrayerStatus({ status: 'active', textKey: 'home.prayerStatusActive' });
+        } else if (totalMinutes >= 1350 && totalMinutes < 1380) {
+          setPrayerStatus({ status: 'soon', textKey: 'home.prayerStatusSoon' });
+        } else {
+          setPrayerStatus({ status: 'inactive', textKey: 'home.prayerStatusInactive' });
+        }
+      }
+    };
+
+    checkPrayerStatus();
+    const interval = setInterval(checkPrayerStatus, 30000);
+    return () => clearInterval(interval);
+  }, []);
   const [latestVideo, setLatestVideo] = useState<any>(null);
   const [isLoadingVideo, setIsLoadingVideo] = useState(true);
 
@@ -181,82 +274,93 @@ export default function Home() {
       {/* Celebraciones - First Visit */}
       <section className="py-16 bg-primary text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row items-center justify-between">
-            <div className="mb-8 md:mb-0 md:mr-8">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-8">
+            <div className="max-w-2xl">
               <h3 className="text-3xl font-kenao mb-2">{t('home.firstVisitTitle')}</h3>
-              <p className="text-white/80 text-lg">{t('home.firstVisitDesc')}</p>
+              <p className="text-white/80 text-lg leading-relaxed">{t('home.firstVisitDesc')}</p>
             </div>
-            <div className="flex items-center space-x-4 bg-white/10 p-6 rounded-2xl backdrop-blur-sm border border-white/10">
-              <Calendar className="w-10 h-10 text-secondary" />
+            
+            {/* Card: Reunión Presencial */}
+            <div className="flex items-center space-x-4 bg-white/10 p-6 rounded-2xl backdrop-blur-sm border border-white/10 shrink-0 w-full md:w-auto min-w-[280px]">
+              <div className="w-12 h-12 rounded-full bg-secondary/20 flex items-center justify-center text-secondary shrink-0">
+                <Calendar className="w-6 h-6" />
+              </div>
               <div>
-                <p className="text-sm text-secondary uppercase tracking-wider font-medium">{t('home.mainMeeting')}</p>
-                <p className="text-2xl font-kenao">{t('home.meetingTime')}</p>
+                <p className="text-xs text-secondary uppercase tracking-wider font-bold mb-1">{t('home.mainMeeting')}</p>
+                <p className="text-xl font-kenao leading-tight">{t('home.meetingTime')}</p>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Muro de Actividades */}
-      <section id="actividades" className="py-24 bg-slate-50">
+      {/* Noches de Oración - Virtual prayer gatherings */}
+      <section className="py-16 bg-white border-b border-slate-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-end mb-12">
-            <div>
-              <h2 className="text-secondary tracking-wider uppercase text-sm mb-3">{t('home.activitiesTag')}</h2>
-              <h3 className="text-4xl font-kenao text-primary">{t('home.activitiesTitle')}</h3>
+          <div className={`border p-8 md:p-12 rounded-3xl flex flex-col lg:flex-row items-center justify-between gap-8 relative overflow-hidden transition-all duration-300 bg-slate-50 ${
+            prayerStatus.status === 'active'
+              ? 'border-emerald-200 shadow-lg shadow-emerald-500/5 ring-1 ring-emerald-500/10'
+              : prayerStatus.status === 'soon'
+              ? 'border-amber-200 shadow-md shadow-amber-500/5 ring-1 ring-amber-500/10'
+              : 'border-slate-100'
+          }`}>
+            {/* Live Indicator tag */}
+            <div className={`absolute top-4 right-4 flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold border tracking-wider uppercase transition-all duration-300 ${
+              prayerStatus.status === 'active' 
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-100 shadow-sm' 
+                : prayerStatus.status === 'soon'
+                ? 'bg-amber-50 text-amber-700 border-amber-100 shadow-sm'
+                : 'bg-slate-100 text-slate-500 border-slate-200'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${
+                prayerStatus.status === 'active' 
+                  ? 'bg-emerald-500 animate-pulse' 
+                  : prayerStatus.status === 'soon'
+                  ? 'bg-amber-500 animate-ping'
+                  : 'bg-slate-400'
+              }`}></span>
+              <span>{t(prayerStatus.textKey)}</span>
             </div>
-            <Link to="/actividades" className="hidden md:flex items-center text-secondary hover:text-primary transition-colors font-medium">
-              {t('home.activitiesViewAll')} <ChevronRight className="w-5 h-5 ml-1" />
-            </Link>
-          </div>
+            
+            <div className="max-w-2xl">
+              <span className="text-secondary text-xs font-bold uppercase tracking-widest block mb-2">
+                {t('home.prayerNightsTitle')}
+              </span>
+              <h3 className="text-3xl md:text-4xl font-kenao text-primary mb-4">
+                {t('home.prayerNightsTitle')}
+              </h3>
+              <p className="text-primary/70 text-base md:text-lg leading-relaxed">
+                {t('home.prayerNightsDesc')}
+              </p>
+            </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {featuredPosts.map((post, index) => (
-              <motion.div 
-                key={post.id}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-                className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 group border border-slate-100 flex flex-col h-full"
+            <div className="flex flex-col sm:flex-row items-center gap-6 shrink-0 w-full lg:w-auto">
+              <div className="bg-white px-6 py-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4 w-full sm:w-auto">
+                <div className="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center text-secondary shrink-0">
+                  <Video className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-[10px] text-primary/40 uppercase tracking-wider font-bold">{t('home.prayerNightsTitle')}</p>
+                  <p className="text-base font-bold text-primary">{t('home.prayerNightsTime')}</p>
+                </div>
+              </div>
+
+              <a 
+                href="https://meet.google.com/qhu-fktd-ejh"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`w-full sm:w-auto flex items-center justify-center gap-3 px-8 py-4 rounded-2xl text-sm font-bold transition-all shadow-md hover:shadow-lg uppercase tracking-wider ${
+                  prayerStatus.status === 'active'
+                    ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                    : prayerStatus.status === 'soon'
+                    ? 'bg-amber-500 text-primary hover:bg-amber-600'
+                    : 'bg-secondary text-primary hover:bg-primary hover:text-white'
+                }`}
               >
-                <div className="h-56 overflow-hidden relative bg-slate-100">
-                  {post.imageUrl ? (
-                    <img 
-                      src={post.imageUrl} 
-                      alt={(post as any)[`title_${currentLang}`] || post.title} 
-                      className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-primary/10">
-                      <Calendar className="w-12 h-12" />
-                    </div>
-                  )}
-                  <div className="absolute top-4 left-4 bg-secondary text-primary text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
-                    {post.category}
-                  </div>
-                </div>
-                <div className="p-6 flex flex-col flex-grow">
-                  <div className="text-sm text-primary/50 mb-3 flex items-center">
-                    <Calendar className="w-4 h-4 mr-2" />
-                    {post.publishedAt?.toDate ? post.publishedAt.toDate().toLocaleDateString() : t('home.recent')}
-                  </div>
-                  <h4 className="text-xl font-kenao text-primary mb-3 group-hover:text-secondary transition-colors">{(post as any)[`title_${currentLang}`] || post.title}</h4>
-                  <p className="text-primary/70 leading-relaxed mb-6 flex-grow">
-                    {(post as any)[`excerpt_${currentLang}`] || post.excerpt}
-                  </p>
-                  <Link to={`/actividades/${post.id}`} className="flex items-center text-primary font-semibold hover:text-secondary transition-colors group/btn">
-                    {t('common.readMore')} <ArrowRight className="w-4 h-4 ml-2 transform group-hover/btn:translate-x-1 transition-transform" />
-                  </Link>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-          <div className="mt-12 text-center md:hidden">
-            <Link to="/actividades" className="inline-flex items-center text-secondary font-medium">
-              {t('home.activitiesViewAll')} <ChevronRight className="w-5 h-5 ml-1" />
-            </Link>
+                <ExternalLink className="w-4 h-4 shrink-0" />
+                {t('home.prayerNightsBtn')}
+              </a>
+            </div>
           </div>
         </div>
       </section>
@@ -407,6 +511,139 @@ export default function Home() {
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Muro de Actividades */}
+      <section id="actividades" className="py-24 bg-slate-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-end mb-12">
+            <div>
+              <h2 className="text-secondary tracking-wider uppercase text-sm mb-3">{t('home.activitiesTag')}</h2>
+              <h3 className="text-4xl font-kenao text-primary">{t('home.activitiesTitle')}</h3>
+            </div>
+            <Link to="/actividades" className="hidden md:flex items-center text-secondary hover:text-primary transition-colors font-medium">
+              {t('home.activitiesViewAll')} <ChevronRight className="w-5 h-5 ml-1" />
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {featuredPosts.map((post, index) => (
+              <motion.div 
+                key={post.id}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: index * 0.1 }}
+                className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 group border border-slate-100 flex flex-col h-full"
+              >
+                <div className="h-56 overflow-hidden relative bg-slate-100">
+                  {post.imageUrl ? (
+                    <img 
+                      src={post.imageUrl} 
+                      alt={(post as any)[`title_${currentLang}`] || post.title} 
+                      className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-primary/10">
+                      <Calendar className="w-12 h-12" />
+                    </div>
+                  )}
+                  <div className="absolute top-4 left-4 bg-secondary text-primary text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+                    {post.category}
+                  </div>
+                </div>
+                <div className="p-6 flex flex-col flex-grow">
+                  <div className="text-sm text-primary/50 mb-3 flex items-center">
+                    <Calendar className="w-4 h-4 mr-2" />
+                    {post.publishedAt?.toDate ? post.publishedAt.toDate().toLocaleDateString() : t('home.recent')}
+                  </div>
+                  <h4 className="text-xl font-kenao text-primary mb-3 group-hover:text-secondary transition-colors">{(post as any)[`title_${currentLang}`] || post.title}</h4>
+                  <p className="text-primary/70 leading-relaxed mb-6 flex-grow">
+                    {(post as any)[`excerpt_${currentLang}`] || post.excerpt}
+                  </p>
+                  <Link to={`/actividades/${post.id}`} className="flex items-center text-primary font-semibold hover:text-secondary transition-colors group/btn">
+                    {t('common.readMore')} <ArrowRight className="w-4 h-4 ml-2 transform group-hover/btn:translate-x-1 transition-transform" />
+                  </Link>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+          <div className="mt-12 text-center md:hidden">
+            <Link to="/actividades" className="inline-flex items-center text-secondary font-medium">
+              {t('home.activitiesViewAll')} <ChevronRight className="w-5 h-5 ml-1" />
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Newsletter Subscription Section */}
+      <section className="py-20 bg-primary relative overflow-hidden">
+        {/* Decorative elements */}
+        <div className="absolute top-0 right-0 w-96 h-96 bg-secondary/10 rounded-full blur-3xl transform translate-x-1/2 -translate-y-1/2 animate-pulse"></div>
+        <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-950/20 rounded-full blur-3xl transform -translate-x-1/2 translate-y-1/2"></div>
+        
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            whileInView={{ opacity: 1, scale: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+            className="space-y-8"
+          >
+            <div className="inline-flex items-center gap-2.5 bg-secondary/20 border border-secondary/30 px-4 py-1.5 rounded-full text-secondary text-xs font-bold uppercase tracking-wider">
+              <Mail className="w-4 h-4" />
+              <span>Boletín de Noticias</span>
+            </div>
+            
+            <div className="space-y-4">
+              <h2 className="text-3xl sm:text-4xl font-kenao text-white">Únete a nuestro boletín semanal</h2>
+              <p className="text-white/70 max-w-xl mx-auto text-sm sm:text-base leading-relaxed">
+                Recibe semanalmente los avisos destacados, recordatorios de la reunión de domingo, actividades especiales y la vida de nuestra iglesia directamente en tu buzón de correo.
+              </p>
+            </div>
+
+            {subSuccess ? (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-secondary/10 border border-secondary/20 p-6 rounded-2xl max-w-md mx-auto"
+              >
+                <span className="text-2xl">🎉</span>
+                <h4 className="text-white font-bold text-lg mt-2 font-kenao">¡Suscrito con éxito!</h4>
+                <p className="text-white/60 text-xs mt-1">Gracias por unirte a nuestro boletín. Te mantendremos informado.</p>
+              </motion.div>
+            ) : (
+              <form onSubmit={handleNewsletterSubscribe} className="max-w-md mx-auto">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <input 
+                    type="email" 
+                    required
+                    value={subEmail}
+                    onChange={(e) => setSubEmail(e.target.value)}
+                    placeholder="Introduce tu correo electrónico" 
+                    className="flex-grow px-5 py-4 rounded-xl bg-white/10 text-white placeholder-white/40 border border-white/20 outline-none focus:ring-2 focus:ring-secondary focus:border-transparent text-sm transition-all"
+                  />
+                  <button 
+                    type="submit"
+                    disabled={subscribing}
+                    className="bg-secondary text-primary font-bold px-6 py-4 rounded-xl hover:bg-[#c2a30b] transition-all text-xs uppercase tracking-wider shrink-0 duration-300 flex items-center justify-center gap-2"
+                  >
+                    {subscribing ? (
+                      <span className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></span>
+                    ) : (
+                      <span>Suscribirme</span>
+                    )}
+                  </button>
+                </div>
+                {subError && <p className="text-red-400 text-xs mt-3 text-left">{subError}</p>}
+                <p className="text-[10px] text-white/40 mt-3 leading-tight">
+                  Al suscribirte, aceptas recibir comunicaciones de Huelva Church. Tu privacidad es sagrada y puedes darte de baja en cualquier momento.
+                </p>
+              </form>
+            )}
+          </motion.div>
         </div>
       </section>
 
