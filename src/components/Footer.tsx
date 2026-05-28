@@ -8,8 +8,8 @@ export default function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
           <div>
             <div className="flex items-baseline gap-1 mb-4 text-white">
-              <span className="font-kenao text-2xl">Huelva</span>
-              <span className="font-gordita text-2xl font-light">Church</span>
+              <span className="font-logo-huelva text-2xl">Huelva</span>
+              <span className="font-logo-church text-2xl font-light">Church</span>
             </div>
             <p className="text-sm leading-relaxed max-w-xs">
               Llevando el mensaje de esperanza y el amor de Jesucristo a la ciudad de Huelva y más allá.
@@ -26,11 +26,9 @@ export default function Footer() {
             </ul>
           </div>
           <div>
-            <h4 className="text-white font-medium mb-4 uppercase tracking-wider text-sm">Horarios</h4>
+            <h4 className="text-white font-medium mb-4 uppercase tracking-wider text-sm">Celebraciones</h4>
             <ul className="space-y-2 text-sm">
-              <li>Domingos: 18:30h - Culto Principal</li>
-              <li>Miércoles: 19:30h - Estudio Bíblico</li>
-              <li>Sábados: 19:00h - Jóvenes</li>
+              <li>Domingos: 18:30h - Celebración Principal</li>
             </ul>
           </div>
         </div>

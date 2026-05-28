@@ -7,46 +7,14 @@ const stripePromise = loadStripe((import.meta as any).env.VITE_STRIPE_PUBLISHABL
 
 export default function Dar() {
   const [isProcessing, setIsProcessing] = useState(false);
-  const [amount, setAmount] = useState('20');
-  const [donationType, setDonationType] = useState('Ofrenda');
 
   const handleStripeCheckout = async () => {
-    if (!(import.meta as any).env.VITE_STRIPE_PUBLISHABLE_KEY) {
-      alert("La configuración de pagos no está completa. Por favor, contacte con el administrador.");
-      return;
-    }
-
     setIsProcessing(true);
     try {
-      const response = await fetch('/api/create-checkout-session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          amount: parseFloat(amount),
-          type: donationType,
-          description: `Donación para ${donationType} - Iglesia Evangelica Huelva`
-        }),
-      });
-
-      const session = await response.json();
-
-      if (session.error) {
-        throw new Error(session.error);
-      }
-
-      const stripe = await stripePromise;
-      const { error } = await (stripe as any).redirectToCheckout({
-        sessionId: session.id,
-      });
-
-      if (error) {
-        throw error;
-      }
+      // Direct redirect to Stripe Donation Link
+      window.open('https://donate.stripe.com/cN20043tF2Eb2nm8wx', '_blank', 'noopener,noreferrer');
     } catch (error: any) {
-      console.error("Error en el pago:", error);
-      alert("Hubo un error al procesar el pago: " + error.message);
+      console.error("Error redirecting to Stripe:", error);
     } finally {
       setIsProcessing(false);
     }
@@ -100,51 +68,29 @@ export default function Dar() {
               <div className="space-y-4">
                 <div>
                   <p className="text-white/40 text-xs uppercase tracking-wider font-bold mb-1">Titular</p>
-                  <p className="text-lg font-bold">Iglesia Cristiana Huelva Church</p>
+                  <p className="text-lg font-bold">Iglesia Bautista de Huelva</p>
                 </div>
                 <div>
                   <p className="text-white/40 text-xs uppercase tracking-wider font-bold mb-1">IBAN</p>
-                  <p className="text-xl font-mono tracking-widest">ES00 0000 0000 0000 0000 0000</p>
+                  <p className="text-xl font-mono tracking-widest sm:text-2xl break-all">ES48 0182 3273 6602 0157 7885</p>
                 </div>
                 <div>
                   <p className="text-white/40 text-xs uppercase tracking-wider font-bold mb-1">Concepto</p>
-                  <p className="text-lg font-bold">Diezmo / Ofrenda / Obra Social</p>
+                  <p className="text-lg font-bold">Diezmo / Ofrenda / Obra Social / Proyecto</p>
                 </div>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow group">
-                <div className="w-12 h-12 bg-secondary/10 rounded-xl flex items-center justify-center text-secondary mb-6 group-hover:bg-secondary group-hover:text-primary transition-colors">
-                  <CreditCard className="w-6 h-6" />
-                </div>
-                <h4 className="text-xl font-kenao text-primary mb-2">Tarjeta</h4>
-                <p className="text-primary/60 text-sm mb-4">Donación segura con tarjeta de crédito o débito.</p>
-                
-                <div className="space-y-4 mb-6">
-                  <div>
-                    <label className="block text-xs font-bold text-primary/40 uppercase tracking-wider mb-2">Tipo de Donación</label>
-                    <select 
-                      value={donationType}
-                      onChange={(e) => setDonationType(e.target.value)}
-                      className="w-full p-3 rounded-xl border border-slate-100 bg-slate-50 text-primary focus:ring-2 focus:ring-secondary outline-none"
-                    >
-                      <option value="Ofrenda">Ofrenda</option>
-                      <option value="Diezmo">Diezmo</option>
-                      <option value="Obra Social">Obra Social</option>
-                      <option value="Proyecto Edificio">Proyecto Edificio</option>
-                    </select>
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow group flex flex-col justify-between">
+                <div>
+                  <div className="w-12 h-12 bg-secondary/10 rounded-xl flex items-center justify-center text-secondary mb-6 group-hover:bg-secondary group-hover:text-primary transition-colors">
+                    <CreditCard className="w-6 h-6" />
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-primary/40 uppercase tracking-wider mb-2">Cantidad (€)</label>
-                    <input 
-                      type="number" 
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      className="w-full p-3 rounded-xl border border-slate-100 bg-slate-50 text-primary focus:ring-2 focus:ring-secondary outline-none"
-                      min="1"
-                    />
-                  </div>
+                  <h4 className="text-xl font-kenao text-primary mb-2">Tarjeta</h4>
+                  <p className="text-primary/60 text-sm mb-8 leading-relaxed">
+                    Donación segura con tarjeta de crédito o débito. Podrás especificar el importe y el propósito de tu aportación cómodamente en la plataforma de Stripe.
+                  </p>
                 </div>
 
                 <button 
@@ -168,8 +114,11 @@ export default function Dar() {
                   <Coins className="w-6 h-6" />
                 </div>
                 <h4 className="text-xl font-kenao text-primary mb-2">Bizum</h4>
-                <p className="text-primary/60 text-sm mb-6">Utiliza nuestro código de comercio para donar rápidamente.</p>
-                <div className="text-primary font-bold text-lg">Código: 00000</div>
+                <p className="text-primary/60 text-sm mb-6">Utiliza nuestro código de comercio para donar rápidamente (selecciona la opción "Envío a ONG").</p>
+                <div className="text-primary font-bold text-lg bg-slate-50 p-3 rounded-xl border border-dashed border-slate-200">
+                  Código: <span className="text-secondary font-mono text-xl tracking-wider">09377</span>
+                  <div className="text-xs text-primary/40 font-normal mt-1">Opción: Envío a ONG</div>
+                </div>
               </div>
             </div>
           </motion.div>

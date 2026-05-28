@@ -436,13 +436,13 @@ export default function AdminCursos() {
 
                     <div>
                       <label className="block text-xs font-black uppercase tracking-widest text-primary/40 mb-2">Estado</label>
-                      <div className="flex gap-4">
+                      <div className="flex gap-2 sm:gap-4">
                         {['draft', 'published', 'archived'].map((s) => (
                           <button
                             key={s}
                             type="button"
                             onClick={() => setFormData({...formData, status: s as any})}
-                            className={`flex-1 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all border ${
+                            className={`flex-1 py-3 px-2 rounded-xl font-bold text-[10px] sm:text-xs uppercase tracking-wider transition-all border ${
                               formData.status === s 
                                 ? 'bg-primary text-white border-primary shadow-lg' 
                                 : 'bg-white text-primary/40 border-slate-100 hover:border-primary/20'
@@ -467,7 +467,6 @@ export default function AdminCursos() {
                       type="submit"
                       className="flex-1 flex items-center justify-center gap-2 bg-secondary text-primary px-8 py-4 rounded-2xl font-bold hover:shadow-xl transition-all"
                     >
-                      <Save className="w-5 h-5" />
                       {editingCourse ? 'Guardar Cambios' : 'Crear Curso'}
                     </button>
                   </div>

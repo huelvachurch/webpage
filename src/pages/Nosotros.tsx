@@ -1,6 +1,7 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Heart, Users, BookOpen, MapPin } from 'lucide-react';
+import { Heart, Users, BookOpen, MapPin, ArrowRight } from 'lucide-react';
 
 export default function Nosotros() {
   return (
@@ -25,11 +26,11 @@ export default function Nosotros() {
             viewport={{ once: true }}
           >
             <h3 className="text-3xl font-kenao text-primary mb-6">Nuestra Visión</h3>
-            <p className="text-primary/80 text-lg mb-6 leading-relaxed">
-              Nuestra visión es ser una iglesia relevante en la ciudad de Huelva, donde cada persona pueda encontrar un lugar para creer en Dios, pertenecer a una familia y servir a los demás con sus talentos.
+            <p className="text-primary/80 text-lg mb-6 leading-relaxed font-semibold italic text-secondary">
+              "Somos una iglesia en células que se multiplican cumpliendo el mandato de Jesús."
             </p>
             <p className="text-primary/80 text-lg mb-8 leading-relaxed">
-              Creemos que la iglesia no es un edificio, sino las personas. Por eso, nos esforzamos por crear un ambiente donde el amor de Dios sea tangible y donde todos se sientan bienvenidos, sin importar su trasfondo.
+              Creemos que cada hogar puede convertirse en un faro de esperanza en su barrio. A través de grupos pequeños o células, podemos vivir una fe cercana y dinámica, multiplicando el amor de Dios y haciendo discípulos tal como Jesús nos encomendó.
             </p>
             <div className="grid grid-cols-2 gap-6">
               <div className="flex items-center gap-3">
@@ -72,11 +73,31 @@ export default function Nosotros() {
                 referrerPolicy="no-referrer"
               />
             </div>
-            <div className="absolute -bottom-8 -left-8 bg-primary p-8 rounded-3xl shadow-xl hidden md:block border-t-4 border-secondary">
-              <p className="text-white font-kenao text-2xl">"Somos uno en Cristo"</p>
-            </div>
           </motion.div>
         </div>
+
+        {/* Células CTA Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="bg-slate-50 border border-slate-100 rounded-[2rem] p-8 md:p-16 text-center max-w-4xl mx-auto mt-16"
+        >
+          <div className="w-16 h-16 bg-secondary/20 rounded-full flex items-center justify-center text-secondary mx-auto mb-6">
+            <Users className="w-8 h-8" />
+          </div>
+          <h2 className="text-4xl font-kenao text-primary mb-4">Descubre Nuestras Células</h2>
+          <p className="text-lg text-primary/70 mb-8 max-w-2xl mx-auto font-gordita">
+            Nuestros grupos pequeños son el corazón de la iglesia. Encuentra una célula cerca de ti, conoce gente nueva y crece en tu fe.
+          </p>
+          <Link 
+            to="/celulas"
+            className="inline-flex items-center gap-2 bg-primary text-white font-bold py-4 px-8 rounded-xl hover:bg-secondary hover:text-primary transition-colors text-lg"
+          >
+            Conocer más
+            <ArrowRight className="w-5 h-5" />
+          </Link>
+        </motion.div>
       </div>
     </div>
   );

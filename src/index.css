@@ -21,8 +21,10 @@
   --color-primary: #2D4B73;
   --color-secondary: #D9B70D;
   
-  --font-kenao: "Calistoga", "Kenao", "Marcellus", serif;
-  --font-gordita: "Lato", "Gordita", "Outfit", sans-serif;
+  --font-logo-huelva: "Kenao", serif;
+  --font-logo-church: "Gordita", sans-serif;
+  --font-kenao: "Calistoga", "Marcellus", serif;
+  --font-gordita: "Lato", "Outfit", sans-serif;
   --font-script: "Yellowtail", cursive;
 }
 

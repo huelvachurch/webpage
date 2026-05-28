@@ -4,6 +4,8 @@ import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import Home from './pages/Home';
 import Nosotros from './pages/Nosotros';
+import Celulas from './pages/Celulas';
+import AdminCelulas from './pages/admin/AdminCelulas';
 import Actividades from './pages/Actividades';
 import ActividadDetalle from './pages/ActividadDetalle';
 import Dar from './pages/Dar';
@@ -37,6 +39,7 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<Home />} />
                 <Route path="/nosotros" element={<Nosotros />} />
+                <Route path="/celulas" element={<Celulas />} />
                 <Route path="/actividades" element={<Actividades />} />
                 <Route path="/actividades/:id" element={<ActividadDetalle />} />
                 <Route path="/dar" element={<Dar />} />
@@ -48,6 +51,7 @@ export default function App() {
                 {/* Admin Routes */}
                 <Route path="/admin/comunicaciones" element={<AdminComunicaciones />} />
                 <Route path="/admin/usuarios" element={<AdminUsuarios />} />
+                <Route path="/admin/celulas" element={<AdminCelulas />} />
                 <Route path="/admin/cursos" element={<AdminCursos />} />
               </Routes>
             </main>

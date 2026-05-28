@@ -248,32 +248,32 @@ export default function AdminComunicaciones() {
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className="relative bg-white w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-[3rem] shadow-2xl flex flex-col"
             >
-              <div className="p-8 md:p-12 pb-4 flex justify-between items-center border-b border-slate-100">
-                <h2 className="text-3xl font-kenao text-primary">
-                  {editingPost ? 'Editar Publicación' : 'Nueva Publicación'}
-                </h2>
-                <div className="flex items-center gap-4">
-                  <div className="flex bg-slate-100 p-1 rounded-xl">
-                    <button 
-                      onClick={() => setActiveTab('edit')}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'edit' ? 'bg-white text-primary shadow-sm' : 'text-primary/40'}`}
-                    >
-                      <Layout className="w-4 h-4" />
-                      Editor
-                    </button>
-                    <button 
-                      onClick={() => setActiveTab('preview')}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'preview' ? 'bg-white text-primary shadow-sm' : 'text-primary/40'}`}
-                    >
-                      <Eye className="w-4 h-4" />
-                      Vista Previa
-                    </button>
-                  </div>
+              <div className="p-5 sm:p-8 md:p-12 pb-4 flex flex-col gap-4 border-b border-slate-100">
+                <div className="flex justify-between items-center w-full">
+                  <h2 className="text-2xl sm:text-3xl font-kenao text-primary">
+                    {editingPost ? 'Editar Publicación' : 'Nueva Publicación'}
+                  </h2>
                   <button 
                     onClick={() => setIsModalOpen(false)}
-                    className="p-2 hover:bg-slate-100 rounded-full transition-all"
+                    className="p-2 hover:bg-slate-100 rounded-full transition-all shrink-0"
                   >
                     <X className="w-6 h-6" />
+                  </button>
+                </div>
+                <div className="flex bg-slate-100 p-1 rounded-xl self-start w-full sm:w-auto">
+                  <button 
+                    onClick={() => setActiveTab('edit')}
+                    className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'edit' ? 'bg-white text-primary shadow-sm' : 'text-primary/40'}`}
+                  >
+                    <Layout className="w-4 h-4" />
+                    Editor
+                  </button>
+                  <button 
+                    onClick={() => setActiveTab('preview')}
+                    className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'preview' ? 'bg-white text-primary shadow-sm' : 'text-primary/40'}`}
+                  >
+                    <Eye className="w-4 h-4" />
+                    Vista Previa
                   </button>
                 </div>
               </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Menu, X, Heart, LogIn, LogOut, Shield, MessageSquare, User as UserIcon, GraduationCap, Layout } from 'lucide-react';
+import { Menu, X, Heart, LogIn, LogOut, Shield, MessageSquare, User as UserIcon, GraduationCap, Layout, Users } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { loginWithGoogle, logout } from '../firebase';
 
@@ -39,12 +39,9 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center">
           <Link to="/" className="flex items-center gap-3 group">
-            <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center text-secondary transform group-hover:rotate-12 transition-transform duration-500 shadow-lg">
-              <Heart className="w-6 h-6 fill-current" />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-2xl font-kenao leading-none text-primary">Huelva</span>
-              <span className="text-xs font-bold tracking-[0.3em] text-secondary uppercase leading-none mt-1">Church</span>
+            <div className="flex items-baseline gap-1">
+              <span className="text-3xl font-logo-huelva text-primary leading-none">Huelva</span>
+              <span className="text-2xl font-logo-church text-primary leading-none font-light">Church</span>
             </div>
           </Link>
 
@@ -99,13 +96,22 @@ export default function Navbar() {
                       </Link>
                     )}
                     {isAdmin && (
-                      <Link 
-                        to="/admin/usuarios" 
-                        className="p-2 transition-all hover:text-secondary text-primary/40"
-                        title="Administración Usuarios"
-                      >
-                        <Shield className="w-5 h-5" />
-                      </Link>
+                      <>
+                        <Link 
+                          to="/admin/celulas" 
+                          className="p-2 transition-all hover:text-secondary text-primary/40"
+                          title="Gestión Células"
+                        >
+                          <Users className="w-5 h-5" />
+                        </Link>
+                        <Link 
+                          to="/admin/usuarios" 
+                          className="p-2 transition-all hover:text-secondary text-primary/40"
+                          title="Administración Usuarios"
+                        >
+                          <Shield className="w-5 h-5" />
+                        </Link>
+                      </>
                     )}
                     
                     <div className="flex items-center gap-3 pl-2">
@@ -170,7 +176,7 @@ export default function Navbar() {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="md:hidden bg-white border-t border-slate-100 overflow-hidden"
+            className="md:hidden bg-white border-t border-slate-100 overflow-hidden mt-4"
           >
             <div className="px-4 py-8 space-y-4">
               {navLinks.map((link) => (
@@ -204,10 +210,16 @@ export default function Navbar() {
                     </Link>
                   )}
                   {isAdmin && (
-                    <Link to="/admin/usuarios" className="flex items-center gap-3 text-primary/60 font-bold uppercase text-sm tracking-widest">
-                      <Shield className="w-5 h-5" />
-                      Usuarios
-                    </Link>
+                    <>
+                      <Link to="/admin/celulas" className="flex items-center gap-3 text-primary/60 font-bold uppercase text-sm tracking-widest">
+                        <Users className="w-5 h-5" />
+                        Gestión Células
+                      </Link>
+                      <Link to="/admin/usuarios" className="flex items-center gap-3 text-primary/60 font-bold uppercase text-sm tracking-widest">
+                        <Shield className="w-5 h-5" />
+                        Usuarios
+                      </Link>
+                    </>
                   )}
                   <button 
                     onClick={() => logout()}

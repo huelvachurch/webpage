@@ -98,6 +98,25 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
+  const [contactData, setContactData] = useState({ name: '', email: '', message: '' });
+  const [contactSubmitted, setContactSubmitted] = useState(false);
+
+  const handleContactSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const mailtoSubject = encodeURIComponent(`[Contacto Web] Mensaje de ${contactData.name}`);
+    const mailtoBody = encodeURIComponent(
+      `Nombre: ${contactData.name}\n` +
+      `Email: ${contactData.email}\n\n` +
+      `Mensaje:\n${contactData.message}`
+    );
+    window.location.href = `mailto:huelvachurch@gmail.com?subject=${mailtoSubject}&body=${mailtoBody}`;
+    setContactSubmitted(true);
+    setTimeout(() => {
+      setContactSubmitted(false);
+      setContactData({ name: '', email: '', message: '' });
+    }, 5000);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 font-gordita text-primary">
       {/* Welcome / About */}
@@ -140,8 +159,8 @@ export default function Home() {
             >
               <div className="aspect-[4/5] rounded-2xl overflow-hidden shadow-2xl">
                 <img 
-                  src="https://images.unsplash.com/photo-1515162305285-0293e4767cc2?auto=format&fit=crop&q=80&w=1000" 
-                  alt="Congregación adorando" 
+                  src="/images/Imagen Bienvenida.png" 
+                  alt="Bienvenido a casa" 
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
                 />
@@ -317,7 +336,7 @@ export default function Home() {
                     <div className="absolute bottom-6 left-6 right-6">
                       <div className="bg-black/40 backdrop-blur-md p-4 rounded-xl border border-white/10">
                         <p className="text-white font-medium">Última retransmisión</p>
-                        <p className="text-white/70 text-sm">Culto Dominical - "Viviendo con Propósito"</p>
+                        <p className="text-white/70 text-sm">Celebración Principal - "Viviendo con Propósito"</p>
                       </div>
                     </div>
                   </>
@@ -340,12 +359,12 @@ export default function Home() {
                 referrerPolicy="no-referrer"
               />
             </div>
-            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-12 p-12 lg:p-20 items-center">
+            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-12 p-6 sm:p-12 lg:p-20 items-center">
               <div>
                 <h2 className="text-secondary tracking-wider uppercase text-sm font-bold mb-4">Grupos Pequeños</h2>
                 <h3 className="text-4xl md:text-5xl font-kenao text-white mb-6">Células: La iglesia en las casas</h3>
                 <p className="text-white/80 text-lg mb-8 leading-relaxed">
-                  Creemos que el crecimiento espiritual ocurre mejor en comunidad. Nuestras células son grupos pequeños que se reúnen en hogares por toda la ciudad para compartir la vida, estudiar la Biblia y apoyarse mutuamente.
+                  Creemos que el crecimiento espiritual ocurre mejor en comunidad. Nuestras células son grupos pequeños que se reuniendo en hogares por toda la ciudad para compartir la vida, estudiar la Biblia y apoyarse mutuamente.
                 </p>
                 <a 
                   href="https://www.huelvachurch.es/celulas" 
@@ -356,7 +375,7 @@ export default function Home() {
                   Encuentra tu célula <ChevronRight className="w-5 h-5 ml-2" />
                 </a>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-4">
                   <div className="bg-white/10 backdrop-blur-md p-6 rounded-2xl border border-white/10">
                     <Users className="w-8 h-8 text-secondary mb-4" />
@@ -369,7 +388,7 @@ export default function Home() {
                     <p className="text-white/60 text-sm">Estudio práctico de la Biblia.</p>
                   </div>
                 </div>
-                <div className="space-y-4 mt-8">
+                <div className="space-y-4 sm:mt-8 mt-0">
                   <div className="bg-white/10 backdrop-blur-md p-6 rounded-2xl border border-white/10">
                     <Heart className="w-8 h-8 text-secondary mb-4" />
                     <h4 className="text-white font-kenao text-xl mb-1">Cuidado</h4>
@@ -402,7 +421,7 @@ export default function Home() {
                 <div className="relative bg-primary rounded-[2.5rem] p-4 shadow-2xl border-8 border-slate-800">
                   <div className="aspect-[9/19] rounded-[1.5rem] overflow-hidden bg-slate-900 relative">
                     <img 
-                      src="https://images.unsplash.com/photo-1614102073832-030967418971?auto=format&fit=crop&q=80&w=600" 
+                      src="/images/Imagen Radio.png" 
                       alt="Radio App" 
                       className="w-full h-full object-cover opacity-80"
                       referrerPolicy="no-referrer"
@@ -476,22 +495,32 @@ export default function Home() {
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="relative block h-[400px] rounded-[3rem] overflow-hidden group shadow-2xl"
+            className="relative block rounded-[3rem] overflow-hidden group shadow-2xl bg-gradient-to-br from-[#833ab4] via-[#fd1d1d] to-[#fcb045] transition-transform hover:scale-[1.01] duration-500"
           >
-            <img 
-              src="https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?auto=format&fit=crop&q=80&w=1600" 
-              alt="Instagram" 
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-              referrerPolicy="no-referrer"
-            />
-            <div className="absolute inset-0 bg-gradient-to-r from-pink-600/90 via-pink-600/40 to-transparent"></div>
-            <div className="absolute inset-0 flex items-center px-12 lg:px-20">
-              <div className="text-white max-w-lg">
-                <Instagram className="w-16 h-16 mb-6" />
-                <h3 className="text-4xl md:text-5xl font-kenao mb-4">Síguenos en Instagram</h3>
-                <p className="text-xl text-white/90 mb-8">Mantente al día con nuestras fotos, historias y momentos diarios de nuestra comunidad.</p>
-                <span className="inline-flex items-center gap-2 bg-white text-pink-600 px-8 py-4 rounded-xl font-bold hover:bg-pink-50 transition-colors shadow-lg">
-                  Unirse a la comunidad <ExternalLink className="w-5 h-5" />
+            {/* Background Watermark Logo */}
+            <div className="absolute -right-20 -bottom-20 opacity-10 pointer-events-none transform -rotate-12">
+              <Instagram className="w-[500px] h-[500px] text-white" />
+            </div>
+
+            <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between p-12 lg:p-20 gap-12">
+              <div className="text-white max-w-2xl">
+                <div className="flex items-center gap-5 mb-8">
+                  <div className="w-20 h-20 bg-white/20 backdrop-blur-md rounded-[2rem] flex items-center justify-center shadow-inner">
+                    <Instagram className="w-12 h-12 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-white/80 tracking-wider uppercase text-xs font-bold mb-1">Comunidad Visual</h2>
+                    <h3 className="text-4xl md:text-5xl font-kenao">Síguenos en Instagram</h3>
+                  </div>
+                </div>
+                <p className="text-xl md:text-2xl text-white/90 leading-relaxed font-medium">
+                  Mantente al día con nuestras fotos, historias y momentos diarios de nuestra comunidad. ¡Descubre lo que Dios está haciendo entre nosotros!
+                </p>
+              </div>
+              
+              <div className="flex-shrink-0 w-full lg:w-auto">
+                <span className="w-full lg:w-auto inline-flex items-center justify-center gap-3 bg-white text-[#fd1d1d] px-12 py-6 rounded-2xl font-bold hover:bg-slate-50 transition-all transform hover:-translate-y-1 shadow-2xl text-xl">
+                  Unirse a la comunidad <ExternalLink className="w-6 h-6" />
                 </span>
               </div>
             </div>
@@ -514,7 +543,7 @@ export default function Home() {
               <h2 className="text-secondary tracking-wider uppercase text-sm font-bold mb-4">Nuestras Instalaciones</h2>
               <h3 className="text-4xl md:text-5xl font-kenao text-primary mb-6">Cafetería: Un lugar para compartir</h3>
               <p className="text-primary/80 text-lg mb-8 leading-relaxed">
-                Nuestra cafetería está abierta todos los domingos durante nuestras celebraciones. Es el espacio perfecto para conectar con otros, compartir un café y disfrutar de un tiempo de comunión antes o después del culto.
+                Nuestra cafetería está abierta todos los domingos durante nuestras celebraciones. Es el espacio perfecto para conectar con otros, compartir un café y disfrutar de un tiempo de comunión antes o después de la celebración.
               </p>
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 inline-flex items-center gap-4">
                 <div className="w-12 h-12 bg-primary/5 rounded-full flex items-center justify-center text-primary">
@@ -534,14 +563,11 @@ export default function Home() {
             >
               <div className="aspect-square rounded-[3rem] overflow-hidden shadow-2xl">
                 <img 
-                  src="https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&q=80&w=1000" 
+                  src="/images/Imagen Cafeteria.png" 
                   alt="Cafetería" 
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
                 />
-              </div>
-              <div className="absolute -bottom-6 -right-6 bg-secondary p-8 rounded-3xl shadow-xl hidden md:block">
-                <p className="text-primary font-kenao text-2xl">¡Te invitamos a un café!</p>
               </div>
             </motion.div>
           </div>
@@ -560,7 +586,7 @@ export default function Home() {
             >
               <div className="aspect-[4/3] rounded-[3rem] overflow-hidden shadow-2xl">
                 <img 
-                  src="https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&q=80&w=1000" 
+                  src="/images/Imagen Libreria.png" 
                   alt="Librería" 
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
@@ -631,7 +657,7 @@ export default function Home() {
       </section>
 
       {/* WhatsApp Section */}
-      <section id="whatsapp" className="py-24 bg-white">
+      <section id="whatsapp" className="py-24 bg-slate-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.a 
             href="https://chat.whatsapp.com/KYIoRdfL0lI5TlKKW5o8nN"
@@ -640,22 +666,32 @@ export default function Home() {
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="relative block h-[400px] rounded-[3rem] overflow-hidden group shadow-2xl"
+            className="relative block rounded-[3rem] overflow-hidden group shadow-2xl bg-[#25D366] transition-transform hover:scale-[1.01] duration-500"
           >
-            <img 
-              src="https://images.unsplash.com/photo-1614680376593-902f74cc0d41?auto=format&fit=crop&q=80&w=1600" 
-              alt="WhatsApp" 
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-              referrerPolicy="no-referrer"
-            />
-            <div className="absolute inset-0 bg-gradient-to-r from-green-600/90 via-green-600/40 to-transparent"></div>
-            <div className="absolute inset-0 flex items-center px-12 lg:px-20">
-              <div className="text-white max-w-lg">
-                <MessageCircle className="w-16 h-16 mb-6" />
-                <h3 className="text-4xl md:text-5xl font-kenao mb-4">Canal de Noticias WhatsApp</h3>
-                <p className="text-xl text-white/90 mb-8">Únete a nuestro grupo oficial para recibir anuncios importantes, devocionales y noticias de nuestra iglesia directamente en tu móvil.</p>
-                <span className="inline-flex items-center gap-2 bg-white text-green-600 px-8 py-4 rounded-xl font-bold hover:bg-green-50 transition-colors shadow-lg">
-                  Unirse al grupo <ExternalLink className="w-5 h-5" />
+            {/* Background Watermark Logo */}
+            <div className="absolute -right-20 -bottom-20 opacity-10 pointer-events-none transform rotate-12">
+              <MessageCircle className="w-[500px] h-[500px] text-white" />
+            </div>
+            
+            <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between p-12 lg:p-20 gap-12">
+              <div className="text-white max-w-2xl">
+                <div className="flex items-center gap-5 mb-8">
+                  <div className="w-20 h-20 bg-white/20 backdrop-blur-md rounded-[2rem] flex items-center justify-center shadow-inner">
+                    <MessageCircle className="w-12 h-12 text-white fill-current" />
+                  </div>
+                  <div>
+                    <h2 className="text-white/80 tracking-wider uppercase text-xs font-bold mb-1">Comunidad Digital</h2>
+                    <h3 className="text-4xl md:text-5xl font-kenao">Canal de WhatsApp</h3>
+                  </div>
+                </div>
+                <p className="text-xl md:text-2xl text-white/90 leading-relaxed font-medium">
+                  Únete a nuestro grupo oficial para recibir anuncios importantes, devocionales y noticias de nuestra iglesia directamente en tu móvil.
+                </p>
+              </div>
+              
+              <div className="flex-shrink-0 w-full lg:w-auto">
+                <span className="w-full lg:w-auto inline-flex items-center justify-center gap-3 bg-white text-[#25D366] px-12 py-6 rounded-2xl font-bold hover:bg-slate-50 transition-all transform hover:-translate-y-1 shadow-2xl text-xl">
+                  Unirse al grupo <ExternalLink className="w-6 h-6" />
                 </span>
               </div>
             </div>
@@ -681,7 +717,16 @@ export default function Home() {
                   </div>
                   <div className="ml-4">
                     <h4 className="text-lg font-medium text-primary">Nuestra Dirección</h4>
-                    <p className="text-primary/70">Calle De Los Marismeños, 6, Huelva<br/>(arriba del Supermercado El Jamón)</p>
+                    <p className="text-primary/70">
+                      <a 
+                        href="https://maps.app.goo.gl/WPjd55a8XpctoAgS7" 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="hover:text-secondary underline decoration-dotted transition-colors"
+                      >
+                        Calle De Los Marismeños, 6, Huelva<br/>(arriba del Supermercado El Jamón)
+                      </a>
+                    </p>
                   </div>
                 </div>
                 
@@ -691,7 +736,7 @@ export default function Home() {
                   </div>
                   <div className="ml-4">
                     <h4 className="text-lg font-medium text-primary">Teléfono</h4>
-                    <p className="text-primary/70">+34 959 00 00 00</p>
+                    <p className="text-primary/70">(+34) 621 34 77 21</p>
                   </div>
                 </div>
                 
@@ -701,31 +746,63 @@ export default function Home() {
                   </div>
                   <div className="ml-4">
                     <h4 className="text-lg font-medium text-primary">Email</h4>
-                    <p className="text-primary/70">info@huelvachurch.com</p>
+                    <p className="text-primary/70">huelvachurch@gmail.com</p>
                   </div>
                 </div>
               </div>
             </div>
             
-            <div className="bg-slate-50 p-8 rounded-2xl shadow-sm border border-slate-100">
+            <div className="bg-slate-50 p-8 rounded-2xl shadow-sm border border-slate-100 font-sans">
               <h4 className="text-2xl font-kenao text-primary mb-6">Envíanos un mensaje</h4>
-              <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
-                <div>
-                  <label htmlFor="name" className="block text-sm font-medium text-primary/80 mb-1">Nombre</label>
-                  <input type="text" id="name" className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-secondary focus:border-secondary outline-none transition-all" placeholder="Tu nombre" />
+              {contactSubmitted ? (
+                <div className="bg-green-50 border border-green-200 text-green-800 p-6 rounded-xl text-center">
+                  <p className="font-bold text-lg mb-2">¡Formulario Generado!</p>
+                  <p className="text-sm mb-4">Se ha abierto tu cliente de correo electrónico para enviar el mensaje a <strong>huelvachurch@gmail.com</strong>.</p>
+                  <p className="text-xs text-green-700">Si no se abrió automáticamente, puedes enviarlo directamente a ese email.</p>
                 </div>
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-primary/80 mb-1">Email</label>
-                  <input type="email" id="email" className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-secondary focus:border-secondary outline-none transition-all" placeholder="tu@email.com" />
-                </div>
-                <div>
-                  <label htmlFor="message" className="block text-sm font-medium text-primary/80 mb-1">Mensaje</label>
-                  <textarea id="message" rows={4} className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-secondary focus:border-secondary outline-none transition-all" placeholder="¿En qué podemos ayudarte?"></textarea>
-                </div>
-                <button type="submit" className="w-full bg-secondary text-primary font-semibold py-3 px-4 rounded-lg hover:bg-[#c2a30b] transition-colors">
-                  Enviar Mensaje
-                </button>
-              </form>
+              ) : (
+                <form className="space-y-4" onSubmit={handleContactSubmit}>
+                  <div>
+                    <label htmlFor="name" className="block text-sm font-medium text-primary/80 mb-1">Nombre</label>
+                    <input 
+                      type="text" 
+                      id="name" 
+                      required
+                      value={contactData.name}
+                      onChange={(e) => setContactData({ ...contactData, name: e.target.value })}
+                      className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white" 
+                      placeholder="Tu nombre" 
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="email" className="block text-sm font-medium text-primary/80 mb-1">Email</label>
+                    <input 
+                      type="email" 
+                      id="email" 
+                      required
+                      value={contactData.email}
+                      onChange={(e) => setContactData({ ...contactData, email: e.target.value })}
+                      className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white" 
+                      placeholder="tu@email.com" 
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="message" className="block text-sm font-medium text-primary/80 mb-1">Mensaje</label>
+                    <textarea 
+                      id="message" 
+                      rows={4} 
+                      required
+                      value={contactData.message}
+                      onChange={(e) => setContactData({ ...contactData, message: e.target.value })}
+                      className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white" 
+                      placeholder="¿En qué podemos ayudarte?"
+                    ></textarea>
+                  </div>
+                  <button type="submit" className="w-full bg-secondary text-primary font-semibold py-3 px-4 rounded-lg hover:bg-[#c2a30b] transition-colors">
+                    Enviar Mensaje
+                  </button>
+                </form>
+              )}
             </div>
           </div>
         </div>
