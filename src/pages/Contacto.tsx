@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { MapPin, Phone, Mail, Clock, MessageCircle, Instagram, Facebook, Youtube } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export default function Contacto() {
+  const { t } = useTranslation();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -38,10 +40,10 @@ export default function Contacto() {
           animate={{ opacity: 1, y: 0 }}
           className="text-center mb-16"
         >
-          <h2 className="text-secondary tracking-wider uppercase text-sm font-bold mb-4">Contacto</h2>
-          <h1 className="text-5xl md:text-6xl font-kenao text-primary mb-6">Estamos aquí para ti</h1>
+          <h2 className="text-secondary tracking-wider uppercase text-sm font-bold mb-4">{t('contact.tag')}</h2>
+          <h1 className="text-5xl md:text-6xl font-kenao text-primary mb-6">{t('contact.title')}</h1>
           <p className="text-primary/70 text-xl max-w-3xl mx-auto leading-relaxed">
-            Si tienes alguna pregunta, necesitas oración o simplemente quieres saber más sobre nuestra iglesia, no dudes en contactarnos.
+            {t('contact.desc')}
           </p>
         </motion.div>
 
@@ -58,17 +60,15 @@ export default function Contacto() {
                   <MapPin className="w-6 h-6" />
                 </div>
                 <div>
-                  <h4 className="text-xl font-kenao text-primary mb-2">Dirección</h4>
+                  <h4 className="text-xl font-kenao text-primary mb-2">{t('contact.address')}</h4>
                   <p className="text-primary/70 leading-relaxed">
                     <a 
                       href="https://maps.app.goo.gl/WPjd55a8XpctoAgS7" 
                       target="_blank" 
                       rel="noopener noreferrer" 
                       className="hover:text-secondary underline decoration-dotted transition-colors"
-                    >
-                      Calle De Los Marismeños, 6, Huelva<br/>
-                      (arriba del Supermercado El Jamón)
-                    </a>
+                      dangerouslySetInnerHTML={{ __html: t('contact.addressLink') }}
+                    />
                   </p>
                 </div>
               </div>
@@ -77,7 +77,7 @@ export default function Contacto() {
                   <Phone className="w-6 h-6" />
                 </div>
                 <div>
-                  <h4 className="text-xl font-kenao text-primary mb-2">Teléfono</h4>
+                  <h4 className="text-xl font-kenao text-primary mb-2">{t('contact.phone')}</h4>
                   <p className="text-primary/70 leading-relaxed">
                     (+34) 621 34 77 21
                   </p>
@@ -88,7 +88,7 @@ export default function Contacto() {
                   <Mail className="w-6 h-6" />
                 </div>
                 <div>
-                  <h4 className="text-xl font-kenao text-primary mb-2">Email</h4>
+                  <h4 className="text-xl font-kenao text-primary mb-2">{t('contact.email')}</h4>
                   <p className="text-primary/70 leading-relaxed">
                     huelvachurch@gmail.com
                   </p>
@@ -99,17 +99,14 @@ export default function Contacto() {
                   <Clock className="w-6 h-6" />
                 </div>
                 <div>
-                  <h4 className="text-xl font-kenao text-primary mb-2">Celebración Principal</h4>
-                  <p className="text-primary/70 leading-relaxed">
-                    Domingos<br/>
-                    18:30h
-                  </p>
+                  <h4 className="text-xl font-kenao text-primary mb-2">{t('contact.mainMeeting')}</h4>
+                  <p className="text-primary/70 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('contact.meetingTime') }} />
                 </div>
               </div>
             </div>
 
             <div>
-              <h4 className="text-xl font-kenao text-primary mb-6">Nuestras Redes Sociales</h4>
+              <h4 className="text-xl font-kenao text-primary mb-6">{t('contact.social')}</h4>
               <div className="flex gap-4">
                 <a href="https://www.instagram.com/huelvachurch/" target="_blank" rel="noopener noreferrer" className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-primary/40 hover:bg-secondary hover:text-primary transition-all shadow-sm">
                   <Instagram className="w-6 h-6" />
@@ -133,18 +130,18 @@ export default function Contacto() {
             viewport={{ once: true }}
             className="bg-slate-50 p-12 rounded-[3rem] border border-slate-100 shadow-sm"
           >
-            <h4 className="text-3xl font-kenao text-primary mb-8">Envíanos un mensaje</h4>
+            <h4 className="text-3xl font-kenao text-primary mb-8">{t('contact.formTitle')}</h4>
             {submitted ? (
               <div className="bg-green-50 border border-green-200 text-green-800 p-8 rounded-3xl text-center">
-                <p className="font-bold text-xl mb-3">¡Formulario Generado!</p>
-                <p className="text-sm mb-4 leading-relaxed">Se está abriendo tu cliente de correo electrónico para enviar el mensaje directamente a <strong>huelvachurch@gmail.com</strong>.</p>
-                <p className="text-xs text-green-700">Si no se abrió automáticamente, puedes enviarlo directamente a ese email.</p>
+                <p className="font-bold text-xl mb-3">{t('contact.formSuccessTitle')}</p>
+                <p className="text-sm mb-4 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('contact.formSuccessDesc') }} />
+                <p className="text-xs text-green-700">{t('contact.formSuccessAlt')}</p>
               </div>
             ) : (
               <form className="space-y-6" onSubmit={handleSubmit}>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label htmlFor="name" className="block text-sm font-bold text-primary/80 mb-2">Nombre</label>
+                    <label htmlFor="name" className="block text-sm font-bold text-primary/80 mb-2">{t('contact.fName')}</label>
                     <input 
                       type="text" 
                       id="name" 
@@ -152,11 +149,10 @@ export default function Contacto() {
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       className="w-full px-6 py-4 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white" 
-                      placeholder="Tu nombre" 
                     />
                   </div>
                   <div>
-                    <label htmlFor="email" className="block text-sm font-bold text-primary/80 mb-2">Email</label>
+                    <label htmlFor="email" className="block text-sm font-bold text-primary/80 mb-2">{t('contact.fEmail')}</label>
                     <input 
                       type="email" 
                       id="email" 
@@ -164,27 +160,26 @@ export default function Contacto() {
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                       className="w-full px-6 py-4 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white" 
-                      placeholder="tu@email.com" 
                     />
                   </div>
                 </div>
                 <div>
-                  <label htmlFor="subject" className="block text-sm font-bold text-primary/80 mb-2">Asunto</label>
+                  <label htmlFor="subject" className="block text-sm font-bold text-primary/80 mb-2">{t('contact.fSubject')}</label>
                   <select 
                     id="subject" 
                     value={formData.subject}
                     onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
                     className="w-full px-6 py-4 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white appearance-none"
                   >
-                    <option value="Información General">Información General</option>
-                    <option value="Petición de Oración">Petición de Oración</option>
-                    <option value="Obra Social">Obra Social</option>
-                    <option value="Células">Células</option>
-                    <option value="Otro">Otro</option>
+                    <option value="Información General">{t('contact.fSubjectInfo')}</option>
+                    <option value="Petición de Oración">{t('contact.fSubjectPrayer')}</option>
+                    <option value="Obra Social">{t('contact.fSubjectSocial')}</option>
+                    <option value="Células">{t('contact.fSubjectCells')}</option>
+                    <option value="Otro">{t('contact.fSubjectOther')}</option>
                   </select>
                 </div>
                 <div>
-                  <label htmlFor="message" className="block text-sm font-bold text-primary/80 mb-2">Mensaje</label>
+                  <label htmlFor="message" className="block text-sm font-bold text-primary/80 mb-2">{t('contact.fMessage')}</label>
                   <textarea 
                     id="message" 
                     rows={5} 
@@ -192,11 +187,11 @@ export default function Contacto() {
                     value={formData.message}
                     onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                     className="w-full px-6 py-4 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white" 
-                    placeholder="¿En qué podemos ayudarte?"
+                    placeholder={t('contact.fMessagePh')}
                   ></textarea>
                 </div>
                 <button type="submit" className="w-full bg-primary text-white font-bold py-5 px-8 rounded-2xl hover:bg-secondary hover:text-primary transition-all transform hover:-translate-y-1 shadow-lg">
-                  Enviar Mensaje
+                  {t('contact.fSubmit')}
                 </button>
               </form>
             )}
@@ -224,7 +219,7 @@ export default function Contacto() {
               className="bg-primary text-white font-bold py-3.5 px-6 rounded-2xl hover:bg-secondary hover:text-primary transition-all shadow-xl text-sm inline-flex items-center gap-2 border border-white/10"
             >
               <MapPin className="w-4 h-4 text-secondary fill-secondary" />
-              Abrir en Google Maps
+              {t('contact.mapBtn')}
             </a>
           </div>
         </div>

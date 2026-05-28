@@ -5,6 +5,7 @@ import { collection, addDoc, onSnapshot, query, where, orderBy, serverTimestamp 
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 interface Course {
   id: string;
@@ -20,6 +21,10 @@ interface Course {
   imageUrl: string;
   status: 'draft' | 'published' | 'archived';
   createdAt: any;
+  title_en?: string;
+  description_en?: string;
+  title_pt?: string;
+  description_pt?: string;
 }
 
 interface Enrollment {
@@ -37,6 +42,8 @@ export default function Cursos() {
   const [searchTerm, setSearchTerm] = useState('');
   const [modalityFilter, setModalityFilter] = useState<string>('all');
   const [isEnrolling, setIsEnrolling] = useState<string | null>(null);
+  const { t, i18n } = useTranslation();
+  const currentLang = i18n.language.substring(0, 2);
 
   // Fetch published courses
   useEffect(() => {
@@ -107,9 +114,23 @@ export default function Cursos() {
     return enrollments.find(e => e.courseId === courseId)?.status;
   };
 
+  const getCourseTitle = (course: Course) => {
+    if (currentLang === 'en' && course.title_en) return course.title_en;
+    if (currentLang === 'pt' && course.title_pt) return course.title_pt;
+    return course.title;
+  };
+
+  const getCourseDesc = (course: Course) => {
+    if (currentLang === 'en' && course.description_en) return course.description_en;
+    if (currentLang === 'pt' && course.description_pt) return course.description_pt;
+    return course.description;
+  };
+
   const filteredCourses = courses.filter(c => {
-    const matchesSearch = c.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         c.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const title = getCourseTitle(c);
+    const desc = getCourseDesc(c);
+    const matchesSearch = title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         desc.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesModality = modalityFilter === 'all' || c.modality === modalityFilter;
     return matchesSearch && matchesModality;
   });
@@ -124,7 +145,7 @@ export default function Cursos() {
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-secondary/10 text-secondary text-xs font-black uppercase tracking-[0.2em] mb-4"
           >
             <GraduationCap className="w-4 h-4" />
-            Academia Huelva Church
+            {t('courses.tag')}
           </motion.div>
           <motion.h1 
             initial={{ opacity: 0, y: 20 }}
@@ -132,7 +153,7 @@ export default function Cursos() {
             transition={{ delay: 0.1 }}
             className="text-5xl md:text-6xl font-kenao text-primary mb-6"
           >
-            Explora Nuestros Cursos
+            {t('courses.title')}
           </motion.h1>
           <motion.p 
             initial={{ opacity: 0, y: 20 }}
@@ -140,7 +161,7 @@ export default function Cursos() {
             transition={{ delay: 0.2 }}
             className="text-xl text-primary/60 max-w-2xl mx-auto"
           >
-            Programas diseñados para tu crecimiento espiritual y personal, con modalidades flexibles para tu día a día.
+            {t('courses.desc')}
           </motion.p>
         </div>
 
@@ -150,26 +171,43 @@ export default function Cursos() {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-primary/30 w-5 h-5" />
             <input 
               type="text" 
-              placeholder="¿Qué quieres aprender hoy?..." 
+              placeholder={t('courses.searchPh')} 
               className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-100 focus:ring-2 focus:ring-secondary outline-none"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
           <div className="flex gap-2">
-            {['all', 'self-paced', 'scheduled'].map((m) => (
-              <button
-                key={m}
-                onClick={() => setModalityFilter(m)}
-                className={`px-6 py-4 rounded-2xl font-bold text-sm transition-all border ${
-                  modalityFilter === m 
-                    ? 'bg-primary text-white border-primary shadow-lg' 
-                    : 'bg-white text-primary/40 border-slate-100 hover:border-primary/20'
-                }`}
-              >
-                {m === 'all' ? 'Todos' : m === 'self-paced' ? 'A ritmo personal' : 'Programados'}
-              </button>
-            ))}
+            <button
+              onClick={() => setModalityFilter('all')}
+              className={`px-6 py-4 rounded-2xl font-bold text-sm transition-all border ${
+                modalityFilter === 'all' 
+                  ? 'bg-primary text-white border-primary shadow-lg' 
+                  : 'bg-white text-primary/40 border-slate-100 hover:border-primary/20'
+              }`}
+            >
+              {t('courses.allCourses')}
+            </button>
+            <button
+              onClick={() => setModalityFilter('self-paced')}
+              className={`px-6 py-4 rounded-2xl font-bold text-sm transition-all border ${
+                modalityFilter === 'self-paced' 
+                  ? 'bg-primary text-white border-primary shadow-lg' 
+                  : 'bg-white text-primary/40 border-slate-100 hover:border-primary/20'
+              }`}
+            >
+              {t('courses.selfPaced')}
+            </button>
+            <button
+              onClick={() => setModalityFilter('scheduled')}
+              className={`px-6 py-4 rounded-2xl font-bold text-sm transition-all border ${
+                modalityFilter === 'scheduled' 
+                  ? 'bg-primary text-white border-primary shadow-lg' 
+                  : 'bg-white text-primary/40 border-slate-100 hover:border-primary/20'
+              }`}
+            >
+              {t('courses.scheduled')}
+            </button>
           </div>
         </div>
 
@@ -188,13 +226,13 @@ export default function Cursos() {
                 <div className="aspect-[16/10] relative overflow-hidden">
                   <img 
                     src={course.imageUrl || `https://picsum.photos/seed/${course.id}/800/500`} 
-                    alt={course.title}
+                    alt={getCourseTitle(course)}
                     className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                     referrerPolicy="no-referrer"
                   />
                   <div className="absolute top-6 left-6">
                     <span className="px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest bg-white/90 backdrop-blur-md shadow-sm text-primary">
-                      {course.modality === 'self-paced' ? 'A ritmo personal' : 'Programado'}
+                      {course.modality === 'self-paced' ? t('courses.selfPaced') : t('courses.scheduled')}
                     </span>
                   </div>
                 </div>
@@ -206,10 +244,10 @@ export default function Cursos() {
                   </div>
                   
                   <h3 className="text-2xl font-bold text-primary mb-3 line-clamp-2 group-hover:text-secondary transition-colors">
-                    {course.title}
+                    {getCourseTitle(course)}
                   </h3>
                   <p className="text-primary/60 text-sm mb-8 line-clamp-3 leading-relaxed">
-                    {course.description}
+                    {getCourseDesc(course)}
                   </p>
                   
                   <div className="mt-auto pt-8 border-t border-slate-50 flex items-center justify-between">
@@ -250,7 +288,7 @@ export default function Cursos() {
                           <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                         ) : (
                           <>
-                            Inscribirme
+                            {t('courses.enrollMe')}
                             <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
                           </>
                         )}
@@ -268,8 +306,7 @@ export default function Cursos() {
             <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <Search className="w-10 h-10 text-primary/10" />
             </div>
-            <h3 className="text-2xl font-kenao text-primary mb-2">No encontramos lo que buscas</h3>
-            <p className="text-primary/40">Intenta con otros términos de búsqueda o filtros.</p>
+            <h3 className="text-2xl font-kenao text-primary mb-2">{t('courses.notFound')}</h3>
           </div>
         )}
       </div>

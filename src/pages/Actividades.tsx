@@ -4,6 +4,7 @@ import { Search, Calendar, Tag, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
+import { useTranslation } from 'react-i18next';
 
 interface Post {
   id: string;
@@ -14,6 +15,10 @@ interface Post {
   category: string;
   publishedAt: any;
   tags?: string[];
+  title_en?: string;
+  excerpt_en?: string;
+  title_pt?: string;
+  excerpt_pt?: string;
 }
 
 export default function Actividades() {
@@ -21,6 +26,9 @@ export default function Actividades() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todas');
+  const { t, i18n } = useTranslation();
+
+  const currentLang = i18n.language.substring(0, 2);
 
   useEffect(() => {
     const q = query(collection(db, 'posts'), orderBy('publishedAt', 'desc'));
@@ -39,16 +47,35 @@ export default function Actividades() {
     return () => unsubscribe();
   }, []);
 
-  const categories = ['Todas', ...new Set(posts.map(post => post.category))];
+  const getPostTitle = (post: Post) => {
+    if (currentLang === 'en' && post.title_en) return post.title_en;
+    if (currentLang === 'pt' && post.title_pt) return post.title_pt;
+    return post.title;
+  };
+
+  const getPostExcerpt = (post: Post) => {
+    if (currentLang === 'en' && post.excerpt_en) return post.excerpt_en;
+    if (currentLang === 'pt' && post.excerpt_pt) return post.excerpt_pt;
+    return post.excerpt;
+  };
+
+  const getCategories = () => {
+    const cats = new Set(posts.map(post => post.category));
+    return [t('activities.allActivities'), ...Array.from(cats)];
+  }
+
+  const categories = getCategories();
 
   const filteredPosts = posts.filter(post => {
-    const matchesSearch = post.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         post.excerpt.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'Todas' || post.category === selectedCategory;
+    const title = getPostTitle(post);
+    const excerpt = getPostExcerpt(post);
+    const matchesSearch = title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         excerpt.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = selectedCategory === t('activities.allActivities') || post.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
-  if (loading) return <div className="pt-48 text-center font-kenao text-2xl text-primary/40">Cargando actividades...</div>;
+  if (loading) return <div className="pt-48 text-center font-kenao text-2xl text-primary/40">{t('common.loading')}</div>;
 
   return (
     <div className="pt-32 pb-24 bg-slate-50 min-h-screen">
@@ -59,9 +86,9 @@ export default function Actividades() {
           className="text-center mb-16"
         >
           <h2 className="text-secondary tracking-wider uppercase text-sm font-bold mb-4">Blog & Noticias</h2>
-          <h1 className="text-5xl md:text-6xl font-kenao text-primary mb-6">Actividades</h1>
+          <h1 className="text-5xl md:text-6xl font-kenao text-primary mb-6">{t('activities.title')}</h1>
           <p className="text-primary/70 text-xl max-w-3xl mx-auto leading-relaxed">
-            Mantente al día con todo lo que sucede en nuestra iglesia. Eventos, anuncios y reflexiones.
+            {t('activities.desc')}
           </p>
         </motion.div>
 
@@ -71,7 +98,7 @@ export default function Actividades() {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
             <input 
               type="text" 
-              placeholder="Buscar actividades..." 
+              placeholder={t('activities.searchPh')} 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white"
@@ -109,7 +136,7 @@ export default function Actividades() {
                 {post.imageUrl ? (
                   <img 
                     src={post.imageUrl} 
-                    alt={post.title} 
+                    alt={getPostTitle(post)} 
                     className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
                     referrerPolicy="no-referrer"
                   />
@@ -125,11 +152,11 @@ export default function Actividades() {
               <div className="p-8 flex flex-col flex-grow">
                 <div className="text-sm text-primary/50 mb-4 flex items-center">
                   <Calendar className="w-4 h-4 mr-2" />
-                  {post.publishedAt?.toDate ? post.publishedAt.toDate().toLocaleDateString() : 'Reciente'}
+                  {post.publishedAt?.toDate ? post.publishedAt.toDate().toLocaleDateString() : t('home.recent')}
                 </div>
-                <h4 className="text-2xl font-kenao text-primary mb-4 group-hover:text-secondary transition-colors">{post.title}</h4>
+                <h4 className="text-2xl font-kenao text-primary mb-4 group-hover:text-secondary transition-colors">{getPostTitle(post)}</h4>
                 <p className="text-primary/70 leading-relaxed mb-8 flex-grow">
-                  {post.excerpt}
+                  {getPostExcerpt(post)}
                 </p>
                 <div className="flex flex-wrap gap-2 mb-8">
                   {post.tags?.map(tag => (
@@ -140,7 +167,7 @@ export default function Actividades() {
                   ))}
                 </div>
                 <Link to={`/actividades/${post.id}`} className="flex items-center text-primary font-bold hover:text-secondary transition-colors group/btn">
-                  Leer artículo completo <ArrowRight className="w-5 h-5 ml-2 transform group-hover/btn:translate-x-1 transition-transform" />
+                  {t('common.readMore')} <ArrowRight className="w-5 h-5 ml-2 transform group-hover/btn:translate-x-1 transition-transform" />
                 </Link>
               </div>
             </motion.div>
@@ -149,7 +176,7 @@ export default function Actividades() {
 
         {filteredPosts.length === 0 && (
           <div className="text-center py-24">
-            <p className="text-primary/40 text-xl font-kenao">No se encontraron actividades que coincidan con tu búsqueda.</p>
+            <p className="text-primary/40 text-xl font-kenao">{t('activities.notFound')}</p>
           </div>
         )}
       </div>
