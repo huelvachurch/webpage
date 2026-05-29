@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Calistoga&family=Marcellus&family=Outfit:wght@100..900&family=Yellowtail&family=Lato:wght@300;400;700;900&display=swap');
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 @font-face {
   font-family: 'Kenao';

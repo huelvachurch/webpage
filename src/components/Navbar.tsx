@@ -177,14 +177,25 @@ export default function Navbar() {
                           )}
 
                           {isComunicador && (
-                            <Link 
-                              onClick={() => setIsUserMenuOpen(false)}
-                              to="/admin/comunicaciones" 
-                              className="flex items-center gap-3 px-4 py-2.5 text-left text-sm rounded-lg hover:bg-slate-50 text-primary font-medium transition-colors"
-                            >
-                              <MessageSquare className="w-5 h-5 text-primary/60" />
-                              {t('nav.adminComms')}
-                            </Link>
+                            <>
+                              <Link 
+                                onClick={() => setIsUserMenuOpen(false)}
+                                to="/admin/comunicaciones" 
+                                className="flex items-center gap-3 px-4 py-2.5 text-left text-sm rounded-lg hover:bg-slate-50 text-primary font-medium transition-colors"
+                              >
+                                <MessageSquare className="w-5 h-5 text-primary/60" />
+                                {t('nav.adminComms')}
+                              </Link>
+                              
+                              <Link 
+                                onClick={() => setIsUserMenuOpen(false)}
+                                to="/admin/newsletter" 
+                                className="flex items-center gap-3 px-4 py-2.5 text-left text-sm rounded-lg hover:bg-slate-50 text-primary font-medium transition-colors"
+                              >
+                                <Mail className="w-5 h-5 text-primary/60" />
+                                Newsletter
+                              </Link>
+                            </>
                           )}
 
                           {isAdmin && (
@@ -303,10 +314,16 @@ export default function Navbar() {
                     </Link>
                   )}
                   {isComunicador && (
-                    <Link to="/admin/comunicaciones" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
-                      <MessageSquare className="w-5 h-5 shrink-0" />
-                      {t('nav.adminComms')}
-                    </Link>
+                    <>
+                      <Link to="/admin/comunicaciones" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
+                        <MessageSquare className="w-5 h-5 shrink-0" />
+                        {t('nav.adminComms')}
+                      </Link>
+                      <Link to="/admin/newsletter" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
+                        <Mail className="w-5 h-5 shrink-0" />
+                        Newsletter
+                      </Link>
+                    </>
                   )}
                   {isAdmin && (
                     <Link to="/admin/usuarios" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">

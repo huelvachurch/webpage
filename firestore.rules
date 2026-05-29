@@ -98,6 +98,20 @@ service cloud.firestore {
              data.status in ['pending', 'active', 'completed', 'dropped'];
     }
 
+    function isValidSubscriber(data) {
+      return data.keys().hasAll(['email', 'active']) &&
+             data.email is string && data.email.size() < 150 &&
+             data.active is bool;
+    }
+
+    function isValidNewsletter(data) {
+      return data.keys().hasAll(['type', 'subject', 'contentHtml', 'status']) &&
+             data.type in ['semanal', 'especial'] &&
+             data.subject is string && data.subject.size() < 500 &&
+             data.contentHtml is string && data.contentHtml.size() < 100000 &&
+             data.status in ['draft', 'scheduled', 'sent', 'sending'];
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -137,6 +151,20 @@ service cloud.firestore {
         isProfesor()
       );
       allow delete: if isAdmin();
+    }
+
+    match /subscribers/{subscriberId} {
+      allow read: if isComunicador();
+      allow create: if isValidSubscriber(request.resource.data);
+      allow update: if isComunicador() && isValidSubscriber(request.resource.data);
+      allow delete: if isComunicador();
+    }
+
+    match /newsletters/{newsletterId} {
+      allow read: if isComunicador();
+      allow create: if isComunicador() && isValidNewsletter(request.resource.data);
+      allow update: if isComunicador() && isValidNewsletter(request.resource.data);
+      allow delete: if isComunicador();
     }
   }
 }

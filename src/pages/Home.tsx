@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Helmet } from 'react-helmet-async';
 import { motion } from 'motion/react';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
@@ -140,30 +141,14 @@ export default function Home() {
 
   useEffect(() => {
     const fetchLatestVideo = async () => {
-      const apiKey = (import.meta as any).env.VITE_YOUTUBE_API_KEY;
-      const channelHandle = '@huelvachurch';
-      
-      if (!apiKey) {
-        setIsLoadingVideo(false);
-        return;
-      }
-
       try {
-        // First, get channel ID from handle
-        const channelRes = await axios.get(`https://www.googleapis.com/youtube/v3/channels?part=id&forHandle=${channelHandle}&key=${apiKey}`);
-        const channelId = channelRes.data.items?.[0]?.id;
-
-        if (channelId) {
-          // Then get the latest stream/video
-          const videoRes = await axios.get(`https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&order=date&maxResults=1&type=video&key=${apiKey}`);
-          const video = videoRes.data.items?.[0];
-          if (video) {
-            setLatestVideo({
-              id: video.id.videoId,
-              title: video.snippet.title,
-              thumbnail: video.snippet.thumbnails.high.url
-            });
-          }
+        const res = await axios.get('/api/youtube/latest');
+        if (res.data && res.data.id) {
+          setLatestVideo({
+            id: res.data.id,
+            title: res.data.title,
+            thumbnail: res.data.thumbnail
+          });
         }
       } catch (error) {
         console.error("Error fetching YouTube video:", error);
@@ -180,14 +165,14 @@ export default function Home() {
       collection(db, 'posts'), 
       where('featured', '==', true),
       orderBy('publishedAt', 'desc'),
-      limit(3)
+      limit(6) // Fetch a few more to safely filter out drafts client-side
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const postsData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as Post[];
-      setFeaturedPosts(postsData);
+      setFeaturedPosts(postsData.filter(p => (p as any).status !== 'draft').slice(0, 3));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'posts');
     });
@@ -216,6 +201,10 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-slate-50 font-gordita text-primary">
+      <Helmet>
+        <title>Huelva Church - Iglesia Cristiana Evangélica en Huelva</title>
+        <meta name="description" content="Bienvenido a Huelva Church (Iglesia Bautista de Huelva), una Iglesia Cristiana Evangélica en Huelva. Descubre nuestro horario, eventos y ministerios." />
+      </Helmet>
       {/* Welcome / About */}
       <section id="nosotros" className="py-24 bg-white pt-32">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

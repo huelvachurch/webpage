@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Calendar, Tag, ArrowLeft, Share2, Clock, User } from 'lucide-react';
 import Markdown from 'react-markdown';
+import { Helmet } from 'react-helmet-async';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 
@@ -50,6 +51,14 @@ export default function ActividadDetalle() {
 
   return (
     <div className="pt-32 pb-24 bg-white min-h-screen">
+      <Helmet>
+        <title>{post.title} | Huelva Church</title>
+        <meta name="description" content={post.excerpt} />
+        <meta property="og:title" content={post.title} />
+        <meta property="og:description" content={post.excerpt} />
+        {post.imageUrl && <meta property="og:image" content={post.imageUrl} />}
+        <meta property="og:type" content="article" />
+      </Helmet>
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <Link to="/actividades" className="inline-flex items-center text-primary/40 hover:text-secondary font-bold mb-12 transition-colors group">
           <ArrowLeft className="w-5 h-5 mr-2 transform group-hover:-translate-x-1 transition-transform" />

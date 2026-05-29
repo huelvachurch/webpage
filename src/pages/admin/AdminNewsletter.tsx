@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, Trash2, Mail, Users, History, Send, Eye, Image as ImageIcon, Check, AlertCircle, Sparkles, BookOpen, 
-  ExternalLink, Video, Radio, Youtube, Instagram, MessageCircle, FileText, Loader2, ArrowRight, Settings 
+  ExternalLink, Video, Radio, Youtube, Instagram, MessageCircle, FileText, Loader2, ArrowRight, Settings, Clock 
 } from 'lucide-react';
 import { 
   collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, 
@@ -27,6 +27,10 @@ interface NewsletterCampaign {
   sentAt: any;
   sentCount: number;
   config: any;
+  status?: 'sent' | 'scheduled' | 'draft';
+  scheduledAt?: any;
+  contentHtml?: string;
+  createdAt?: any;
 }
 
 interface Post {
@@ -70,6 +74,33 @@ export default function AdminNewsletter() {
   const [specialButtonText, setSpecialButtonText] = useState('Inscribirme Ahora');
   const [specialButtonUrl, setSpecialButtonUrl] = useState('https://huelvachurch.com/inscripciones');
 
+  // Saving states and action indicators
+  const [isSaving, setIsSaving] = useState(false);
+  const [isActionCampaignId, setIsActionCampaignId] = useState<string | null>(null);
+
+  // Future scheduling states
+  const [shouldSchedule, setShouldSchedule] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState(() => {
+    const now = new Date();
+    const result = new Date(now);
+    const day = now.getDay();
+    const daysToSaturday = (6 - day + 7) % 7;
+    result.setDate(now.getDate() + daysToSaturday);
+    result.setHours(20, 0, 0, 0);
+    if (day === 6 && now.getHours() >= 20) {
+      result.setDate(result.getDate() + 7);
+    }
+    const year = result.getFullYear();
+    const month = String(result.getMonth() + 1).padStart(2, '0');
+    const date = String(result.getDate()).padStart(2, '0');
+    const hours = String(result.getHours()).padStart(2, '0');
+    const minutes = String(result.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${date}T${hours}:${minutes}`;
+  });
+  
+  // Selected post to import for Special newsletter
+  const [selectedPostToImport, setSelectedPostToImport] = useState<string>('');
+
   // Preview / Sending Actions
   const [previewHtml, setPreviewHtml] = useState('');
   const [sendTestEmail, setSendTestEmail] = useState(user?.email || 'huelvachurch@gmail.com');
@@ -88,6 +119,18 @@ export default function AdminNewsletter() {
       }
     }
   }, [user, isComunicador, loading, isAuthReady, navigate]);
+
+  // Handle Santa Cena auto-toggle (checks if tomorrow is first Sunday of the month on mount)
+  useEffect(() => {
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    
+    // Check if tomorrow is Sunday (0) and date is <= 7 (first Sunday)
+    if (tomorrow.getDay() === 0 && tomorrow.getDate() <= 7) {
+      setIsSantaCena(true);
+    }
+  }, []);
 
   // Fetch Subscribers & Campaigns & Featured Posts
   useEffect(() => {
@@ -120,8 +163,8 @@ export default function AdminNewsletter() {
         handleFirestoreError(error, OperationType.LIST, 'posts');
       });
 
-      // 3. Sent Campaigns History
-      const qCampaigns = query(collection(db, 'newsletters'), orderBy('sentAt', 'desc'));
+      // 3. Sent Campaigns History - sorted by createdAt desc to include drafts and scheduled
+      const qCampaigns = query(collection(db, 'newsletters'), orderBy('createdAt', 'desc'));
       const unsubCampaigns = onSnapshot(qCampaigns, (snapshot) => {
         const camps = snapshot.docs.map(doc => ({
           id: doc.id,
@@ -139,6 +182,68 @@ export default function AdminNewsletter() {
       };
     }
   }, [isAuthReady, user, isComunicador]);
+
+  // Frontend Scheduler: process scheduled campaigns when they reach their time
+  useEffect(() => {
+    if (!isAuthReady || !user || !isComunicador || !history.length || !subscribers.length) return;
+
+    const interval = setInterval(async () => {
+      const now = new Date();
+      const scheduledCampaigns = history.filter(c => c.status === 'scheduled' && c.scheduledAt);
+      
+      for (const campaign of scheduledCampaigns) {
+        let scheduledDate = null;
+        if (campaign.scheduledAt?.toDate) {
+          scheduledDate = campaign.scheduledAt.toDate();
+        } else {
+          scheduledDate = new Date(campaign.scheduledAt);
+        }
+
+        if (scheduledDate && scheduledDate <= now) {
+          console.log(`[Frontend Scheduler] Procesando campaña programada ID: ${campaign.id}`);
+          
+          try {
+            await updateDoc(doc(db, 'newsletters', campaign.id), {
+              status: 'sending',
+              updatedAt: serverTimestamp()
+            });
+
+            const activeSubs = subscribers.filter(s => s.active);
+            let sentCount = 0;
+            
+            for (const subscriber of activeSubs) {
+              try {
+                 await fetch('/api/newsletter/send', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    to: subscriber.email,
+                    subject: campaign.subject,
+                    contentHtml: campaign.contentHtml || ''
+                  })
+                });
+                sentCount++;
+              } catch (e) {
+                console.error(e);
+              }
+            }
+
+            await updateDoc(doc(db, 'newsletters', campaign.id), {
+              status: 'sent',
+              sentAt: serverTimestamp(),
+              sentCount,
+              updatedAt: serverTimestamp()
+            });
+            console.log(`[Frontend Scheduler] Campaña completada: ${sentCount} correos enviados.`);
+          } catch (e) {
+            console.error('[Frontend Scheduler] Error al procesar:', e);
+          }
+        }
+      }
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [history, subscribers, isAuthReady, user, isComunicador]);
 
   // Autofill test email once user object loads
   useEffect(() => {
@@ -246,41 +351,59 @@ export default function AdminNewsletter() {
                   <td style="padding: 0 32px 32px 32px;">
                     <h2 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 18px; color: #162a45; margin-top: 16px; margin-bottom: 16px; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px;">Nuestra Vida como Iglesia</h2>
                     
-                    <!-- Grid promos -->
+                    <!-- Grid promos with all 6 elements -->
                     <table border="0" cellpadding="0" cellspacing="0" width="100%">
                       <tr>
-                        <!-- Celulas -->
+                        <!-- 1. Celulas -->
                         <td width="50%" style="padding-right: 8px; padding-bottom: 16px; vertical-align: top;">
-                          <div style="background-color: #f1f5f9; padding: 16px; border-radius: 16px; min-height: 110px;">
-                            <span style="font-size: 18px;">🏠</span>
+                          <div style="background-color: #f8fafc; border: 1px solid #edf2f7; padding: 16px; border-radius: 16px; min-height: 110px;">
+                            <span style="font-size: 20px;">🏠</span>
                             <h4 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; color: #162a45; margin: 6px 0 2px 0; font-weight: bold;">Células de Hogar</h4>
                             <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #64748b; margin: 0; line-height: 1.3;">Familias e iglesias en las casas en toda la provincia de Huelva.</p>
                           </div>
                         </td>
-                        <!-- Noches de oracion -->
+                        <!-- 2. Noches de oracion -->
                         <td width="50%" style="padding-left: 8px; padding-bottom: 16px; vertical-align: top;">
-                          <div style="background-color: #f1f5f9; padding: 16px; border-radius: 16px; min-height: 110px;">
-                            <span style="font-size: 18px;">🙏</span>
+                          <div style="background-color: #f8fafc; border: 1px solid #edf2f7; padding: 16px; border-radius: 16px; min-height: 110px;">
+                            <span style="font-size: 20px;">🙏</span>
                             <h4 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; color: #162a45; margin: 6px 0 2px 0; font-weight: bold;">Noches de Oración</h4>
-                            <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #64748b; margin: 0; line-height: 1.3;">Reuniones virtuales de clamor. Lu - Ju 23:00h en Google Meet.</p>
+                            <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #64748b; margin: 0; line-height: 1.3;">Clamor virtual conjunto de lunes a jueves a las 23:00h por Google Meet.</p>
                           </div>
                         </td>
                       </tr>
                       <tr>
-                        <!-- Radio huelva church -->
-                        <td width="50%" style="padding-right: 8px; vertical-align: top;">
-                          <div style="background-color: #f1f5f9; padding: 16px; border-radius: 16px; min-height: 110px;">
-                            <span style="font-size: 18px;">📻</span>
+                        <!-- 3. Radio -->
+                        <td width="50%" style="padding-right: 8px; padding-bottom: 16px; vertical-align: top;">
+                          <div style="background-color: #f8fafc; border: 1px solid #edf2f7; padding: 16px; border-radius: 16px; min-height: 110px;">
+                            <span style="font-size: 20px;">📻</span>
                             <h4 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; color: #162a45; margin: 6px 0 2px 0; font-weight: bold;">Radio Online</h4>
-                            <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #64748b; margin: 0; line-height: 1.3;">Sintoniza alabanzas y mensajes de fe las 24 horas del día.</p>
+                            <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #64748b; margin: 0; line-height: 1.3;">Sintoniza alabanzas y mensajes edificantes las 24 horas del día.</p>
                           </div>
                         </td>
-                        <!-- Youtube & Redes -->
+                        <!-- 4. Canal de Youtube -->
+                        <td width="50%" style="padding-left: 8px; padding-bottom: 16px; vertical-align: top;">
+                          <div style="background-color: #f8fafc; border: 1px solid #edf2f7; padding: 16px; border-radius: 16px; min-height: 110px;">
+                            <span style="font-size: 20px;">🎥</span>
+                            <h4 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; color: #162a45; margin: 6px 0 2px 0; font-weight: bold;">Canal de YouTube</h4>
+                            <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #64748b; margin: 0; line-height: 1.3;">Súmate a la transmisión en vivo de prédicas y revive archivos previos.</p>
+                          </div>
+                        </td>
+                      </tr>
+                      <tr>
+                        <!-- 5. Instagram -->
+                        <td width="50%" style="padding-right: 8px; vertical-align: top;">
+                          <div style="background-color: #f8fafc; border: 1px solid #edf2f7; padding: 16px; border-radius: 16px; min-height: 110px;">
+                            <span style="font-size: 20px;">📸</span>
+                            <h4 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; color: #162a45; margin: 6px 0 2px 0; font-weight: bold;">Instagram</h4>
+                            <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #64748b; margin: 0; line-height: 1.3;">Mantente al día con devocionales, fotos de actividades y anuncios.</p>
+                          </div>
+                        </td>
+                        <!-- 6. WhatsApp -->
                         <td width="50%" style="padding-left: 8px; vertical-align: top;">
-                          <div style="background-color: #f1f5f9; padding: 16px; border-radius: 16px; min-height: 110px;">
-                            <span style="font-size: 18px;">🎬</span>
-                            <h4 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; color: #162a45; margin: 6px 0 2px 0; font-weight: bold;">Canales de Medios</h4>
-                            <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #64748b; margin: 0; line-height: 1.3;">Accede a todas las prédicas archivadas en YouTube, Instagram y WhatsApp.</p>
+                          <div style="background-color: #f8fafc; border: 1px solid #edf2f7; padding: 16px; border-radius: 16px; min-height: 110px;">
+                            <span style="font-size: 20px;">💬</span>
+                            <h4 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; color: #162a45; margin: 6px 0 2px 0; font-weight: bold;">Grupo de WhatsApp</h4>
+                            <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #64748b; margin: 0; line-height: 1.3;">Recibe novedades cruciales directamente en tu teléfono celular.</p>
                           </div>
                         </td>
                       </tr>
@@ -538,7 +661,10 @@ export default function AdminNewsletter() {
       await addDoc(collection(db, 'newsletters'), {
         type: campaignType,
         subject,
+        contentHtml: previewHtml,
+        status: 'sent',
         sentAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
         sentCount,
         config: campaignType === 'semanal' ? {
           sermonImageUrl,
@@ -564,6 +690,144 @@ export default function AdminNewsletter() {
       alert('Error durante el proceso de difusión masiva.');
     } finally {
       setIsBroadcasting(false);
+    }
+  };
+
+  // Helper to Import content from a Blog Post for the Special format
+  const handleImportPost = (postId: string) => {
+    const post = posts.find(p => p.id === postId);
+    if (post) {
+      setSpecialSubject(`Novedad: ${post.title}`);
+      setSpecialContent(`¡Hola familia Huelva Church!\n\nQueremos compartir con vosotros esta interesante publicación:\n\n### ${post.title}\n\n${post.excerpt || ''}\n\nPara ver vuestra participación, horarios o más detalles, pulsad el botón de abajo.\n\n¡Os enviamos un fuerte abrazo!`);
+      setSpecialButtonText('Leer Publicación');
+      setSpecialButtonUrl(`${window.location.origin}/actividades/${post.id}`);
+      setSelectedPostToImport('');
+      alert('Se han importado los campos desde la publicación correctamente.');
+    }
+  };
+
+  // Helper to save current campaign as draft or scheduled
+  const handleSaveCampaign = async (status: 'draft' | 'scheduled') => {
+    const subject = campaignType === 'semanal' 
+      ? 'Huelva Church • Boletín Semanal' 
+      : specialSubject;
+
+    setIsSaving(true);
+    try {
+      await addDoc(collection(db, 'newsletters'), {
+        type: campaignType,
+        subject,
+        contentHtml: previewHtml,
+        status,
+        sentCount: 0,
+        createdAt: serverTimestamp(),
+        scheduledAt: status === 'scheduled' ? new Date(scheduledAt) : null,
+        config: campaignType === 'semanal' ? {
+          sermonImageUrl,
+          sermonDescription,
+          isSantaCena,
+          selectedPostIds
+        } : {
+          specialSubject,
+          specialContent,
+          specialButtonText,
+          specialButtonUrl
+        }
+      });
+
+      if (status === 'scheduled') {
+        alert(`¡Boletín programado con éxito! Se enviará de forma automática el ${new Date(scheduledAt).toLocaleString()}`);
+      } else {
+        alert('¡Borrador guardado con éxito!');
+      }
+
+      setActiveTab('history');
+    } catch (err) {
+      console.error('Error al guardar boletín:', err);
+      alert('Ocurrió un error al guardar el boletín en la base de datos.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Dispatch sending of an existing saved draft campaign immediately
+  const handleDirectSend = async (campaign: NewsletterCampaign) => {
+    const activeSubs = subscribers.filter(s => s.active);
+    if (activeSubs.length === 0) {
+      alert('No hay suscriptores habilitados en la base de datos.');
+      return;
+    }
+
+    if (!window.confirm(`¿Quieres enviar esta campaña de borrador a ${activeSubs.length} suscriptores ahora mismo?`)) {
+      return;
+    }
+
+    setIsActionCampaignId(campaign.id);
+    try {
+      let sentCount = 0;
+      for (const subscriber of activeSubs) {
+        try {
+          const res = await fetch('/api/newsletter/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: subscriber.email,
+              subject: campaign.subject,
+              contentHtml: campaign.contentHtml || ''
+            })
+          });
+          const data = await res.json();
+          if (data.success) {
+            sentCount++;
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      await updateDoc(doc(db, 'newsletters', campaign.id), {
+        status: 'sent',
+        sentAt: serverTimestamp(),
+        sentCount,
+        updatedAt: serverTimestamp()
+      });
+
+      alert(`Campaña enviada con éxito a ${sentCount} personas.`);
+    } catch (e) {
+      console.error(e);
+      alert('Error enviando boletín.');
+    } finally {
+      setIsActionCampaignId(null);
+    }
+  };
+
+  // Cancel delivery of a scheduled campaign and save it as draft
+  const handleCancelScheduled = async (id: string) => {
+    if (window.confirm('¿Quieres cancelar la programación de este envío y pasarlo a borrador?')) {
+      try {
+        await updateDoc(doc(db, 'newsletters', id), {
+          status: 'draft',
+          scheduledAt: null,
+          updatedAt: serverTimestamp()
+        });
+        alert('Se ha cancelado la programación. El boletín ahora se encuentra como borrador.');
+      } catch (err) {
+        console.error(err);
+        alert('Error al desprogramar la campaña.');
+      }
+    }
+  };
+
+  // Remove a campaign or draft from DB
+  const handleDeleteCampaign = async (id: string) => {
+    if (window.confirm('¿Deseas eliminar este borrador o registro de campaña definitivamente?')) {
+      try {
+        await deleteDoc(doc(db, 'newsletters', id));
+        alert('Boletín eliminado correctamente.');
+      } catch (err) {
+        console.error(err);
+        alert('Error al eliminar boletín.');
+      }
     }
   };
 
@@ -733,6 +997,27 @@ export default function AdminNewsletter() {
                   <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
                     <h3 className="text-lg font-kenao text-primary border-b border-slate-100 pb-3">Detalles del Comunicado</h3>
                     
+                    <div className="space-y-2 bg-slate-50 p-4 rounded-2xl border border-slate-200/50">
+                      <label className="text-xs font-bold text-primary/60 block">Importar desde una Publicación / Anuncio</label>
+                      <select 
+                        className="w-full px-4 py-3 text-xs bg-white rounded-xl border border-slate-200 focus:ring-2 focus:ring-secondary outline-none transition-all cursor-pointer"
+                        value={selectedPostToImport}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setSelectedPostToImport(val);
+                          if (val) handleImportPost(val);
+                        }}
+                      >
+                        <option value="">-- Selecciona un anuncio para autorellenar campos --</option>
+                        {posts.map(post => (
+                          <option key={post.id} value={post.id}>{post.title} [{post.category}]</option>
+                        ))}
+                      </select>
+                      <p className="text-[10px] text-primary/45">
+                        Al elegir una publicación, rellenaremos de forma instantánea el asunto, contenido general y crearemos un enlace directo al artículo en la web.
+                      </p>
+                    </div>
+
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-primary/60 block">Asunto / Título del Correo</label>
                       <input 
@@ -805,20 +1090,62 @@ export default function AdminNewsletter() {
                     </button>
                   </div>
 
-                  {/* Broadcast button */}
-                  <button
-                    type="button"
-                    onClick={handleBroadcast}
-                    disabled={isBroadcasting || subscribers.length === 0}
-                    className="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl hover:bg-emerald-700 transition-all shadow flex items-center justify-center gap-2 uppercase text-xs tracking-wider"
-                  >
-                    {isBroadcasting ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Send className="w-4 h-4" />
+                  {/* Save Draft / Schedule Controls */}
+                  <div className="border-t border-slate-100 pt-4 space-y-4">
+                    <div className="flex items-center gap-3">
+                      <input 
+                        type="checkbox"
+                        id="should-schedule"
+                        className="w-5 h-5 rounded border-slate-300 text-secondary focus:ring-secondary cursor-pointer"
+                        checked={shouldSchedule}
+                        onChange={(e) => setShouldSchedule(e.target.checked)}
+                      />
+                      <label htmlFor="should-schedule" className="text-xs font-bold text-primary/60 cursor-pointer">
+                        Programar este boletín para más tarde
+                      </label>
+                    </div>
+
+                    {shouldSchedule && (
+                      <div className="p-4 bg-slate-50 border border-slate-200/50 rounded-2xl space-y-2">
+                        <label className="text-xs font-bold text-primary/60 block">Fecha y Hora de Envío</label>
+                        <input 
+                          type="datetime-local"
+                          className="w-full px-4 py-3 text-xs bg-white rounded-xl border border-slate-200 focus:ring-2 focus:ring-secondary outline-none transition-all cursor-pointer"
+                          value={scheduledAt}
+                          onChange={(e) => setScheduledAt(e.target.value)}
+                        />
+                        <p className="text-[10px] text-primary/45">
+                          Por defecto se selecciona el próximo sábado a las 20:00 (hora local de preparación). Puedes modificarlo según las necesidades.
+                        </p>
+                      </div>
                     )}
-                    Enviar a todos los Suscriptores ({subscribers.filter(s => s.active).length} activos)
-                  </button>
+
+                    <div className="grid grid-cols-2 gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSaveCampaign('draft')}
+                        disabled={isSaving}
+                        className="bg-slate-100 hover:bg-slate-200 text-primary border border-slate-200/50 py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2"
+                      >
+                        {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                        Guardar Borrador
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => shouldSchedule ? handleSaveCampaign('scheduled') : handleBroadcast()}
+                        disabled={isSaving || isBroadcasting || (shouldSchedule && !scheduledAt)}
+                        className={`text-white font-bold py-3.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 uppercase text-xs tracking-wider ${shouldSchedule ? 'bg-[#dfb23f] hover:bg-[#c99e32] text-primary' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                      >
+                        {shouldSchedule ? (
+                          isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Clock className="w-4 h-4" />
+                        ) : (
+                          isBroadcasting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />
+                        )}
+                        {shouldSchedule ? 'Programar Envío' : `Enviar Ahora (${subscribers.filter(s => s.active).length})`}
+                      </button>
+                    </div>
+                  </div>
                   
                   {/* Sandbox Info Alert */}
                   <div className="p-4 rounded-2xl bg-amber-50 text-amber-800 text-[11px] leading-relaxed border border-amber-100 flex items-start gap-2.5">
@@ -960,49 +1287,140 @@ export default function AdminNewsletter() {
             >
               <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
                 <div className="p-6 border-b border-slate-100">
-                  <h3 className="font-kenao text-lg text-primary">Histórico de Boletines Enviados</h3>
-                  <p className="text-xs text-primary/60 mt-1">Consulta las campañas enviadas con anterioridad y sus volúmenes de entrega.</p>
+                  <h3 className="font-kenao text-lg text-primary">Histórico de Boletines, Borradores y Planificación</h3>
+                  <p className="text-xs text-primary/60 mt-1">Consulta los borradores guardados, boletines planificados en la cola y campañas enviadas previamente.</p>
                 </div>
                 
                 {history.length === 0 ? (
                   <div className="p-16 text-center text-primary/40 italic">
                     <History className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                    No hay campañas de boletines enviadas anteriormente en el registro histórico.
+                    No hay campañas, borradores ni programaciones registradas en este momento.
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm whitespace-nowrap">
                       <thead>
                         <tr className="bg-slate-50 text-primary/50 text-xs font-bold uppercase tracking-wider border-b border-slate-100">
-                          <th className="p-6">Asunto Campaña</th>
+                          <th className="p-6">Asunto / Título</th>
                           <th className="p-6">Formato</th>
-                          <th className="p-6">Fecha Envío</th>
+                          <th className="p-6">Fecha / Planificación</th>
                           <th className="p-6">Receptores</th>
-                          <th className="p-6">Estado</th>
+                          <th className="p-6 font-semibold text-center">Estado</th>
+                          <th className="p-6 text-right">Acciones</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {history.map(camp => (
-                          <tr key={camp.id} className="hover:bg-slate-50/50 transition-colors">
-                            <td className="p-6 font-bold text-primary max-w-xs truncate">{camp.subject}</td>
-                            <td className="p-6">
-                              <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider border ${camp.type === 'semanal' ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-pink-50 text-pink-700 border-pink-100'}`}>
-                                {camp.type === 'semanal' ? 'Semanal' : 'Especial'}
-                              </span>
-                            </td>
-                            <td className="p-6 text-primary/60 font-medium">
-                              {camp.sentAt?.toDate 
-                                ? camp.sentAt.toDate().toLocaleString() 
-                                : 'Registrado recientemente'}
-                            </td>
-                            <td className="p-6 font-bold text-primary font-mono">{camp.sentCount || 0} emails</td>
-                            <td className="p-6">
-                              <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
-                                Procesado
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
+                        {history.map(camp => {
+                          const status = camp.status || 'sent';
+                          return (
+                            <tr key={camp.id} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="p-6 font-bold text-primary max-w-xs truncate">{camp.subject}</td>
+                              <td className="p-6">
+                                <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider border ${camp.type === 'semanal' ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-pink-50 text-pink-700 border-pink-100'}`}>
+                                  {camp.type === 'semanal' ? 'Semanal' : 'Especial'}
+                                </span>
+                              </td>
+                              <td className="p-6 text-primary/60 font-medium">
+                                {status === 'scheduled' ? (
+                                  <span className="text-[#dfb23f] font-bold inline-flex items-center gap-1.5 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-100">
+                                    <Clock className="w-3.5 h-3.5" />
+                                    {camp.scheduledAt?.toDate 
+                                      ? camp.scheduledAt.toDate().toLocaleString() 
+                                      : camp.scheduledAt instanceof Date
+                                        ? camp.scheduledAt.toLocaleString()
+                                        : new Date(camp.scheduledAt).toLocaleString()}
+                                  </span>
+                                ) : status === 'draft' ? (
+                                  <span className="text-slate-400 font-medium italic">Borrador Guardado</span>
+                                ) : (
+                                  camp.sentAt?.toDate 
+                                    ? camp.sentAt.toDate().toLocaleString() 
+                                    : 'Recién emitido'
+                                )}
+                              </td>
+                              <td className="p-6 font-bold text-primary font-mono text-xs">
+                                {status === 'sent' ? `${camp.sentCount || 0} personas` : '—'}
+                              </td>
+                              <td className="p-6 text-center">
+                                {status === 'sent' ? (
+                                  <span className="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider border border-emerald-100">
+                                    Completado
+                                  </span>
+                                ) : status === 'scheduled' ? (
+                                  <span className="bg-amber-50 text-amber-700 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider border border-amber-100 animate-pulse">
+                                    Programado
+                                  </span>
+                                ) : (
+                                  <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider border border-slate-200">
+                                    Borrador
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-6 text-right">
+                                <div className="flex justify-end items-center gap-2">
+                                  {(status === 'draft' || status === 'scheduled') && (
+                                    <>
+                                      <button
+                                        onClick={() => handleDirectSend(camp)}
+                                        disabled={isActionCampaignId === camp.id}
+                                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all shadow-sm flex items-center gap-1 disabled:opacity-50"
+                                        title="Enviar inmediatamente"
+                                      >
+                                        {isActionCampaignId === camp.id ? (
+                                          <Loader2 className="w-3 h-3 animate-spin" />
+                                        ) : (
+                                          <Send className="w-3 h-3" />
+                                        )}
+                                        Enviar Ya
+                                      </button>
+                                      
+                                      <button
+                                        onClick={() => {
+                                          setCampaignType(camp.type);
+                                          if (camp.type === 'semanal') {
+                                            setSermonImageUrl(camp.config?.sermonImageUrl || '');
+                                            setSermonDescription(camp.config?.sermonDescription || '');
+                                            setIsSantaCena(camp.config?.isSantaCena || false);
+                                            setSelectedPostIds(camp.config?.selectedPostIds || []);
+                                          } else {
+                                            setSpecialSubject(camp.config?.specialSubject || '');
+                                            setSpecialContent(camp.config?.specialContent || '');
+                                            setSpecialButtonText(camp.config?.specialButtonText || '');
+                                            setSpecialButtonUrl(camp.config?.specialButtonUrl || '');
+                                          }
+                                          setActiveTab('build');
+                                          alert('Datos del borrador cargados con éxito en la sección Diseñar Boletín.');
+                                        }}
+                                        className="bg-slate-50 hover:bg-slate-100 text-primary border border-slate-200/50 text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all"
+                                        title="Cargar borrador en el editor"
+                                      >
+                                        Editar
+                                      </button>
+                                    </>
+                                  )}
+
+                                  {status === 'scheduled' && (
+                                    <button
+                                      onClick={() => handleCancelScheduled(camp.id)}
+                                      className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-200/50 text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all"
+                                      title="Desprogramar y volver a borrador"
+                                    >
+                                      Cancelar
+                                    </button>
+                                  )}
+
+                                  <button
+                                    onClick={() => handleDeleteCampaign(camp.id)}
+                                    className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-all inline-flex items-center"
+                                    title="Eliminar borrador o registro definitivo"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>

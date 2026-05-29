@@ -14,6 +14,7 @@ interface Post {
   imageUrl: string;
   category: string;
   publishedAt: any;
+  status?: 'published' | 'draft';
   tags?: string[];
   title_en?: string;
   excerpt_en?: string;
@@ -67,6 +68,7 @@ export default function Actividades() {
   const categories = getCategories();
 
   const filteredPosts = posts.filter(post => {
+    if (post.status === 'draft') return false;
     const title = getPostTitle(post);
     const excerpt = getPostExcerpt(post);
     const matchesSearch = title.toLowerCase().includes(searchTerm.toLowerCase()) ||

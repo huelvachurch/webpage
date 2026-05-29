@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Edit2, Trash2, X, Save, Image as ImageIcon, Search, Filter, Eye, Layout, Globe, Loader2 } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, Save, Image as ImageIcon, Search, Filter, Eye, Layout, Globe, Loader2, Star, Bold, Italic, Heading1, Heading2, Quote, List, Link as LinkIcon, Sparkles } from 'lucide-react';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../../firebase';
 import { useAuth } from '../../AuthContext';
@@ -19,6 +19,7 @@ interface Post {
   featured: boolean;
   tags: string[];
   publishedAt: any;
+  status?: 'published' | 'draft';
   title_en?: string;
   excerpt_en?: string;
   content_en?: string;
@@ -42,6 +43,12 @@ export default function AdminComunicaciones() {
   const [enablePt, setEnablePt] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
 
+  // AI Content Generator states
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiImagePreview, setAiImagePreview] = useState<string | null>(null);
+  const [aiImageMimeType, setAiImageMimeType] = useState<string | null>(null);
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+
   const [formData, setFormData] = useState({
     title: '',
     slug: '',
@@ -50,6 +57,7 @@ export default function AdminComunicaciones() {
     imageUrl: '',
     category: 'Noticias',
     featured: false,
+    status: 'published' as 'published' | 'draft',
     tags: '',
     title_en: '',
     excerpt_en: '',
@@ -58,6 +66,8 @@ export default function AdminComunicaciones() {
     excerpt_pt: '',
     content_pt: '',
   });
+
+  const intentRef = React.useRef<'published' | 'draft'>('published');
 
   const isAdmin = roles.includes('admin');
   const isComunicador = roles.includes('comunicador') || isAdmin;
@@ -103,6 +113,7 @@ export default function AdminComunicaciones() {
         imageUrl: post.imageUrl || '',
         category: post.category,
         featured: post.featured || false,
+        status: post.status || 'published',
         tags: post.tags?.join(', ') || '',
         title_en: post.title_en || '',
         excerpt_en: post.excerpt_en || '',
@@ -123,6 +134,7 @@ export default function AdminComunicaciones() {
         imageUrl: '',
         category: 'Noticias',
         featured: false,
+        status: 'published',
         tags: '',
         title_en: '',
         excerpt_en: '',
@@ -180,12 +192,121 @@ export default function AdminComunicaciones() {
     }
   };
 
+  const handleGenerateAI = async () => {
+    if (!aiPrompt) {
+      alert("Por favor, ingresa los detalles del evento para que la IA pueda generar la publicación.");
+      return;
+    }
+    setIsGeneratingAI(true);
+    try {
+      const response = await fetch('/api/gemini/generate-post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: aiPrompt,
+          imageData: aiImagePreview ? aiImagePreview.split(',')[1] : null,
+          imageMimeType: aiImageMimeType
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Error al generar con IA');
+      }
+
+      const generated = await response.json();
+
+      if (generated.es) {
+        setFormData(prev => ({
+          ...prev,
+          title: generated.es.title || prev.title,
+          slug: generated.es.slug || prev.slug,
+          category: generated.es.category || prev.category,
+          tags: generated.es.tags || prev.tags,
+          excerpt: generated.es.excerpt || prev.excerpt,
+          content: generated.es.content || prev.content,
+        }));
+      }
+
+      if (generated.en) {
+        setEnableEn(true);
+        setFormData(prev => ({
+          ...prev,
+          title_en: generated.en.title || prev.title_en,
+          excerpt_en: generated.en.excerpt || prev.excerpt_en,
+          content_en: generated.en.content || prev.content_en,
+        }));
+      }
+
+      if (generated.pt) {
+        setEnablePt(true);
+        setFormData(prev => ({
+          ...prev,
+          title_pt: generated.pt.title || prev.title_pt,
+          excerpt_pt: generated.pt.excerpt || prev.excerpt_pt,
+          content_pt: generated.pt.content || prev.content_pt,
+        }));
+      }
+
+      setActiveLang('es');
+
+    } catch (e) {
+      console.error(e);
+      alert('Hubo un error al generar contenido con la IA.');
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
+
+  const handleAiImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setAiImageMimeType(file.type);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAiImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const transformDriveUrl = (url: string) => {
+    if (!url) return url;
+    const match = url.match(/drive\.google\.com\/file\/d\/(.*?)\//) || url.match(/drive\.google\.com\/open\?id=(.*?)$/) || url.match(/drive\.google\.com\/file\/d\/(.*?)$/);
+    if (match && match[1]) {
+      return `https://drive.google.com/uc?export=view&id=${match[1]}`;
+    }
+    return url;
+  };
+
+  const insertTextAtCursor = (prefix: string, suffix: string = '') => {
+    const textarea = document.getElementById('markdown-editor') as HTMLTextAreaElement;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    
+    // figure out which property to update based on activeLang
+    const contentKey = activeLang === 'es' ? 'content' : activeLang === 'en' ? 'content_en' : 'content_pt';
+    const currentText = formData[contentKey as keyof typeof formData] as string;
+    
+    const selectedText = currentText.substring(start, end);
+    const newText = currentText.substring(0, start) + prefix + selectedText + suffix + currentText.substring(end);
+
+    setFormData(prev => ({ ...prev, [contentKey]: newText }));
+
+    // Reset cursor position
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + prefix.length, end + prefix.length);
+    }, 0);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const tagsArray = formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag !== '');
     
     // Clean unselected languages
-    const submissionData = { ...formData };
+    const submissionData = { ...formData, status: intentRef.current };
     if (!enableEn) {
        submissionData.title_en = '';
        submissionData.excerpt_en = '';
@@ -196,6 +317,9 @@ export default function AdminComunicaciones() {
        submissionData.excerpt_pt = '';
        submissionData.content_pt = '';
     }
+
+    // Transform Google Drive links if present
+    submissionData.imageUrl = transformDriveUrl(submissionData.imageUrl);
 
     try {
       if (editingPost) {
@@ -228,6 +352,17 @@ export default function AdminComunicaciones() {
       } catch (error) {
         handleFirestoreError(error, OperationType.DELETE, `posts/${id}`);
       }
+    }
+  };
+
+  const handleToggleFeatured = async (id: string, currentStatus: boolean) => {
+    try {
+      await updateDoc(doc(db, 'posts', id), {
+        featured: !currentStatus,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `posts/${id}`);
     }
   };
 
@@ -306,6 +441,16 @@ export default function AdminComunicaciones() {
                 <p className="text-primary/50 text-sm line-clamp-1">{post.excerpt}</p>
               </div>
               <div className="flex gap-2">
+                <button 
+                  onClick={() => handleToggleFeatured(post.id, !!post.featured)}
+                  className={`p-3 rounded-xl transition-all ${post.featured ? 'bg-amber-100 text-amber-600 hover:bg-amber-200' : 'bg-slate-50 text-primary/30 hover:bg-slate-100'}`}
+                  title={post.featured ? "Quitar de destacados" : "Marcar como destacado"}
+                >
+                  <Star className={`w-5 h-5 ${post.featured ? 'fill-current' : ''}`} />
+                </button>
+                <div className="flex flex-col items-center justify-center px-3 bg-slate-50 text-primary/30 rounded-xl">
+                    <span className="text-[10px] font-bold uppercase tracking-widest">{post.status === 'draft' ? 'Borrador' : 'Público'}</span>
+                </div>
                 <button 
                   onClick={() => handleOpenModal(post)}
                   className="p-3 bg-slate-50 text-primary/40 hover:bg-secondary hover:text-primary rounded-xl transition-all"
@@ -418,6 +563,64 @@ export default function AdminComunicaciones() {
               <div className="flex-grow overflow-y-auto p-8 md:p-12 pt-6">
                 {activeTab === 'edit' ? (
                   <form onSubmit={handleSubmit} className="space-y-6">
+                    
+                    {/* Generador de contenido IA */}
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-3xl border border-blue-100 flex flex-col gap-4">
+                      <div className="flex items-center gap-2 text-indigo-600 font-kenao text-xl">
+                        <Sparkles className="w-5 h-5 text-indigo-500" />
+                        Asistente IA de Redacción
+                      </div>
+                      <p className="text-sm text-indigo-800/70">
+                        Escribe aquí las instrucciones de tu evento o sube una imagen de promoción para que nuestro asistente 
+                        genere automáticamente el título, sinopsis, y el contenido en Español, Inglés y Portugués utilizando versículos bíblicos y un tono amigable.
+                      </p>
+                      
+                      <textarea 
+                        rows={3}
+                        className="w-full px-6 py-4 rounded-2xl border border-indigo-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder:text-indigo-300"
+                        placeholder="De qué trata el evento, qué quieres enseñar..."
+                        value={aiPrompt}
+                        onChange={(e) => setAiPrompt(e.target.value)}
+                      />
+                      
+                      <div className="flex flex-col md:flex-row items-center gap-4 justify-between">
+                        <div className="flex items-center gap-4 w-full md:w-auto">
+                          <label className="flex items-center gap-2 px-4 py-2 bg-white text-indigo-600 border border-indigo-200 rounded-xl cursor-pointer hover:bg-indigo-50 transition-all font-bold text-sm shrink-0">
+                            <ImageIcon className="w-4 h-4" />
+                            {aiImagePreview ? 'Cambiar Imagen' : 'Subir Promoción'}
+                            <input 
+                              type="file" 
+                              accept="image/*" 
+                              className="hidden" 
+                              onChange={handleAiImageUpload}
+                            />
+                          </label>
+                          {aiImagePreview && (
+                            <div className="relative">
+                              <img src={aiImagePreview} alt="AI Context" className="h-10 w-10 object-cover rounded shadow" />
+                              <button
+                                type="button"
+                                onClick={() => { setAiImagePreview(null); setAiImageMimeType(null); }}
+                                className="absolute -top-2 -right-2 bg-red-100 text-red-600 p-1 rounded-full shadow hover:bg-red-200 transition-all"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        
+                        <button
+                          type="button"
+                          onClick={handleGenerateAI}
+                          disabled={isGeneratingAI || !aiPrompt}
+                          className="w-full md:w-auto bg-indigo-600 text-white font-bold py-3 px-8 rounded-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isGeneratingAI ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                          {isGeneratingAI ? 'Generando Contenido...' : 'Autocompletar con IA'}
+                        </button>
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
                         <label className="text-sm font-bold text-primary/60 ml-2">Título ({activeLang.toUpperCase()})</label>
@@ -473,6 +676,9 @@ export default function AdminComunicaciones() {
                             value={formData.imageUrl}
                             onChange={(e) => setFormData({...formData, imageUrl: e.target.value})}
                           />
+                          <p className="text-[11px] text-primary/45 mt-2">
+                            Puedes pegar un enlace de archivo compartido de Google Drive y se convertirá automáticamente.
+                          </p>
                         </div>
                       </div>
                     )}
@@ -505,20 +711,54 @@ export default function AdminComunicaciones() {
                       />
                     </div>
 
-                    <div className="space-y-2">
-                      <label className="text-sm font-bold text-primary/60 ml-2">Contenido ({activeLang.toUpperCase()})</label>
-                      <textarea 
-                        required
-                        rows={12}
-                        className="w-full px-6 py-4 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-secondary outline-none transition-all font-mono text-sm"
-                        placeholder="Escribe el contenido aquí usando Markdown..."
-                        value={activeLang === 'es' ? formData.content : (activeLang === 'en' ? formData.content_en : formData.content_pt)}
-                        onChange={(e) => {
-                          if (activeLang === 'es') setFormData({...formData, content: e.target.value});
-                          if (activeLang === 'en') setFormData({...formData, content_en: e.target.value});
-                          if (activeLang === 'pt') setFormData({...formData, content_pt: e.target.value});
-                        }}
-                      />
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center ml-2">
+                        <label className="text-sm font-bold text-primary/60">Contenido ({activeLang.toUpperCase()})</label>
+                      </div>
+                      
+                      <div className="border border-slate-200 rounded-2xl overflow-hidden focus-within:ring-2 focus-within:ring-secondary focus-within:border-transparent transition-all">
+                        {/* Markdown Toolbar */}
+                        <div className="flex flex-wrap items-center bg-slate-50 border-b border-slate-200 p-2 gap-1 touch-auto">
+                          <button type="button" onClick={() => insertTextAtCursor('## ', '')} className="p-2 hover:bg-slate-200 rounded text-slate-600 transition-colors" title="Título">
+                            <Heading1 className="w-4 h-4" />
+                          </button>
+                          <button type="button" onClick={() => insertTextAtCursor('### ', '')} className="p-2 hover:bg-slate-200 rounded text-slate-600 transition-colors" title="Subtítulo">
+                            <Heading2 className="w-4 h-4" />
+                          </button>
+                          <div className="w-px h-5 bg-slate-300 mx-1"></div>
+                          <button type="button" onClick={() => insertTextAtCursor('**', '**')} className="p-2 hover:bg-slate-200 rounded text-slate-600 transition-colors" title="Negrita">
+                            <Bold className="w-4 h-4" />
+                          </button>
+                          <button type="button" onClick={() => insertTextAtCursor('*', '*')} className="p-2 hover:bg-slate-200 rounded text-slate-600 transition-colors" title="Cursiva">
+                            <Italic className="w-4 h-4" />
+                          </button>
+                          <div className="w-px h-5 bg-slate-300 mx-1"></div>
+                          <button type="button" onClick={() => insertTextAtCursor('> ', '')} className="p-2 hover:bg-slate-200 rounded text-slate-600 transition-colors" title="Cita Bíblica">
+                            <Quote className="w-4 h-4" />
+                          </button>
+                          <button type="button" onClick={() => insertTextAtCursor('- ', '')} className="p-2 hover:bg-slate-200 rounded text-slate-600 transition-colors" title="Lista">
+                            <List className="w-4 h-4" />
+                          </button>
+                          <div className="w-px h-5 bg-slate-300 mx-1"></div>
+                          <button type="button" onClick={() => insertTextAtCursor('[', '](url)')} className="p-2 hover:bg-slate-200 rounded text-slate-600 transition-colors" title="Enlace">
+                            <LinkIcon className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        <textarea 
+                          id="markdown-editor"
+                          required
+                          rows={12}
+                          className="w-full px-6 py-4 outline-none font-mono text-sm resize-y"
+                          placeholder="Escribe el contenido aquí. Selecciona texto y usa los botones de arriba para dar formato..."
+                          value={activeLang === 'es' ? formData.content : (activeLang === 'en' ? formData.content_en : formData.content_pt)}
+                          onChange={(e) => {
+                            if (activeLang === 'es') setFormData({...formData, content: e.target.value});
+                            if (activeLang === 'en') setFormData({...formData, content_en: e.target.value});
+                            if (activeLang === 'pt') setFormData({...formData, content_pt: e.target.value});
+                          }}
+                        />
+                      </div>
                     </div>
 
                     {activeLang === 'es' && (
@@ -534,13 +774,20 @@ export default function AdminComunicaciones() {
                       </div>
                     )}
 
-                    <div className="pt-4">
+                    <div className="pt-4 grid grid-cols-2 gap-3">
                       <button 
                         type="submit"
-                        className="w-full bg-primary text-white font-bold py-5 rounded-2xl hover:bg-secondary hover:text-primary transition-all flex items-center justify-center gap-2 shadow-lg"
+                        onClick={() => { intentRef.current = 'draft'; }}
+                        className="bg-slate-100 text-primary font-bold py-5 rounded-2xl hover:bg-slate-200 transition-all flex items-center justify-center"
                       >
-                        <Save className="w-5 h-5" />
-                        {editingPost ? 'Guardar Cambios' : 'Publicar Ahora'}
+                        Guardar Borrador
+                      </button>
+                      <button 
+                        type="submit"
+                        onClick={() => { intentRef.current = 'published'; }}
+                        className="bg-primary text-white font-bold py-5 rounded-2xl hover:bg-secondary hover:text-primary transition-all flex items-center justify-center shadow-lg"
+                      >
+                        {editingPost ? 'Publicar Cambios' : 'Publicar Ahora'}
                       </button>
                     </div>
                   </form>
@@ -566,7 +813,7 @@ export default function AdminComunicaciones() {
                           <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         </div>
                       )}
-                      <div className="text-primary/80 leading-relaxed">
+                      <div className="prose prose-slate max-w-none text-primary/80 leading-relaxed">
                         <Markdown>{currentContent || '*Sin contenido aún*'}</Markdown>
                       </div>
                     </div>

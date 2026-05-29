@@ -82,6 +82,34 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["courseId", "studentId", "status"]
+    },
+    "Subscriber": {
+      "title": "Subscriber",
+      "description": "Newsletter subscriber email registration",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "active": { "type": "boolean" },
+        "subscribedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "active"]
+    },
+    "Newsletter": {
+      "title": "Newsletter Campaign",
+      "description": "Newsletter email campaign template, draft, sent history, or scheduled record",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["semanal", "especial"] },
+        "subject": { "type": "string" },
+        "contentHtml": { "type": "string" },
+        "status": { "type": "string", "enum": ["draft", "scheduled", "sent"] },
+        "scheduledAt": { "type": "string", "format": "date-time" },
+        "sentAt": { "type": "string", "format": "date-time" },
+        "sentCount": { "type": "number" },
+        "config": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "subject", "contentHtml", "status"]
     }
   },
   "firestore": {
@@ -100,6 +128,14 @@
     "/enrollments/{enrollmentId}": {
       "schema": "Enrollment",
       "description": "Collection of course enrollments"
+    },
+    "/subscribers/{subscriberId}": {
+      "schema": "Subscriber",
+      "description": "Collection of newsletter subscribers"
+    },
+    "/newsletters/{newsletterId}": {
+      "schema": "Newsletter",
+      "description": "Collection of sent, draft, or scheduled newsletters"
     }
   }
 }
