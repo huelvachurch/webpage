@@ -5,7 +5,7 @@ import Stripe from "stripe";
 import dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, query, where, getDocs, updateDoc, doc, serverTimestamp } from "firebase/firestore";
+import { getFirestore, collection, query, where, getDocs, updateDoc, doc, serverTimestamp, getDoc } from "firebase/firestore";
 import fs from "fs";
 
 const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
@@ -68,6 +68,46 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json());
+
+  // Image proxy for Google Drive and other external images
+  app.get("/api/image-proxy", async (req, res) => {
+    try {
+      const imageUrl = req.query.url as string;
+      if (!imageUrl) {
+        return res.status(400).json({ error: "Missing url parameter" });
+      }
+
+      // Basic validation
+      const parsedUrl = new URL(imageUrl);
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+         return res.status(400).json({ error: "Invalid URL protocol" });
+      }
+
+      const response = await fetch(imageUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+      });
+      
+      if (!response.ok) {
+        return res.status(response.status).json({ error: "Failed to fetch image" });
+      }
+
+      const contentType = response.headers.get("content-type");
+      if (contentType) {
+        res.setHeader("Content-Type", contentType);
+      }
+      
+      // Cache the image for 1 hour to reduce bandwidth
+      res.setHeader("Cache-Control", "public, max-age=3600");
+
+      const arrayBuffer = await response.arrayBuffer();
+      res.send(Buffer.from(arrayBuffer));
+    } catch (error: any) {
+      console.error("Image Proxy Error:", error.message);
+      res.status(500).json({ error: "Internal server proxy error", details: error.message });
+    }
+  });
 
   // Generate Post with AI endpoint
   app.post("/api/gemini/generate-post", async (req, res) => {
@@ -277,6 +317,58 @@ Notas sobre los campos:
       console.error("Error fetching YouTube video server-side:", error);
       res.status(500).json({ error: error.message });
     }
+  });
+
+  // Dynamic Open Graph Tags for Social Sharing (Facebook, WhatsApp, etc.)
+  app.get("/actividades/:id", async (req, res, next) => {
+    const userAgent = req.headers['user-agent'] || '';
+    const isBot = /bot|facebookexternalhit|whatsapp|telegram|twitter|linkedin|skype/i.test(userAgent);
+
+    if (isBot && db) {
+      try {
+        const docRef = doc(db, 'posts', req.params.id);
+        const postSnap = await getDoc(docRef);
+
+        if (postSnap.exists()) {
+          const data = postSnap.data();
+          const title = `${data.title} | Huelva Church`;
+          const excerpt = data.excerpt || "Iglesia Cristiana Evangélica en Huelva dedicada a compartir el amor de Jesús.";
+          let imageUrl = data.imageUrl || "";
+
+          if (imageUrl) {
+            const match = imageUrl.match(/id=(.*?)(?:&|$)/) || imageUrl.match(/\/d\/(.*?)\//) || imageUrl.match(/\/d\/(.*?)$/);
+            if (match && match[1]) {
+                const driveId = match[1].split('&')[0];
+                imageUrl = `https://lh3.googleusercontent.com/d/${driveId}`;
+            } else if (/^[a-zA-Z0-9_-]{25,40}$/.test(imageUrl)) {
+                imageUrl = `https://lh3.googleusercontent.com/d/${imageUrl}`;
+            }
+          }
+
+          const html = `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>${title}</title>
+  <meta name="description" content="${excerpt}" />
+  <meta property="og:title" content="${title}" />
+  <meta property="og:description" content="${excerpt}" />
+  ${imageUrl ? `<meta property="og:image" content="${imageUrl}" />` : ''}
+  <meta property="og:type" content="article" />
+  <meta name="twitter:card" content="summary_large_image">
+</head>
+<body></body>
+</html>`;
+          return res.send(html);
+        }
+      } catch (err) {
+        console.error("Error fetching post for social tags:", err);
+      }
+    }
+    
+    // Fall back to Vite/SPA
+    next();
   });
 
   // Vite middleware for development

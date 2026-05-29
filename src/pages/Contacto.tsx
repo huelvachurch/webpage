@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { MapPin, Phone, Mail, Clock, MessageCircle, Instagram, Facebook, Youtube } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useGlobalSettings } from '../utils/useSettings';
 
 export default function Contacto() {
   const { t } = useTranslation();
+  const { meetingTime } = useGlobalSettings();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -100,7 +102,9 @@ export default function Contacto() {
                 </div>
                 <div>
                   <h4 className="text-xl font-kenao text-primary mb-2">{t('contact.mainMeeting')}</h4>
-                  <p className="text-primary/70 leading-relaxed" dangerouslySetInnerHTML={{ __html: t('contact.meetingTime') }} />
+                  <p className="text-primary/70 leading-relaxed font-medium">
+                    {meetingTime}
+                  </p>
                 </div>
               </div>
             </div>

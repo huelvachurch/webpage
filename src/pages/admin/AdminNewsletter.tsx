@@ -12,6 +12,8 @@ import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { useAuth } from '../../AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { getOptimizedImageUrl } from '../../utils/drive';
+import { useGlobalSettings } from '../../utils/useSettings';
 
 interface Subscriber {
   id: string;
@@ -47,6 +49,7 @@ export default function AdminNewsletter() {
   const { user, roles, loading, isAuthReady } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { meetingTime, newsletterLogoUrl } = useGlobalSettings();
 
   // Tabs
   const [activeTab, setActiveTab] = useState<'build' | 'subscribers' | 'history'>('build');
@@ -63,8 +66,8 @@ export default function AdminNewsletter() {
 
   // Form State - Newsletter Builder
   const [campaignType, setCampaignType] = useState<'semanal' | 'especial'>('semanal');
-  const [sermonImageUrl, setSermonImageUrl] = useState('https://images.unsplash.com/photo-1544427928-c49cddeb8976?q=80&w=1200');
-  const [sermonDescription, setSermonDescription] = useState('Te invitamos a nuestra reunión de este domingo. Continuamos con nuestra serie mensual. ¡Ven con expectativa de adorar y recibir una palabra fresca de parte de Dios!');
+  const [sermonImageUrl, setSermonImageUrl] = useState('');
+  const [sermonDescription, setSermonDescription] = useState('Te invitamos a nuestra reunión de este domingo. ¡Ven con expectativa de adorar y recibir una palabra fresca de parte de Dios!');
   const [isSantaCena, setIsSantaCena] = useState(false);
   const [selectedPostIds, setSelectedPostIds] = useState<string[]>([]);
   
@@ -278,7 +281,7 @@ export default function AdminNewsletter() {
   function compileWeeklyEmail(config: { sermonImageUrl: string; sermonDescription: string; isSantaCena: boolean; articles: Post[] }) {
     const articlesHtml = config.articles.map(p => `
       <div style="background-color: #ffffff; border-radius: 16px; border: 1px solid #f1f5f9; overflow: hidden; margin-bottom: 24px;">
-        ${p.imageUrl ? `<img src="${p.imageUrl}" alt="${p.title}" style="width: 100%; max-height: 200px; object-fit: cover; display: block;" />` : ''}
+        ${p.imageUrl ? `<img src="${getOptimizedImageUrl(p.imageUrl)}" alt="${p.title}" style="width: 100%; max-height: 200px; object-fit: cover; display: block;" />` : ''}
         <div style="padding: 20px;">
           <span style="background-color: #dfb23f; color: #162a45; font-size: 11px; font-weight: bold; padding: 4px 8px; border-radius: 99px; text-transform: uppercase;">${p.category || 'Anuncio'}</span>
           <h3 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 18px; color: #162a45; margin-top: 12px; margin-bottom: 8px;">${p.title}</h3>
@@ -312,9 +315,13 @@ export default function AdminNewsletter() {
                 <!-- Header Banner -->
                 <tr>
                   <td style="background-color: #162a45; padding: 40px; text-align: center; color: #ffffff;">
-                    <div style="font-size: 28px; font-weight: bold; letter-spacing: -0.5px; margin-bottom: 4px; font-family: 'Helvetica Neue', Arial, sans-serif;">
-                      <span style="color: #ffffff;">Huelva</span><span style="color: #dfb23f; font-weight: 300;">Church</span>
-                    </div>
+                    <!-- Logo Header -->
+                    ${newsletterLogoUrl 
+                      ? `<img src="${newsletterLogoUrl}" alt="Huelva Church" style="max-height: 50px; margin-bottom: 8px; display: block; margin-left: auto; margin-right: auto;" />`
+                      : `<div style="font-size: 28px; font-weight: bold; letter-spacing: -0.5px; margin-bottom: 4px; font-family: 'Helvetica Neue', Arial, sans-serif;">
+                           <span style="color: #ffffff;">Huelva</span><span style="color: #dfb23f; font-weight: 300;">Church</span>
+                         </div>`
+                    }
                     <p style="font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; color: rgba(255,255,255,0.6); margin: 0; font-family: 'Helvetica Neue', Arial, sans-serif;">Boletín de Fin de Semana</p>
                   </td>
                 </tr>
@@ -327,10 +334,10 @@ export default function AdminNewsletter() {
                     
                     <!-- Reunion Card -->
                     <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden; margin-bottom: 28px;">
-                      ${config.sermonImageUrl ? `<img src="${config.sermonImageUrl}" alt="Reunión del Domingo" style="width: 100%; height: auto; display: block;" />` : ''}
+                      ${config.sermonImageUrl ? `<img src="${getOptimizedImageUrl(config.sermonImageUrl)}" alt="Reunión del Domingo" style="width: 100%; height: auto; display: block;" />` : ''}
                       <div style="padding: 24px;">
                         <h3 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 18px; color: #162a45; margin-top: 0; margin-bottom: 8px;">Reunión General Familiar</h3>
-                        <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-weight: bold; font-size: 14px; color: #dfb23f; margin-top: 0; margin-bottom: 12px;">📅 Domingos a las 18:30h (Presencial)</p>
+                        <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-weight: bold; font-size: 14px; color: #dfb23f; margin-top: 0; margin-bottom: 12px;">📅 ${meetingTime}</p>
                         <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #475569; line-height: 1.6; margin: 0;">${config.sermonDescription}</p>
                       </div>
                     </div>
@@ -349,62 +356,40 @@ export default function AdminNewsletter() {
                 <!-- Permanent Promos (Social Life) Section -->
                 <tr>
                   <td style="padding: 0 32px 32px 32px;">
-                    <h2 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 18px; color: #162a45; margin-top: 16px; margin-bottom: 16px; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px;">Nuestra Vida como Iglesia</h2>
+                    <h2 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 18px; color: #162a45; margin-top: 16px; margin-bottom: 16px; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; text-align: center;">Nuestra Vida como Iglesia</h2>
                     
-                    <!-- Grid promos with all 6 elements -->
                     <table border="0" cellpadding="0" cellspacing="0" width="100%">
                       <tr>
-                        <!-- 1. Celulas -->
-                        <td width="50%" style="padding-right: 8px; padding-bottom: 16px; vertical-align: top;">
-                          <div style="background-color: #f8fafc; border: 1px solid #edf2f7; padding: 16px; border-radius: 16px; min-height: 110px;">
-                            <span style="font-size: 20px;">🏠</span>
-                            <h4 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; color: #162a45; margin: 6px 0 2px 0; font-weight: bold;">Células de Hogar</h4>
-                            <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #64748b; margin: 0; line-height: 1.3;">Familias e iglesias en las casas en toda la provincia de Huelva.</p>
+                        <td align="center">
+                          <!--[if mso]>
+                          <table border="0" cellpadding="0" cellspacing="0" width="100%"><tr><td width="33%" valign="top"><![endif]-->
+                          <div style="display:inline-block; width:100%; max-width:180px; vertical-align:top; margin-bottom:16px;">
+                            <div style="background-color:#f8fafc; border:1px solid #edf2f7; padding:16px; border-radius:16px; min-height:160px; margin:0 4px; position:relative;">
+                              <span style="font-size:24px; display:block; margin-bottom:8px;">🏠</span>
+                              <h4 style="font-family:'Helvetica Neue', Arial, sans-serif; font-size:13px; color:#162a45; margin:0 0 4px 0; font-weight:bold;">Células de Hogar</h4>
+                              <p style="font-family:'Helvetica Neue', Arial, sans-serif; font-size:11px; color:#64748b; margin:0 0 12px 0; line-height:1.4;">Conéctate con una familia de fe cerca de ti en Huelva.</p>
+                              <a href="https://huelvachurch.com/celulas" target="_blank" style="text-decoration:none; display:inline-block; background-color:#dfb23f; color:#ffffff; font-family:'Helvetica Neue', Arial, sans-serif; font-size:11px; font-weight:bold; padding:6px 12px; border-radius:6px;">Ver Células</a>
+                            </div>
                           </div>
-                        </td>
-                        <!-- 2. Noches de oracion -->
-                        <td width="50%" style="padding-left: 8px; padding-bottom: 16px; vertical-align: top;">
-                          <div style="background-color: #f8fafc; border: 1px solid #edf2f7; padding: 16px; border-radius: 16px; min-height: 110px;">
-                            <span style="font-size: 20px;">🙏</span>
-                            <h4 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; color: #162a45; margin: 6px 0 2px 0; font-weight: bold;">Noches de Oración</h4>
-                            <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #64748b; margin: 0; line-height: 1.3;">Clamor virtual conjunto de lunes a jueves a las 23:00h por Google Meet.</p>
+                          <!--[if mso]></td><td width="33%" valign="top"><![endif]-->
+                          <div style="display:inline-block; width:100%; max-width:180px; vertical-align:top; margin-bottom:16px;">
+                            <div style="background-color:#f8fafc; border:1px solid #edf2f7; padding:16px; border-radius:16px; min-height:160px; margin:0 4px; position:relative;">
+                              <span style="font-size:24px; display:block; margin-bottom:8px;">🙏</span>
+                              <h4 style="font-family:'Helvetica Neue', Arial, sans-serif; font-size:13px; color:#162a45; margin:0 0 4px 0; font-weight:bold;">Noches de Oración</h4>
+                              <p style="font-family:'Helvetica Neue', Arial, sans-serif; font-size:11px; color:#64748b; margin:0 0 12px 0; line-height:1.4;">Únete de lunes a jueves a las 23:00h vía Google Meet.</p>
+                              <a href="https://meet.google.com/huelva" target="_blank" style="text-decoration:none; display:inline-block; background-color:#dfb23f; color:#ffffff; font-family:'Helvetica Neue', Arial, sans-serif; font-size:11px; font-weight:bold; padding:6px 12px; border-radius:6px;">Conectar Meet</a>
+                            </div>
                           </div>
-                        </td>
-                      </tr>
-                      <tr>
-                        <!-- 3. Radio -->
-                        <td width="50%" style="padding-right: 8px; padding-bottom: 16px; vertical-align: top;">
-                          <div style="background-color: #f8fafc; border: 1px solid #edf2f7; padding: 16px; border-radius: 16px; min-height: 110px;">
-                            <span style="font-size: 20px;">📻</span>
-                            <h4 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; color: #162a45; margin: 6px 0 2px 0; font-weight: bold;">Radio Online</h4>
-                            <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #64748b; margin: 0; line-height: 1.3;">Sintoniza alabanzas y mensajes edificantes las 24 horas del día.</p>
+                          <!--[if mso]></td><td width="33%" valign="top"><![endif]-->
+                          <div style="display:inline-block; width:100%; max-width:180px; vertical-align:top; margin-bottom:16px;">
+                            <div style="background-color:#f8fafc; border:1px solid #edf2f7; padding:16px; border-radius:16px; min-height:160px; margin:0 4px; position:relative;">
+                              <span style="font-size:24px; display:block; margin-bottom:8px;">📻</span>
+                              <h4 style="font-family:'Helvetica Neue', Arial, sans-serif; font-size:13px; color:#162a45; margin:0 0 4px 0; font-weight:bold;">Radio Online</h4>
+                              <p style="font-family:'Helvetica Neue', Arial, sans-serif; font-size:11px; color:#64748b; margin:0 0 12px 0; line-height:1.4;">Sintoniza y descarga la App en tu dispositivo Android.</p>
+                              <a href="https://play.google.com/store/apps/details?id=com.huelvachurch.radio" target="_blank" style="text-decoration:none; display:inline-block; background-color:#dfb23f; color:#ffffff; font-family:'Helvetica Neue', Arial, sans-serif; font-size:11px; font-weight:bold; padding:6px 12px; border-radius:6px;">Escuchar Ahora</a>
+                            </div>
                           </div>
-                        </td>
-                        <!-- 4. Canal de Youtube -->
-                        <td width="50%" style="padding-left: 8px; padding-bottom: 16px; vertical-align: top;">
-                          <div style="background-color: #f8fafc; border: 1px solid #edf2f7; padding: 16px; border-radius: 16px; min-height: 110px;">
-                            <span style="font-size: 20px;">🎥</span>
-                            <h4 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; color: #162a45; margin: 6px 0 2px 0; font-weight: bold;">Canal de YouTube</h4>
-                            <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #64748b; margin: 0; line-height: 1.3;">Súmate a la transmisión en vivo de prédicas y revive archivos previos.</p>
-                          </div>
-                        </td>
-                      </tr>
-                      <tr>
-                        <!-- 5. Instagram -->
-                        <td width="50%" style="padding-right: 8px; vertical-align: top;">
-                          <div style="background-color: #f8fafc; border: 1px solid #edf2f7; padding: 16px; border-radius: 16px; min-height: 110px;">
-                            <span style="font-size: 20px;">📸</span>
-                            <h4 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; color: #162a45; margin: 6px 0 2px 0; font-weight: bold;">Instagram</h4>
-                            <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #64748b; margin: 0; line-height: 1.3;">Mantente al día con devocionales, fotos de actividades y anuncios.</p>
-                          </div>
-                        </td>
-                        <!-- 6. WhatsApp -->
-                        <td width="50%" style="padding-left: 8px; vertical-align: top;">
-                          <div style="background-color: #f8fafc; border: 1px solid #edf2f7; padding: 16px; border-radius: 16px; min-height: 110px;">
-                            <span style="font-size: 20px;">💬</span>
-                            <h4 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; color: #162a45; margin: 6px 0 2px 0; font-weight: bold;">Grupo de WhatsApp</h4>
-                            <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #64748b; margin: 0; line-height: 1.3;">Recibe novedades cruciales directamente en tu teléfono celular.</p>
-                          </div>
+                          <!--[if mso]></td></tr></table><![endif]-->
                         </td>
                       </tr>
                     </table>
@@ -414,9 +399,43 @@ export default function AdminNewsletter() {
                 <!-- Contact Footer Links -->
                 <tr>
                   <td style="background-color: #f8fafc; border-top: 1px solid #edf2f7; padding: 32px; text-align: center;">
+                    <!-- Social Media Icons -->
+                    <table border="0" cellpadding="0" cellspacing="0" align="center" style="margin-bottom: 24px;">
+                      <tr>
+                        <td style="padding: 0 6px;">
+                          <a href="https://www.instagram.com/huelvachurch/" target="_blank" style="text-decoration: none;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="44" height="44" style="background-color: #ffffff; border: 1px solid #edf2f7; border-radius: 12px;">
+                              <tr><td align="center" valign="middle"><img src="https://img.icons8.com/ios-glyphs/30/94a3b8/instagram-new.png" alt="Instagram" width="20" height="20" style="display: block;" /></td></tr>
+                            </table>
+                          </a>
+                        </td>
+                        <td style="padding: 0 6px;">
+                          <a href="https://www.facebook.com/huelvachurch" target="_blank" style="text-decoration: none;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="44" height="44" style="background-color: #ffffff; border: 1px solid #edf2f7; border-radius: 12px;">
+                              <tr><td align="center" valign="middle"><img src="https://img.icons8.com/ios-glyphs/30/94a3b8/facebook-new.png" alt="Facebook" width="20" height="20" style="display: block;" /></td></tr>
+                            </table>
+                          </a>
+                        </td>
+                        <td style="padding: 0 6px;">
+                          <a href="https://www.youtube.com/@huelvachurch" target="_blank" style="text-decoration: none;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="44" height="44" style="background-color: #ffffff; border: 1px solid #edf2f7; border-radius: 12px;">
+                              <tr><td align="center" valign="middle"><img src="https://img.icons8.com/ios-glyphs/30/94a3b8/youtube-play.png" alt="YouTube" width="20" height="20" style="display: block;" /></td></tr>
+                            </table>
+                          </a>
+                        </td>
+                        <td style="padding: 0 6px;">
+                          <a href="https://wa.me/34600000000" target="_blank" style="text-decoration: none;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="44" height="44" style="background-color: #ffffff; border: 1px solid #edf2f7; border-radius: 12px;">
+                              <tr><td align="center" valign="middle"><img src="https://img.icons8.com/ios-glyphs/30/94a3b8/whatsapp.png" alt="WhatsApp" width="20" height="20" style="display: block;" /></td></tr>
+                            </table>
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+
                     <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; color: #94a3b8; line-height: 1.6; margin: 0 0 16px 0;">
                       HuelvaChurch &copy; ${new Date().getFullYear()}<br>
-                      Calle San Marcos s/n, CP 21005, Huelva, España<br>
+                      Calle de Los Marismeños, 6, Huelva<br>
                       Has recibido este email porque te suscribiste a las comunicaciones informativas de nuestra congregación.
                     </p>
                     <p style="margin: 0;">
@@ -476,9 +495,12 @@ export default function AdminNewsletter() {
                 <!-- Header Logo -->
                 <tr>
                   <td style="background-color: #162a45; padding: 32px 40px; text-align: left; color: #ffffff; border-bottom: 4px solid #dfb23f;">
-                    <div style="font-size: 24px; font-weight: bold; font-family: 'Helvetica Neue', Arial, sans-serif;">
-                      <span style="color: #ffffff;">Huelva</span><span style="color: #dfb23f; font-weight: 300;">Church</span>
-                    </div>
+                    ${newsletterLogoUrl 
+                      ? `<img src="${newsletterLogoUrl}" alt="Huelva Church" style="max-height: 40px; display: block;" />`
+                      : `<div style="font-size: 24px; font-weight: bold; font-family: 'Helvetica Neue', Arial, sans-serif;">
+                           <span style="color: #ffffff;">Huelva</span><span style="color: #dfb23f; font-weight: 300;">Church</span>
+                         </div>`
+                    }
                   </td>
                 </tr>
                 
@@ -505,9 +527,43 @@ export default function AdminNewsletter() {
                 <!-- Contact Footer Links -->
                 <tr>
                   <td style="background-color: #f8fafc; border-top: 1px solid #edf2f7; padding: 32px; text-align: center;">
+                    <!-- Social Media Icons -->
+                    <table border="0" cellpadding="0" cellspacing="0" align="center" style="margin-bottom: 24px;">
+                      <tr>
+                        <td style="padding: 0 6px;">
+                          <a href="https://www.instagram.com/huelvachurch/" target="_blank" style="text-decoration: none;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="44" height="44" style="background-color: #ffffff; border: 1px solid #edf2f7; border-radius: 12px;">
+                              <tr><td align="center" valign="middle"><img src="https://img.icons8.com/ios-glyphs/30/94a3b8/instagram-new.png" alt="Instagram" width="20" height="20" style="display: block;" /></td></tr>
+                            </table>
+                          </a>
+                        </td>
+                        <td style="padding: 0 6px;">
+                          <a href="https://www.facebook.com/huelvachurch" target="_blank" style="text-decoration: none;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="44" height="44" style="background-color: #ffffff; border: 1px solid #edf2f7; border-radius: 12px;">
+                              <tr><td align="center" valign="middle"><img src="https://img.icons8.com/ios-glyphs/30/94a3b8/facebook-new.png" alt="Facebook" width="20" height="20" style="display: block;" /></td></tr>
+                            </table>
+                          </a>
+                        </td>
+                        <td style="padding: 0 6px;">
+                          <a href="https://www.youtube.com/@huelvachurch" target="_blank" style="text-decoration: none;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="44" height="44" style="background-color: #ffffff; border: 1px solid #edf2f7; border-radius: 12px;">
+                              <tr><td align="center" valign="middle"><img src="https://img.icons8.com/ios-glyphs/30/94a3b8/youtube-play.png" alt="YouTube" width="20" height="20" style="display: block;" /></td></tr>
+                            </table>
+                          </a>
+                        </td>
+                        <td style="padding: 0 6px;">
+                          <a href="https://wa.me/34600000000" target="_blank" style="text-decoration: none;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="44" height="44" style="background-color: #ffffff; border: 1px solid #edf2f7; border-radius: 12px;">
+                              <tr><td align="center" valign="middle"><img src="https://img.icons8.com/ios-glyphs/30/94a3b8/whatsapp.png" alt="WhatsApp" width="20" height="20" style="display: block;" /></td></tr>
+                            </table>
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+
                     <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; color: #94a3b8; line-height: 1.6; margin: 0 0 16px 0;">
                       HuelvaChurch &copy; ${new Date().getFullYear()}<br>
-                      Calle San Marcos s/n, CP 21005, Huelva, España<br>
+                      Calle de Los Marismeños, 6, Huelva<br>
                       Has recibido este email porque te suscribiste a las comunicaciones de nuestra congregación.
                     </p>
                     <p style="margin: 0;">
@@ -531,22 +587,40 @@ export default function AdminNewsletter() {
     if (!newEmail.trim()) return;
     setSubmittingSub(true);
     try {
-      // Check if email already exists
-      const q = query(collection(db, 'subscribers'), where('email', '==', newEmail.toLowerCase().trim()));
-      const snap = await getDocs(q);
-      
-      if (!snap.empty) {
-        alert('Este correo eléctrico ya está registrado como suscriptor.');
+      const emails = newEmail.split(/[\n,;]+/).map(em => em.trim().toLowerCase()).filter(em => em && em.includes('@'));
+      if (emails.length === 0) {
+        alert('No se encontraron correos electrónicos válidos.');
         setSubmittingSub(false);
         return;
       }
 
-      await addDoc(collection(db, 'subscribers'), {
-        email: newEmail.toLowerCase().trim(),
-        active: true,
-        subscribedAt: serverTimestamp()
-      });
+      let addedCount = 0;
+      let existingCount = 0;
+
+      for (const email of emails) {
+        // Check if email already exists
+        const q = query(collection(db, 'subscribers'), where('email', '==', email));
+        const snap = await getDocs(q);
+        
+        if (!snap.empty) {
+          existingCount++;
+          continue;
+        }
+
+        await addDoc(collection(db, 'subscribers'), {
+          email: email,
+          active: true,
+          subscribedAt: serverTimestamp()
+        });
+        addedCount++;
+      }
+      
       setNewEmail('');
+      if (emails.length === 1 && existingCount === 1) {
+        alert('Este correo electrónico ya está registrado como suscriptor.');
+      } else if (emails.length > 1) {
+        alert(`Se han añadido ${addedCount} nuevos suscriptores. ${existingCount > 0 ? `(${existingCount} ya estaban registrados o eran inválidos)` : ''}`);
+      }
     } catch (error) {
       console.error(error);
       alert('Error al añadir suscritor en Firestore.');
@@ -855,7 +929,7 @@ export default function AdminNewsletter() {
         </div>
 
         {/* Administration Tabs */}
-        <div className="flex border-b border-slate-200 mb-8 overflow-x-auto gap-2">
+        <div className="flex flex-col md:flex-row border-b border-slate-200 mb-8 gap-2">
           <button 
             onClick={() => setActiveTab('build')}
             className={`flex items-center gap-2 py-4 px-6 border-b-2 font-bold text-sm tracking-wide uppercase transition-all whitespace-nowrap ${activeTab === 'build' ? 'border-secondary text-secondary' : 'border-transparent text-primary/50 hover:text-primary'}`}
@@ -1127,7 +1201,7 @@ export default function AdminNewsletter() {
                         disabled={isSaving}
                         className="bg-slate-100 hover:bg-slate-200 text-primary border border-slate-200/50 py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2"
                       >
-                        {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                        {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
                         Guardar Borrador
                       </button>
 
@@ -1137,11 +1211,7 @@ export default function AdminNewsletter() {
                         disabled={isSaving || isBroadcasting || (shouldSchedule && !scheduledAt)}
                         className={`text-white font-bold py-3.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 uppercase text-xs tracking-wider ${shouldSchedule ? 'bg-[#dfb23f] hover:bg-[#c99e32] text-primary' : 'bg-emerald-600 hover:bg-emerald-700'}`}
                       >
-                        {shouldSchedule ? (
-                          isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Clock className="w-4 h-4" />
-                        ) : (
-                          isBroadcasting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />
-                        )}
+                        {(isSaving || isBroadcasting) && <Loader2 className="w-4 h-4 animate-spin" />}
                         {shouldSchedule ? 'Programar Envío' : `Enviar Ahora (${subscribers.filter(s => s.active).length})`}
                       </button>
                     </div>
@@ -1195,24 +1265,23 @@ export default function AdminNewsletter() {
             >
               
               {/* Form Manual Add */}
-              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col md:flex-row justify-between items-center gap-6">
-                <div>
-                  <h3 className="text-xl font-kenao text-primary">Añadir Suscriptor Manualmente</h3>
-                  <p className="text-primary/60 text-xs">Agrega nuevas direcciones de correo a la base de datos de envíos de boletines.</p>
+              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                <div className="w-full md:w-1/3">
+                  <h3 className="text-xl font-kenao text-primary">Añadir Suscriptores Manualmente</h3>
+                  <p className="text-primary/60 text-xs mt-2">Agrega nuevas direcciones de correo a la base de datos de envíos. Puedes añadir varios correos separados por comas o líneas (ej. para importar 60 correos masivamente).</p>
                 </div>
-                <form onSubmit={handleAddSubscriber} className="flex gap-2 w-full md:w-auto shrink-0">
-                  <input 
-                    type="email"
+                <form onSubmit={handleAddSubscriber} className="flex flex-col md:flex-row gap-4 w-full md:w-2/3 shrink-0 items-end md:items-start">
+                  <textarea 
                     required
-                    placeholder="ejemplo@correo.com"
-                    className="px-4 py-3 rounded-xl border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-secondary min-w-[260px]"
+                    placeholder="ejemplo1@correo.com, ejemplo2@correo.com..."
+                    className="px-4 py-3 rounded-xl border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-secondary w-full min-h-[100px] resize-y"
                     value={newEmail}
                     onChange={(e) => setNewEmail(e.target.value)}
-                  />
+                  ></textarea>
                   <button 
                     type="submit"
                     disabled={submittingSub}
-                    className="bg-primary text-white font-bold px-6 py-3 rounded-xl hover:bg-secondary hover:text-primary transition-all uppercase text-xs tracking-wider flex items-center gap-2 disabled:opacity-50"
+                    className="bg-primary text-white shrink-0 font-bold px-6 py-4 rounded-xl hover:bg-secondary hover:text-primary transition-all uppercase text-xs tracking-wider flex items-center justify-center gap-2 disabled:opacity-50 w-full md:w-auto"
                   >
                     {submittingSub ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                     Registrar

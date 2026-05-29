@@ -6,6 +6,7 @@ import Markdown from 'react-markdown';
 import { Helmet } from 'react-helmet-async';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
+import { getOptimizedImageUrl } from '../utils/drive';
 
 interface Post {
   id: string;
@@ -83,7 +84,7 @@ export default function ActividadDetalle() {
             </div>
           </div>
 
-          <h1 className="text-5xl md:text-7xl font-kenao text-primary mb-8 leading-tight">
+          <h1 className="text-3xl md:text-5xl font-kenao text-primary mb-8 leading-tight">
             {post.title}
           </h1>
 
@@ -93,7 +94,7 @@ export default function ActividadDetalle() {
 
           <div className="aspect-video rounded-[3rem] overflow-hidden mb-16 shadow-2xl bg-slate-100">
             {post.imageUrl ? (
-              <img src={post.imageUrl} alt={post.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              <img src={getOptimizedImageUrl(post.imageUrl)} alt={post.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-primary/10">
                 <Tag className="w-24 h-24" />
@@ -101,7 +102,7 @@ export default function ActividadDetalle() {
             )}
           </div>
 
-          <div className="prose prose-xl prose-slate max-w-none mb-16">
+          <div className="prose prose-xl max-w-none mb-16 prose-headings:text-primary prose-a:text-secondary prose-blockquote:text-primary prose-blockquote:border-l-primary prose-strong:text-primary prose-p:text-primary/90 prose-li:text-primary/90">
             <div className="markdown-body">
               <Markdown>{post.content}</Markdown>
             </div>
@@ -116,10 +117,49 @@ export default function ActividadDetalle() {
                 </span>
               ))}
             </div>
-            <button className="flex items-center gap-2 bg-slate-50 text-primary/60 px-6 py-3 rounded-2xl font-bold hover:bg-secondary hover:text-primary transition-all">
-              <Share2 className="w-5 h-5" />
-              Compartir
-            </button>
+            <div className="flex items-center gap-4">
+              <button 
+                onClick={() => {
+                  const url = window.location.href;
+                  const text = `¡Mira esta actividad de Huelva Church! ${post.title}`;
+                  if (navigator.share) {
+                    navigator.share({
+                      title: post.title,
+                      text: text,
+                      url: url,
+                    }).catch(console.error);
+                  } else {
+                    navigator.clipboard.writeText(url);
+                    alert('¡Enlace copiado al portapapeles!');
+                  }
+                }}
+                className="flex items-center gap-2 bg-slate-50 text-primary/60 px-6 py-3 rounded-2xl font-bold hover:bg-secondary hover:text-primary transition-all"
+                title="Compartir (Copia el enlace o usa el menú nativo)"
+              >
+                <Share2 className="w-5 h-5" />
+                Compartir
+              </button>
+              
+              <a 
+                href={`https://wa.me/?text=${encodeURIComponent(`¡Mira esta actividad de Huelva Church! ${post.title} - ${window.location.href}`)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center w-12 h-12 bg-green-50 text-green-600 rounded-2xl hover:bg-green-500 hover:text-white transition-all hover:scale-105"
+                title="Compartir en WhatsApp"
+              >
+                <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+              </a>
+
+              <a 
+                href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl hover:bg-blue-600 hover:text-white transition-all hover:scale-105"
+                title="Compartir en Facebook"
+              >
+                <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"></path></svg>
+              </a>
+            </div>
           </div>
         </motion.div>
       </div>

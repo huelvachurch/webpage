@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Menu, X, Heart, LogIn, LogOut, Shield, MessageSquare, User as UserIcon, GraduationCap, Layout, Users, Globe, Mail } from 'lucide-react';
+import { Menu, X, Heart, LogIn, LogOut, Shield, MessageSquare, User as UserIcon, GraduationCap, Layout, Users, Globe, Mail, Settings } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { loginWithGoogle, logout } from '../firebase';
 import { useTranslation } from 'react-i18next';
@@ -199,14 +199,24 @@ export default function Navbar() {
                           )}
 
                           {isAdmin && (
-                            <Link 
-                              onClick={() => setIsUserMenuOpen(false)}
-                              to="/admin/usuarios" 
-                              className="flex items-center gap-3 px-4 py-2.5 text-left text-sm rounded-lg hover:bg-slate-50 text-primary font-medium transition-colors"
-                            >
-                              <Shield className="w-5 h-5 text-primary/60" />
-                              {t('nav.adminUsers')}
-                            </Link>
+                            <>
+                              <Link 
+                                onClick={() => setIsUserMenuOpen(false)}
+                                to="/admin/usuarios" 
+                                className="flex items-center gap-3 px-4 py-2.5 text-left text-sm rounded-lg hover:bg-slate-50 text-primary font-medium transition-colors"
+                              >
+                                <Shield className="w-5 h-5 text-primary/60" />
+                                {t('nav.adminUsers')}
+                              </Link>
+                              <Link 
+                                onClick={() => setIsUserMenuOpen(false)}
+                                to="/admin/ajustes" 
+                                className="flex items-center gap-3 px-4 py-2.5 text-left text-sm rounded-lg hover:bg-slate-50 text-primary font-medium transition-colors"
+                              >
+                                <Settings className="w-5 h-5 text-primary/60" />
+                                Ajustes
+                              </Link>
+                            </>
                           )}
 
                           <div className="h-px bg-slate-50 my-1"></div>
@@ -326,10 +336,16 @@ export default function Navbar() {
                     </>
                   )}
                   {isAdmin && (
-                    <Link to="/admin/usuarios" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
-                      <Shield className="w-5 h-5 shrink-0" />
-                      {t('nav.adminUsers')}
-                    </Link>
+                    <>
+                      <Link to="/admin/usuarios" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
+                        <Shield className="w-5 h-5 shrink-0" />
+                        {t('nav.adminUsers')}
+                      </Link>
+                      <Link to="/admin/ajustes" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
+                        <Settings className="w-5 h-5 shrink-0" />
+                        Ajustes
+                      </Link>
+                    </>
                   )}
                   <button 
                     onClick={() => logout()}

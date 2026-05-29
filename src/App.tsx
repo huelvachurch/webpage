@@ -15,6 +15,7 @@ import AdminComunicaciones from './pages/admin/AdminComunicaciones';
 import AdminUsuarios from './pages/admin/AdminUsuarios';
 import AdminCursos from './pages/admin/AdminCursos';
 import AdminNewsletter from './pages/admin/AdminNewsletter';
+import AdminSettings from './pages/admin/AdminSettings';
 import Cursos from './pages/Cursos';
 import MisCursos from './pages/MisCursos';
 import Legal from './pages/Legal';
@@ -58,6 +59,7 @@ export default function App() {
                 <Route path="/admin/celulas" element={<AdminCelulas />} />
                 <Route path="/admin/cursos" element={<AdminCursos />} />
                 <Route path="/admin/newsletter" element={<AdminNewsletter />} />
+                <Route path="/admin/ajustes" element={<AdminSettings />} />
               </Routes>
             </main>
             <Footer />

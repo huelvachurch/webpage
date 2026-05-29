@@ -1,9 +1,11 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useGlobalSettings } from '../utils/useSettings';
 
 export default function Footer() {
   const { t } = useTranslation();
+  const { meetingTime } = useGlobalSettings();
 
   return (
     <footer className="bg-primary text-white/70 py-12 border-t border-white/10">
@@ -31,7 +33,7 @@ export default function Footer() {
           <div>
             <h4 className="text-white font-medium mb-4 uppercase tracking-wider text-sm">{t('home.mainMeeting')}</h4>
             <ul className="space-y-2 text-sm">
-              <li>{t('home.meetingTime')}</li>
+              <li>{meetingTime}</li>
             </ul>
           </div>
         </div>

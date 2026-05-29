@@ -28,6 +28,8 @@ import {
 import { Link } from 'react-router-dom';
 import { collection, query, where, orderBy, limit, onSnapshot, addDoc, getDocs, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
+import { useGlobalSettings } from '../utils/useSettings';
+import { getOptimizedImageUrl } from '../utils/drive';
 
 interface Post {
   id: string;
@@ -41,6 +43,7 @@ interface Post {
 
 export default function Home() {
   const { t, i18n } = useTranslation();
+  const { meetingTime } = useGlobalSettings();
   const currentLang = i18n.language.substring(0, 2);
 
   const [featuredPosts, setFeaturedPosts] = useState<Post[]>([]);
@@ -276,7 +279,7 @@ export default function Home() {
               </div>
               <div>
                 <p className="text-xs text-secondary uppercase tracking-wider font-bold mb-1">{t('home.mainMeeting')}</p>
-                <p className="text-xl font-kenao leading-tight">{t('home.meetingTime')}</p>
+                <p className="text-xl font-kenao leading-tight">{meetingTime}</p>
               </div>
             </div>
           </div>
@@ -529,7 +532,7 @@ export default function Home() {
                 <div className="h-56 overflow-hidden relative bg-slate-100">
                   {post.imageUrl ? (
                     <img 
-                      src={post.imageUrl} 
+                      src={getOptimizedImageUrl(post.imageUrl)} 
                       alt={(post as any)[`title_${currentLang}`] || post.title} 
                       className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
                       referrerPolicy="no-referrer"

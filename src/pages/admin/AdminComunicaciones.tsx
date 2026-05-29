@@ -7,6 +7,7 @@ import { useAuth } from '../../AuthContext';
 import { useNavigate } from 'react-router-dom';
 import Markdown from 'react-markdown';
 import { useTranslation } from 'react-i18next';
+import { getOptimizedImageUrl } from '../../utils/drive';
 
 interface Post {
   id: string;
@@ -269,15 +270,6 @@ export default function AdminComunicaciones() {
     }
   };
 
-  const transformDriveUrl = (url: string) => {
-    if (!url) return url;
-    const match = url.match(/drive\.google\.com\/file\/d\/(.*?)\//) || url.match(/drive\.google\.com\/open\?id=(.*?)$/) || url.match(/drive\.google\.com\/file\/d\/(.*?)$/);
-    if (match && match[1]) {
-      return `https://drive.google.com/uc?export=view&id=${match[1]}`;
-    }
-    return url;
-  };
-
   const insertTextAtCursor = (prefix: string, suffix: string = '') => {
     const textarea = document.getElementById('markdown-editor') as HTMLTextAreaElement;
     if (!textarea) return;
@@ -319,7 +311,7 @@ export default function AdminComunicaciones() {
     }
 
     // Transform Google Drive links if present
-    submissionData.imageUrl = transformDriveUrl(submissionData.imageUrl);
+    submissionData.imageUrl = getOptimizedImageUrl(submissionData.imageUrl);
 
     try {
       if (editingPost) {
@@ -807,13 +799,13 @@ export default function AdminComunicaciones() {
                           Idioma: {activeLang.toUpperCase()}
                         </span>
                       </div>
-                      <h1 className="text-4xl font-kenao text-primary mb-4">{currentTitle || 'Título de la publicación'}</h1>
+                      <h1 className="text-3xl md:text-5xl font-kenao text-primary mb-4">{currentTitle || 'Título de la publicación'}</h1>
                       {formData.imageUrl && (
                         <div className="aspect-video rounded-3xl overflow-hidden mb-8 bg-slate-100">
-                          <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          <img src={getOptimizedImageUrl(formData.imageUrl)} alt="Preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         </div>
                       )}
-                      <div className="prose prose-slate max-w-none text-primary/80 leading-relaxed">
+                      <div className="prose max-w-none text-primary/80 leading-relaxed prose-headings:text-primary prose-a:text-secondary prose-blockquote:text-primary prose-blockquote:border-l-primary prose-strong:text-primary">
                         <Markdown>{currentContent || '*Sin contenido aún*'}</Markdown>
                       </div>
                     </div>

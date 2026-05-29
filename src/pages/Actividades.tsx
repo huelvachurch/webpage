@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { useTranslation } from 'react-i18next';
+import { getOptimizedImageUrl } from '../utils/drive';
 
 interface Post {
   id: string;
@@ -88,7 +89,7 @@ export default function Actividades() {
           className="text-center mb-16"
         >
           <h2 className="text-secondary tracking-wider uppercase text-sm font-bold mb-4">Blog & Noticias</h2>
-          <h1 className="text-5xl md:text-6xl font-kenao text-primary mb-6">{t('activities.title')}</h1>
+          <h1 className="text-4xl md:text-5xl font-kenao text-primary mb-6">{t('activities.title')}</h1>
           <p className="text-primary/70 text-xl max-w-3xl mx-auto leading-relaxed">
             {t('activities.desc')}
           </p>
@@ -137,7 +138,7 @@ export default function Actividades() {
               <div className="h-64 overflow-hidden relative bg-slate-100">
                 {post.imageUrl ? (
                   <img 
-                    src={post.imageUrl} 
+                    src={getOptimizedImageUrl(post.imageUrl)} 
                     alt={getPostTitle(post)} 
                     className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
                     referrerPolicy="no-referrer"

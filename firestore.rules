@@ -166,5 +166,10 @@ service cloud.firestore {
       allow update: if isComunicador() && isValidNewsletter(request.resource.data);
       allow delete: if isComunicador();
     }
+
+    match /settings/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
   }
 }
