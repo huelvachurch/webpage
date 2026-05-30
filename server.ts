@@ -67,7 +67,8 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
   // Image proxy for Google Drive and other external images
   app.get("/api/image-proxy", async (req, res) => {
@@ -167,7 +168,7 @@ Notas sobre los campos:
       }
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
+        model: 'gemini-2.5-flash',
         contents,
         config: {
           responseMimeType: "application/json"
@@ -215,7 +216,7 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
       contents.push(`Aquí están las instrucciones o el evento del que hacer el comunicado:\n${prompt}`);
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
+        model: 'gemini-2.5-flash',
         contents,
         config: {
           responseMimeType: "application/json"

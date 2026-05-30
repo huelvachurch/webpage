@@ -11,7 +11,6 @@ export default function AdminSettings() {
   const [saving, setSaving] = useState(false);
   
   const [meetingTime, setMeetingTime] = useState('Domingos a las 18:30h');
-  const [newsletterLogoUrl, setNewsletterLogoUrl] = useState('');
 
   useEffect(() => {
     if (!isAuthReady || !user) return;
@@ -23,7 +22,6 @@ export default function AdminSettings() {
         if (snap.exists()) {
           const data = snap.data();
           if (data.meetingTime) setMeetingTime(data.meetingTime);
-          if (data.newsletterLogoUrl) setNewsletterLogoUrl(data.newsletterLogoUrl);
         }
       } catch (err) {
         console.error(err);
@@ -39,8 +37,7 @@ export default function AdminSettings() {
     setSaving(true);
     try {
       await setDoc(doc(db, 'settings', 'general'), {
-        meetingTime: meetingTime,
-        newsletterLogoUrl: newsletterLogoUrl
+        meetingTime: meetingTime
       }, { merge: true });
       alert('Ajustes guardados correctamente.');
     } catch (err) {
@@ -84,19 +81,6 @@ export default function AdminSettings() {
                     placeholder="Ej. Domingos a las 18:30h"
                   />
                   <p className="text-xs text-primary/40 mt-2">Este horario aparecerá en la página de Inicio y en las plantillas de los boletines semanales.</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-primary/70 mb-2 uppercase tracking-wide">
-                    Logo para Boletines Newsletter (URL)
-                  </label>
-                  <input 
-                    type="url" 
-                    value={newsletterLogoUrl}
-                    onChange={e => setNewsletterLogoUrl(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-secondary text-primary"
-                    placeholder="https://tudominio.com/logo.png"
-                  />
-                  <p className="text-xs text-primary/40 mt-2">Recomendación: Sube un archivo PNG de unos 400px o 600px de ancho con fondo transparente y pega el enlace aquí. (Puedes subirlo temporalmente creando una Publicación falsa y copiando el enlace a la imagen, o usar Google Drive).</p>
                 </div>
               </div>
             </div>

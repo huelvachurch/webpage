@@ -49,7 +49,7 @@ export default function AdminNewsletter() {
   const { user, roles, loading, isAuthReady } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { meetingTime, newsletterLogoUrl } = useGlobalSettings();
+  const { meetingTime } = useGlobalSettings();
 
   // Tabs
   const [activeTab, setActiveTab] = useState<'build' | 'subscribers' | 'history'>('build');
@@ -330,7 +330,7 @@ export default function AdminNewsletter() {
       });
       setPreviewHtml(html);
     }
-  }, [campaignType, sermonImageUrl, sermonDescription, isSantaCena, selectedPostIds, posts, specialSubject, specialContent, specialButtonText, specialButtonUrl, newsletterLogoUrl]);
+  }, [campaignType, sermonImageUrl, sermonDescription, isSantaCena, selectedPostIds, posts, specialSubject, specialContent, specialButtonText, specialButtonUrl]);
 
   // HTML Compiler: Weekly Sunday Reminders
   function compileWeeklyEmail(config: { sermonImageUrl: string; sermonDescription: string; isSantaCena: boolean; articles: Post[] }) {
@@ -372,10 +372,7 @@ export default function AdminNewsletter() {
                 <tr>
                   <td style="background-color: #162a45; padding: 40px; text-align: center; color: #ffffff;">
                     <!-- Logo Header -->
-                    ${newsletterLogoUrl 
-                      ? `<img src="${getOptimizedImageUrl(newsletterLogoUrl)}" alt="Huelva Church" style="max-height: 50px; margin-bottom: 8px; display: block; margin-left: auto; margin-right: auto;" />`
-                      : `<img src="${window.location.origin}/images/Logotipo%20Blanco.png" alt="Huelva Church" style="max-height: 50px; margin-bottom: 8px; display: block; margin-left: auto; margin-right: auto;" />`
-                    }
+                    <img src="${window.location.origin}/images/Logotipo%20Blanco.png" alt="Huelva Church" style="max-height: 50px; margin-bottom: 8px; display: block; margin-left: auto; margin-right: auto;" />
                     <p style="font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; color: rgba(255,255,255,0.6); margin: 0; font-family: 'Helvetica Neue', Arial, sans-serif;">Boletín de Fin de Semana</p>
                   </td>
                 </tr>
@@ -550,10 +547,7 @@ export default function AdminNewsletter() {
                 <!-- Header Logo -->
                 <tr>
                   <td style="background-color: #162a45; padding: 40px; text-align: center; color: #ffffff; border-bottom: 4px solid #dfb23f;">
-                    ${newsletterLogoUrl 
-                      ? `<img src="${getOptimizedImageUrl(newsletterLogoUrl)}" alt="Huelva Church" style="max-height: 50px; display: block; margin-left: auto; margin-right: auto;" />`
-                      : `<img src="${window.location.origin}/images/Logotipo%20Blanco.png" alt="Huelva Church" style="max-height: 50px; display: block; margin-left: auto; margin-right: auto;" />`
-                    }
+                    <img src="${window.location.origin}/images/Logotipo%20Blanco.png" alt="Huelva Church" style="max-height: 50px; display: block; margin-left: auto; margin-right: auto;" />
                   </td>
                 </tr>
                 
