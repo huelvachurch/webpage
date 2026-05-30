@@ -330,7 +330,7 @@ export default function AdminNewsletter() {
       });
       setPreviewHtml(html);
     }
-  }, [campaignType, sermonImageUrl, sermonDescription, isSantaCena, selectedPostIds, posts, specialSubject, specialContent, specialButtonText, specialButtonUrl]);
+  }, [campaignType, sermonImageUrl, sermonDescription, isSantaCena, selectedPostIds, posts, specialSubject, specialContent, specialButtonText, specialButtonUrl, newsletterLogoUrl]);
 
   // HTML Compiler: Weekly Sunday Reminders
   function compileWeeklyEmail(config: { sermonImageUrl: string; sermonDescription: string; isSantaCena: boolean; articles: Post[] }) {
@@ -360,6 +360,7 @@ export default function AdminNewsletter() {
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <base href="${window.location.origin}/" />
         <title>Huelva Church • Boletín Semanal</title>
       </head>
       <body style="background-color: #f8fafc; margin: 0; padding: 0; -webkit-text-size-adjust: 100%;">
@@ -372,10 +373,8 @@ export default function AdminNewsletter() {
                   <td style="background-color: #162a45; padding: 40px; text-align: center; color: #ffffff;">
                     <!-- Logo Header -->
                     ${newsletterLogoUrl 
-                      ? `<img src="${newsletterLogoUrl}" alt="Huelva Church" style="max-height: 50px; margin-bottom: 8px; display: block; margin-left: auto; margin-right: auto;" />`
-                      : `<div style="font-size: 28px; font-weight: bold; letter-spacing: -0.5px; margin-bottom: 4px; font-family: 'Helvetica Neue', Arial, sans-serif;">
-                           <span style="color: #ffffff;">Huelva</span><span style="color: #dfb23f; font-weight: 300;">Church</span>
-                         </div>`
+                      ? `<img src="${getOptimizedImageUrl(newsletterLogoUrl)}" alt="Huelva Church" style="max-height: 50px; margin-bottom: 8px; display: block; margin-left: auto; margin-right: auto;" />`
+                      : `<img src="${window.location.origin}/images/Logotipo%20Blanco.png" alt="Huelva Church" style="max-height: 50px; margin-bottom: 8px; display: block; margin-left: auto; margin-right: auto;" />`
                     }
                     <p style="font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; color: rgba(255,255,255,0.6); margin: 0; font-family: 'Helvetica Neue', Arial, sans-serif;">Boletín de Fin de Semana</p>
                   </td>
@@ -540,6 +539,7 @@ export default function AdminNewsletter() {
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <base href="${window.location.origin}/" />
         <title>${config.subject}</title>
       </head>
       <body style="background-color: #f8fafc; margin: 0; padding: 0; -webkit-text-size-adjust: 100%;">
@@ -551,10 +551,8 @@ export default function AdminNewsletter() {
                 <tr>
                   <td style="background-color: #162a45; padding: 40px; text-align: center; color: #ffffff; border-bottom: 4px solid #dfb23f;">
                     ${newsletterLogoUrl 
-                      ? `<img src="${newsletterLogoUrl}" alt="Huelva Church" style="max-height: 50px; display: block; margin-left: auto; margin-right: auto;" />`
-                      : `<div style="font-size: 28px; font-weight: bold; letter-spacing: -0.5px; font-family: 'Helvetica Neue', Arial, sans-serif;">
-                           <span style="color: #ffffff;">Huelva</span><span style="color: #dfb23f; font-weight: 300;">Church</span>
-                         </div>`
+                      ? `<img src="${getOptimizedImageUrl(newsletterLogoUrl)}" alt="Huelva Church" style="max-height: 50px; display: block; margin-left: auto; margin-right: auto;" />`
+                      : `<img src="${window.location.origin}/images/Logotipo%20Blanco.png" alt="Huelva Church" style="max-height: 50px; display: block; margin-left: auto; margin-right: auto;" />`
                     }
                   </td>
                 </tr>
@@ -1034,7 +1032,7 @@ export default function AdminNewsletter() {
                       onClick={() => setCampaignType('semanal')}
                       className={`py-3 px-4 rounded-xl font-bold text-xs uppercase tracking-wider transition-all border ${campaignType === 'semanal' ? 'bg-primary text-white border-primary shadow' : 'bg-slate-50 text-primary border-slate-200/60 hover:bg-slate-100'}`}
                     >
-                      Boletín Semanal (Sábados)
+                      Boletín Semanal
                     </button>
                     <button
                       type="button"
@@ -1317,7 +1315,7 @@ export default function AdminNewsletter() {
                       title="Newsletter HTML Preview"
                       srcDoc={previewHtml}
                       className="w-full h-full bg-white rounded-2xl border border-slate-200/50 shadow-inner"
-                      sandbox="allow-popups allow-popups-to-escape-sandbox"
+                      sandbox="allow-same-origin allow-scripts allow-popups"
                     />
                   </div>
                 </div>

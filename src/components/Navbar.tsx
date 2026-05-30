@@ -51,10 +51,7 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center">
           <Link to="/" className="flex items-center gap-3 group">
-            <div className="flex items-baseline gap-1">
-              <span className="text-3xl font-logo-huelva text-primary leading-none">Huelva</span>
-              <span className="text-2xl font-logo-church text-primary leading-none font-light">Church</span>
-            </div>
+            <img src="/images/Logotipo%20Azul.png" alt="Huelva Church" className="h-10 md:h-12 w-auto object-contain transition-all" />
           </Link>
 
           {/* Desktop Navigation */}

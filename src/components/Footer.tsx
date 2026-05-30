@@ -12,9 +12,8 @@ export default function Footer() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
           <div>
-            <div className="flex items-baseline gap-1 mb-4 text-white">
-              <span className="font-logo-huelva text-2xl">Huelva</span>
-              <span className="font-logo-church text-2xl font-light">Church</span>
+            <div className="mb-4">
+              <img src="/images/Logotipo%20Blanco.png" alt="Huelva Church" className="h-10 w-auto object-contain" />
             </div>
             <p className="text-sm leading-relaxed max-w-xs">
               {t('footer.desc')}
