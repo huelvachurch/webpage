@@ -183,6 +183,54 @@ Notas sobre los campos:
     }
   });
 
+  // Generate Newsletter with AI endpoint
+  app.post("/api/gemini/generate-newsletter", async (req, res) => {
+    try {
+      if (!ai) {
+        return res.status(500).json({ error: "Gemini API integration missing." });
+      }
+
+      const { prompt, hasPostContext } = req.body;
+
+      if (!prompt) {
+        return res.status(400).json({ error: "Missing prompt" });
+      }
+
+      const instruction = `Eres un redactor de contenido experto para comunicados de la Iglesia Cristiana Evangélica "Huelva Church". Tu rol es redactar un comunicado especial para ser enviado por correo electrónico a la congregación. El tono debe ser cálido, claro, pastoral y al mismo tiempo directo y fácil de leer.
+
+Instrucciones:
+${hasPostContext ? '- Usa el contexto provisto para redactar el evento/noticia, animando a la iglesia a participar.' : '- Redacta un correo completo basado exclusivamente en el texto provisto. Desarrolla la idea con un lenguaje cordial y familiar.'}
+- Devuelve un único objeto JSON con dos campos: "subject" (el asunto del correo) y "content" (el cuerpo del correo).
+- El "subject" debe ser breve e invitador.
+- El "content" debe usar formato HTML básico o texto plano con retornos de carro. Usa etiquetas HTML como <br/> o <p> o <b> si usas formato, pero mantén un aspecto limpio y directo.
+
+Genera el resultado en formato JSON con la siguiente estructura exacta:
+{
+  "subject": "...",
+  "content": "..."
+}`;
+
+      const contents: any[] = [];
+      contents.push(instruction);
+      contents.push(`Aquí están las instrucciones o el evento del que hacer el comunicado:\n${prompt}`);
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-pro-preview',
+        contents,
+        config: {
+          responseMimeType: "application/json"
+        }
+      });
+
+      const parsed = JSON.parse(response.text || '{}');
+      res.json(parsed);
+
+    } catch (error: any) {
+      console.error("Gemini Newsletter Generation Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Translation Endpoint
   app.post("/api/translate", async (req, res) => {
     try {

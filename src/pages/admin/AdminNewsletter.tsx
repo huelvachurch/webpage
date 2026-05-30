@@ -109,6 +109,7 @@ export default function AdminNewsletter() {
   const [sendTestEmail, setSendTestEmail] = useState(user?.email || 'huelvachurch@gmail.com');
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [isBroadcasting, setIsBroadcasting] = useState(false);
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [apiResponse, setApiResponse] = useState<{ success: boolean; realDelivery: boolean; details: string; messageId?: string } | null>(null);
 
   const isAdmin = roles.includes('admin');
@@ -248,6 +249,60 @@ export default function AdminNewsletter() {
     return () => clearInterval(interval);
   }, [history, subscribers, isAuthReady, user, isComunicador]);
 
+  // Generate Special Newsletter content with AI
+  const handleGenerateSpecialAI = async () => {
+    if (!specialContent.trim()) {
+      alert("Por favor, ingresa un contexto básico en el campo de 'Contenido' o selecciona una publicación para generar el comunicado.");
+      return;
+    }
+    
+    setIsGeneratingAI(true);
+    try {
+      let promptText = specialContent;
+      let hasPostContext = false;
+      
+      // If there are selected posts, extract their text to feed as context
+      if (selectedPostIds.length > 0) {
+        hasPostContext = true;
+        const postsContext = selectedPostIds.map(id => {
+          const post = posts.find(p => p.id === id);
+          return post ? `[Noticia Titulo: "${post.title.es}"] Contenido: ${post.content.es}` : '';
+        }).join('\n\n');
+        promptText = `${specialContent}\n\n=== Contexto de Publicaciones Seleccionadas ===\n${postsContext}`;
+        
+        // Auto-fill button with the first post URL if empty
+        if (!specialButtonUrl) {
+          const firstPost = posts.find(p => p.id === selectedPostIds[0]);
+          if (firstPost) {
+             setSpecialButtonUrl(`https://huelvachurch.com/post/${firstPost.slug}`);
+             if (!specialButtonText) setSpecialButtonText('Leer más');
+          }
+        }
+      }
+
+      const response = await fetch('/api/gemini/generate-newsletter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: promptText, hasPostContext })
+      });
+
+      if (!response.ok) {
+        throw new Error('Error al generar el comunicado con IA');
+      }
+
+      const data = await response.json();
+      
+      if (data.subject) setSpecialSubject(data.subject);
+      if (data.content) setSpecialContent(data.content);
+
+    } catch (error) {
+      console.error(error);
+      alert("Hubo un error al generar el comunicado especial. Inténtalo de nuevo.");
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
+
   // Autofill test email once user object loads
   useEffect(() => {
     if (user?.email) {
@@ -364,7 +419,7 @@ export default function AdminNewsletter() {
                           <!--[if mso]>
                           <table border="0" cellpadding="0" cellspacing="0" width="100%"><tr><td width="33%" valign="top"><![endif]-->
                           <div style="display:inline-block; width:100%; max-width:180px; vertical-align:top; margin-bottom:16px;">
-                            <div style="background-color:#f8fafc; border:1px solid #edf2f7; padding:16px; border-radius:16px; min-height:160px; margin:0 4px; position:relative;">
+                            <div style="background-color:#f8fafc; border:1px solid #edf2f7; padding:16px; border-radius:16px; margin:0 4px; position:relative;">
                               <span style="font-size:24px; display:block; margin-bottom:8px;">🏠</span>
                               <h4 style="font-family:'Helvetica Neue', Arial, sans-serif; font-size:13px; color:#162a45; margin:0 0 4px 0; font-weight:bold;">Células de Hogar</h4>
                               <p style="font-family:'Helvetica Neue', Arial, sans-serif; font-size:11px; color:#64748b; margin:0 0 12px 0; line-height:1.4;">Conéctate con una familia de fe cerca de ti en Huelva.</p>
@@ -373,7 +428,7 @@ export default function AdminNewsletter() {
                           </div>
                           <!--[if mso]></td><td width="33%" valign="top"><![endif]-->
                           <div style="display:inline-block; width:100%; max-width:180px; vertical-align:top; margin-bottom:16px;">
-                            <div style="background-color:#f8fafc; border:1px solid #edf2f7; padding:16px; border-radius:16px; min-height:160px; margin:0 4px; position:relative;">
+                            <div style="background-color:#f8fafc; border:1px solid #edf2f7; padding:16px; border-radius:16px; margin:0 4px; position:relative;">
                               <span style="font-size:24px; display:block; margin-bottom:8px;">🙏</span>
                               <h4 style="font-family:'Helvetica Neue', Arial, sans-serif; font-size:13px; color:#162a45; margin:0 0 4px 0; font-weight:bold;">Noches de Oración</h4>
                               <p style="font-family:'Helvetica Neue', Arial, sans-serif; font-size:11px; color:#64748b; margin:0 0 12px 0; line-height:1.4;">Únete de lunes a jueves a las 23:00h vía Google Meet.</p>
@@ -382,7 +437,7 @@ export default function AdminNewsletter() {
                           </div>
                           <!--[if mso]></td><td width="33%" valign="top"><![endif]-->
                           <div style="display:inline-block; width:100%; max-width:180px; vertical-align:top; margin-bottom:16px;">
-                            <div style="background-color:#f8fafc; border:1px solid #edf2f7; padding:16px; border-radius:16px; min-height:160px; margin:0 4px; position:relative;">
+                            <div style="background-color:#f8fafc; border:1px solid #edf2f7; padding:16px; border-radius:16px; margin:0 4px; position:relative;">
                               <span style="font-size:24px; display:block; margin-bottom:8px;">📻</span>
                               <h4 style="font-family:'Helvetica Neue', Arial, sans-serif; font-size:13px; color:#162a45; margin:0 0 4px 0; font-weight:bold;">Radio Online</h4>
                               <p style="font-family:'Helvetica Neue', Arial, sans-serif; font-size:11px; color:#64748b; margin:0 0 12px 0; line-height:1.4;">Sintoniza y descarga la App en tu dispositivo Android.</p>
@@ -436,7 +491,7 @@ export default function AdminNewsletter() {
                     <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; color: #94a3b8; line-height: 1.6; margin: 0 0 16px 0;">
                       HuelvaChurch &copy; ${new Date().getFullYear()}<br>
                       Calle de Los Marismeños, 6, Huelva<br>
-                      Has recibido este email porque te suscribiste a las comunicaciones informativas de nuestra congregación.
+                      Has recibido este email porque estás suscrito a las comunicaciones informativas de nuestra congregación.
                     </p>
                     <p style="margin: 0;">
                       <a href="#" style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #162a45; font-weight: bold; text-decoration: underline; margin: 0 8px;">Administrar Suscripción</a> • 
@@ -494,10 +549,10 @@ export default function AdminNewsletter() {
               <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; border-radius: 24px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.02); border: 1px solid #edf2f7;">
                 <!-- Header Logo -->
                 <tr>
-                  <td style="background-color: #162a45; padding: 32px 40px; text-align: left; color: #ffffff; border-bottom: 4px solid #dfb23f;">
+                  <td style="background-color: #162a45; padding: 40px; text-align: center; color: #ffffff; border-bottom: 4px solid #dfb23f;">
                     ${newsletterLogoUrl 
-                      ? `<img src="${newsletterLogoUrl}" alt="Huelva Church" style="max-height: 40px; display: block;" />`
-                      : `<div style="font-size: 24px; font-weight: bold; font-family: 'Helvetica Neue', Arial, sans-serif;">
+                      ? `<img src="${newsletterLogoUrl}" alt="Huelva Church" style="max-height: 50px; display: block; margin-left: auto; margin-right: auto;" />`
+                      : `<div style="font-size: 28px; font-weight: bold; letter-spacing: -0.5px; font-family: 'Helvetica Neue', Arial, sans-serif;">
                            <span style="color: #ffffff;">Huelva</span><span style="color: #dfb23f; font-weight: 300;">Church</span>
                          </div>`
                     }
@@ -519,7 +574,8 @@ export default function AdminNewsletter() {
                     <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 32px 0;">
                     <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #475569; font-style: italic; margin: 0; line-height: 1.5;">
                       Atentamente,<br>
-                      <strong>Equipo de Medios • Huelva Church</strong>
+                      <strong>Equipo de Comunicaciones</strong><br>
+                      <strong>Huelva Church</strong>
                     </p>
                   </td>
                 </tr>
@@ -564,7 +620,7 @@ export default function AdminNewsletter() {
                     <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; color: #94a3b8; line-height: 1.6; margin: 0 0 16px 0;">
                       HuelvaChurch &copy; ${new Date().getFullYear()}<br>
                       Calle de Los Marismeños, 6, Huelva<br>
-                      Has recibido este email porque te suscribiste a las comunicaciones de nuestra congregación.
+                      Has recibido este email porque estás suscrito a las comunicaciones de nuestra congregación.
                     </p>
                     <p style="margin: 0;">
                       <a href="#" style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #162a45; font-weight: bold; text-decoration: underline; margin: 0 8px;">Administrar Suscripción</a> • 
@@ -1105,11 +1161,26 @@ export default function AdminNewsletter() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-xs font-bold text-primary/60 block">Contenido del Comunicado (Soporta Markdown)</label>
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                        <label className="text-xs font-bold text-primary/60 block">Contenido del Comunicado (Soporta Markdown)</label>
+                        <button
+                          type="button"
+                          onClick={handleGenerateSpecialAI}
+                          disabled={isGeneratingAI}
+                          className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg hover:shadow-md transition-all self-start md:self-auto disabled:opacity-70"
+                        >
+                          {isGeneratingAI ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-3.5 h-3.5" />
+                          )}
+                          Generar con IA
+                        </button>
+                      </div>
                       <textarea 
                         rows={8}
                         className="w-full px-4 py-3 text-xs md:text-sm rounded-xl border border-slate-200 focus:ring-2 focus:ring-secondary outline-none transition-all font-mono leading-relaxed"
-                        placeholder="Redacta el contenido principal del email aquí..."
+                        placeholder="Redacta el contenido principal del email aquí. O si deseas, escribe un contexto básico (ej. 'Recuerda que este sábado habrá evento de comida') y presiona 'Generar con IA'."
                         value={specialContent}
                         onChange={(e) => setSpecialContent(e.target.value)}
                       />
