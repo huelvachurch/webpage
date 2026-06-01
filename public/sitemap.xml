@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <!-- Página de Inicio / Home -->
+  <url>
+    <loc>https://huelvachurch.com/</loc>
+    <lastmod>2026-06-01</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  
+  <!-- Quiénes Somos / Nosotros -->
+  <url>
+    <loc>https://huelvachurch.com/nosotros</loc>
+    <lastmod>2026-06-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  
+  <!-- Grupos de Conexión / Células -->
+  <url>
+    <loc>https://huelvachurch.com/celulas</loc>
+    <lastmod>2026-06-01</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  
+  <!-- Eventos y Actividades -->
+  <url>
+    <loc>https://huelvachurch.com/actividades</loc>
+    <lastmod>2026-06-01</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  
+  <!-- Dar / Donaciones / Diezmos -->
+  <url>
+    <loc>https://huelvachurch.com/dar</loc>
+    <lastmod>2026-06-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  
+  <!-- Formulario de Contacto -->
+  <url>
+    <loc>https://huelvachurch.com/contacto</loc>
+    <lastmod>2026-06-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  
+  <!-- Academia de Discipulado / Cursos -->
+  <url>
+    <loc>https://huelvachurch.com/cursos</loc>
+    <lastmod>2026-06-01</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  
+  <!-- Aviso Legal y Política de Privacidad -->
+  <url>
+    <loc>https://huelvachurch.com/legal</loc>
+    <lastmod>2026-06-01</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+</urlset>

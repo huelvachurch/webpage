@@ -1,0 +1,17 @@
+# https://www.robotstxt.org/
+# Configuración de rastreo optimizada para Huelva Church
+
+User-agent: *
+
+# Permitir indexar todo el contenido público
+Allow: /
+
+# Evitar que los rastreadores accedan y desperdicien presupuesto de rastreo en páginas privadas/admin
+Disallow: /admin/
+Disallow: /login
+Disallow: /mis-cursos
+Disallow: /lideres
+
+# Sitemap oficial para Google Search Console
+Sitemap: https://huelvachurch.com/sitemap.xml
+Sitemap: https://www.huelvachurch.com/sitemap.xml

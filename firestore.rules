@@ -67,6 +67,13 @@ service cloud.firestore {
       );
     }
 
+    function isLider() {
+      return isAuthenticated() && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 'lider' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles)
+      );
+    }
+
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'email', 'roles', 'status']) &&
              data.uid is string &&
@@ -110,6 +117,33 @@ service cloud.firestore {
              data.subject is string && data.subject.size() < 500 &&
              data.contentHtml is string && data.contentHtml.size() < 100000 &&
              data.status in ['draft', 'scheduled', 'sent', 'sending'];
+    }
+
+    function isValidMeetingReport(data) {
+      return data.keys().hasAll(['leaderId', 'leaderName', 'meetingDate', 'believersCount', 'nonBelieversCount', 'totalPresent', 'believersNames', 'nonBelieversNames']) &&
+             data.leaderId is string &&
+             data.leaderName is string &&
+             data.meetingDate is string &&
+             data.believersCount is int &&
+             data.nonBelieversCount is int &&
+             data.totalPresent is int &&
+             data.believersNames is string &&
+             data.nonBelieversNames is string;
+    }
+
+    function isValidLeaderAnnouncement(data) {
+      return data.keys().hasAll(['content', 'authorId', 'authorName']) &&
+             data.content is string && data.content.size() < 10000 &&
+             data.authorId is string &&
+             data.authorName is string;
+    }
+
+    function isValidCellStudy(data) {
+      return data.keys().hasAll(['title', 'link', 'authorId', 'authorName']) &&
+             data.title is string && data.title.size() < 250 &&
+             data.link is string && data.link.size() < 1000 &&
+             data.authorId is string &&
+             data.authorName is string;
     }
 
     // ===============================================================
@@ -170,6 +204,27 @@ service cloud.firestore {
     match /settings/{document=**} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    match /meeting_reports/{reportId} {
+      allow read: if isAdmin() || (isLider() && resource.data.leaderId == request.auth.uid);
+      allow create: if isLider() && isValidMeetingReport(request.resource.data) && request.resource.data.leaderId == request.auth.uid;
+      allow update: if isLider() && isValidMeetingReport(request.resource.data) && request.resource.data.leaderId == request.auth.uid && resource.data.leaderId == request.auth.uid;
+      allow delete: if isAdmin();
+    }
+
+    match /leader_announcements/{announcementId} {
+      allow read: if isLider();
+      allow create: if isAdmin() && isValidLeaderAnnouncement(request.resource.data);
+      allow update: if isAdmin() && isValidLeaderAnnouncement(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /cell_studies/{studyId} {
+      allow read: if isLider();
+      allow create: if isLider() && isValidCellStudy(request.resource.data);
+      allow update: if isLider() && isValidCellStudy(request.resource.data) && (resource.data.authorId == request.auth.uid || isAdmin());
+      allow delete: if isLider() && (resource.data.authorId == request.auth.uid || isAdmin());
     }
   }
 }

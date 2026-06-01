@@ -11,7 +11,7 @@ interface UserProfile {
   email: string;
   displayName: string;
   photoURL: string;
-  roles: ('admin' | 'comunicador' | 'profesor' | 'alumno')[];
+  roles: ('admin' | 'comunicador' | 'profesor' | 'alumno' | 'lider')[];
   status: 'pending' | 'active' | 'blocked';
   createdAt: any;
 }
@@ -70,6 +70,21 @@ export default function AdminUsuarios() {
         roles: newRoles,
         updatedAt: serverTimestamp()
       });
+
+      // Send email notification via endpoint
+      const targetUser = users.find(u => u.uid === uid);
+      if (targetUser) {
+        fetch("/api/admin/notify-role-change", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: targetUser.email,
+            displayName: targetUser.displayName,
+            roles: newRoles,
+            status: targetUser.status
+          })
+        }).catch(err => console.error("Error notifying role change:", err));
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
     }
@@ -82,6 +97,21 @@ export default function AdminUsuarios() {
         status: newStatus,
         updatedAt: serverTimestamp()
       });
+
+      // Send email notification via endpoint
+      const targetUser = users.find(u => u.uid === uid);
+      if (targetUser) {
+        fetch("/api/admin/notify-role-change", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: targetUser.email,
+            displayName: targetUser.displayName,
+            roles: targetUser.roles,
+            status: newStatus
+          })
+        }).catch(err => console.error("Error notifying status change:", err));
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
     }
@@ -101,6 +131,7 @@ export default function AdminUsuarios() {
       case 'comunicador': return 'bg-blue-100 text-blue-600 border-blue-200';
       case 'profesor': return 'bg-purple-100 text-purple-600 border-purple-200';
       case 'alumno': return 'bg-emerald-100 text-emerald-600 border-emerald-200';
+      case 'lider': return 'bg-amber-100 text-amber-600 border-amber-200';
       default: return 'bg-slate-100 text-slate-600 border-slate-200';
     }
   };
@@ -120,12 +151,13 @@ export default function AdminUsuarios() {
     comunicadores: users.filter(u => u.roles?.includes('comunicador')).length,
     profesores: users.filter(u => u.roles?.includes('profesor')).length,
     alumnos: users.filter(u => u.roles?.includes('alumno')).length,
+    lideres: users.filter(u => u.roles?.includes('lider')).length,
     pending: users.filter(u => u.status === 'pending').length,
   };
 
   if (loading || !isAuthReady) return <div className="pt-32 text-center">Cargando...</div>;
 
-  const availableRoles: UserProfile['roles'][number][] = ['admin', 'comunicador', 'profesor', 'alumno'];
+  const availableRoles: UserProfile['roles'][number][] = ['admin', 'comunicador', 'profesor', 'alumno', 'lider'];
 
   return (
     <div className="pt-32 pb-24 bg-slate-50 min-h-screen">
@@ -144,7 +176,7 @@ export default function AdminUsuarios() {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-7 gap-4 mb-8">
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
             <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-primary/40 mb-4">
               <Users className="w-5 h-5" />
@@ -182,6 +214,13 @@ export default function AdminUsuarios() {
           </div>
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
             <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 mb-4">
+              <Shield className="w-5 h-5 animate-pulse" />
+            </div>
+            <p className="text-2xl font-bold text-primary">{stats.lideres}</p>
+            <p className="text-xs text-primary/40 uppercase tracking-widest font-bold">Líderes</p>
+          </div>
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+            <div className="w-10 h-10 bg-slate-200 rounded-xl flex items-center justify-center text-primary/70 mb-4">
               <AlertCircle className="w-5 h-5" />
             </div>
             <p className="text-2xl font-bold text-primary">{stats.pending}</p>
@@ -211,6 +250,7 @@ export default function AdminUsuarios() {
             <option value="comunicador">Comunicadores</option>
             <option value="profesor">Profesores</option>
             <option value="alumno">Alumnos</option>
+            <option value="lider">Líderes</option>
           </select>
           <select 
             className="px-6 py-3 rounded-xl border border-slate-100 text-primary/60 outline-none focus:ring-2 focus:ring-secondary appearance-none bg-white"

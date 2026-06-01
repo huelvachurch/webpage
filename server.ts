@@ -331,6 +331,75 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
     }
   });
 
+  // Email Notification for User Role / Status change
+  app.post("/api/admin/notify-role-change", async (req, res) => {
+    try {
+      const { email, displayName, roles, status } = req.body;
+
+      if (!email) {
+        return res.status(400).json({ error: "Faltan campos obligatorios (email)" });
+      }
+
+      const formattedRoles = Array.isArray(roles) 
+        ? roles.map((r: string) => r.toUpperCase()).join(", ") 
+        : typeof roles === "string" ? roles : "ALUMNO";
+
+      const subject = `Actualización de tu cuenta en Huelva Church`;
+      
+      const contentHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #f1f5f9; border-radius: 16px;">
+          <div style="text-align: center; margin-bottom: 24px;">
+            <h1 style="color: #0c1a30; font-size: 24px; margin: 0;">Huelva Church</h1>
+            <p style="color: #b59410; font-size: 14px; margin: 4px 0 0 0; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">Comunidad & Formación</p>
+          </div>
+          
+          <div style="background-color: #f8fafc; padding: 24px; border-radius: 12px; margin-bottom: 24px;">
+            <p style="font-size: 16px; color: #334155; margin-top: 0;">¡Hola <strong>${displayName || 'Miembro'}</strong>!</p>
+            <p style="font-size: 14px; color: #475569; line-height: 1.6;">
+              Te escribimos para informarte que un administrador ha actualizado los detalles de tu cuenta en el portal de nuestra iglesia.
+            </p>
+            
+            <table style="width: 100%; border-collapse: collapse; margin-top: 16px;">
+              <tr style="border-bottom: 1px solid #e2e8f0;">
+                <td style="padding: 10px 0; font-size: 14px; color: #64748b; font-weight: bold;">Estado del Perfil:</td>
+                <td style="padding: 10px 0; font-size: 14px; color: #0f172a; text-align: right; font-weight: bold;">
+                  <span style="background-color: ${status === 'active' ? '#d1fae5' : '#fef3c7'}; color: ${status === 'active' ? '#065f46' : '#92400e'}; padding: 4px 10px; border-radius: 6px; font-size: 12px;">
+                    ${status === 'active' ? 'ACTIVO' : status === 'pending' ? 'PENDIENTE' : 'BLOQUEADO'}
+                  </span>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 10px 0; font-size: 14px; color: #64748b; font-weight: bold;">Roles Asignados:</td>
+                <td style="padding: 10px 0; font-size: 14px; color: #b59410; text-align: right; font-weight: bold;">
+                  ${formattedRoles}
+                </td>
+              </tr>
+            </table>
+          </div>
+          
+          <p style="font-size: 14px; color: #475569; line-height: 1.6;">
+            Si tienes dudas o deseas solicitar cambios adicionales, no dudes en ponerte en contacto con nosotros. Puedes empezar a disfrutar de nuestros servicios comunitarios e inscribirte a tus cursos ahora mismo.
+          </p>
+          
+          <div style="text-align: center; margin-top: 32px; border-top: 1px solid #f1f5f9; padding-top: 24px;">
+            <a href="${process.env.APP_URL || 'https://huelvachurch.com'}" style="background-color: #0c1a30; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: bold; display: inline-block;">
+              Acceder al Portal
+            </a>
+            <p style="color: #94a3b8; font-size: 11px; margin-top: 20px;">
+              Este es un correo electrónico de Huelva Church (huelvachurch@gmail.com).
+            </p>
+          </div>
+        </div>
+      `;
+
+      const result = await sendSingleEmail(email, subject, contentHtml);
+      res.json({ success: true, ...result });
+    } catch (error: any) {
+      console.error("Error sending role notification:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // YouTube Latest Video Endpoint
   app.get("/api/youtube/latest", async (req, res) => {
     try {
@@ -367,6 +436,193 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
       res.status(500).json({ error: error.message });
     }
   });
+
+  // RSS Feed for Featured Posts (Publicaciones Destacadas)
+  async function generateRssFeed(req: express.Request, res: express.Response) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+
+    if (!db) {
+      return res.status(500).send("Base de datos no inicializada");
+    }
+
+    try {
+      const lang = (req.query.lang as string || 'es').toLowerCase();
+      
+      // Query "featured == true" posts
+      const postsCol = collection(db, 'posts');
+      const q = query(postsCol, where("featured", "==", true));
+      const querySnapshot = await getDocs(q);
+      
+      const posts: any[] = [];
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        posts.push({ id: doc.id, ...data });
+      });
+
+      // Filter in memory for safety (preventing composite index failures if 'status' filter is direct)
+      // and sort descending by publishedAt
+      const publishedFeatured = posts
+        .filter(post => post.status === 'published')
+        .sort((a, b) => {
+          const tA = a.publishedAt?.toDate ? a.publishedAt.toDate().getTime() : (a.publishedAt?.seconds ? a.publishedAt.seconds * 1000 : 0);
+          const tB = b.publishedAt?.toDate ? b.publishedAt.toDate().getTime() : (b.publishedAt?.seconds ? b.publishedAt.seconds * 1000 : 0);
+          return tB - tA;
+        });
+
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      const host = req.get('host');
+      const baseUrl = `${protocol}://${host}`;
+
+      let xml = `<?xml version="1.0" encoding="UTF-8" ?>\n`;
+      xml += `<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">\n`;
+      xml += `<channel>\n`;
+      xml += `  <title>Huelva Church - Publicaciones Destacadas</title>\n`;
+      xml += `  <link>${baseUrl}</link>\n`;
+      xml += `  <description>Boletín de publicaciones destacadas de la Iglesia Cristiana Evangélica en Huelva</description>\n`;
+      xml += `  <language>${lang}</language>\n`;
+      
+      const lastBuildDate = publishedFeatured.length > 0 
+        ? (publishedFeatured[0].publishedAt?.toDate ? publishedFeatured[0].publishedAt.toDate().toUTCString() : new Date().toUTCString())
+        : new Date().toUTCString();
+      xml += `  <lastBuildDate>${lastBuildDate}</lastBuildDate>\n`;
+      xml += `  <atom:link href="${baseUrl}${req.originalUrl}" rel="self" type="application/rss+xml" />\n`;
+
+      publishedFeatured.forEach(post => {
+        // Form the localized text
+        let title = post.title;
+        let excerpt = post.excerpt;
+        let content = post.content;
+
+        if (lang === 'en') {
+          title = post.title_en || post.title;
+          excerpt = post.excerpt_en || post.excerpt;
+          content = post.content_en || post.content;
+        } else if (lang === 'pt') {
+          title = post.title_pt || post.title;
+          excerpt = post.excerpt_pt || post.excerpt;
+          content = post.content_pt || post.content;
+        }
+
+        const postUrl = `${baseUrl}/actividades/${post.id}`;
+        const pubDate = post.publishedAt?.toDate 
+          ? post.publishedAt.toDate().toUTCString() 
+          : (post.publishedAt?.seconds ? new Date(post.publishedAt.seconds * 1000).toUTCString() : new Date().toUTCString());
+
+        xml += `  <item>\n`;
+        xml += `    <title><![CDATA[${title || ''}]]></title>\n`;
+        xml += `    <link>${postUrl}</link>\n`;
+        xml += `    <guid isPermaLink="true">${postUrl}</guid>\n`;
+        xml += `    <pubDate>${pubDate}</pubDate>\n`;
+        if (excerpt) {
+          xml += `    <description><![CDATA[${excerpt}]]></description>\n`;
+        } else {
+          xml += `    <description><![CDATA[${content ? content.substring(0, 200) + '...' : ''}]]></description>\n`;
+        }
+        
+        // Add image as enclosure if present (amazing for other app reading/previewing)
+        if (post.imageUrl) {
+          xml += `    <enclosure url="${post.imageUrl}" type="image/jpeg" />\n`;
+        }
+        xml += `  </item>\n`;
+      });
+
+      xml += `</channel>\n`;
+      xml += `</rss>`;
+
+      res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=1800'); // Cache for 30 minutes
+      res.send(xml);
+
+    } catch (error: any) {
+      console.error("Error generating RSS Feed:", error);
+      res.status(500).send("Error generating RSS Feed: " + error.message);
+    }
+  }
+
+  // JSON API with CORS support for other sites to consume easily without RSS parsing limits
+  app.get("/api/posts/featured", async (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+
+    if (!db) {
+      return res.status(500).json({ error: "Base de datos no inicializada" });
+    }
+
+    try {
+      const lang = (req.query.lang as string || 'es').toLowerCase();
+      
+      const postsCol = collection(db, 'posts');
+      const q = query(postsCol, where("featured", "==", true));
+      const querySnapshot = await getDocs(q);
+      
+      const posts: any[] = [];
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        posts.push({ id: doc.id, ...data });
+      });
+
+      const publishedFeatured = posts
+        .filter(post => post.status === 'published')
+        .sort((a, b) => {
+          const tA = a.publishedAt?.toDate ? a.publishedAt.toDate().getTime() : (a.publishedAt?.seconds ? a.publishedAt.seconds * 1000 : 0);
+          const tB = b.publishedAt?.toDate ? b.publishedAt.toDate().getTime() : (b.publishedAt?.seconds ? b.publishedAt.seconds * 1000 : 0);
+          return tB - tA;
+        });
+
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      const host = req.get('host');
+      const baseUrl = `${protocol}://${host}`;
+
+      const responseData = publishedFeatured.map(post => {
+        let title = post.title;
+        let excerpt = post.excerpt;
+        let content = post.content;
+
+        if (lang === 'en') {
+          title = post.title_en || post.title;
+          excerpt = post.excerpt_en || post.excerpt;
+          content = post.content_en || post.content;
+        } else if (lang === 'pt') {
+          title = post.title_pt || post.title;
+          excerpt = post.excerpt_pt || post.excerpt;
+          content = post.content_pt || post.content;
+        }
+
+        return {
+          id: post.id,
+          title: title || "",
+          category: post.category || "Noticias",
+          link: `${baseUrl}/actividades/${post.id}`,
+          excerpt: excerpt || (content ? content.substring(0, 160) + '...' : ""),
+          imageUrl: post.imageUrl || "",
+          publishedAt: post.publishedAt?.toDate ? post.publishedAt.toDate().toISOString() : (post.publishedAt?.seconds ? new Date(post.publishedAt.seconds * 1000).toISOString() : new Date().toISOString())
+        };
+      });
+
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=1800'); // Cache for 30 minutes
+      res.json(responseData);
+
+    } catch (error: any) {
+      console.error("Error generating featured posts JSON:", error);
+      res.status(500).json({ error: "Error fetching featured posts: " + error.message });
+    }
+  });
+
+  app.get("/api/rss/featured", generateRssFeed);
+  app.get("/rss.xml", generateRssFeed);
+  app.get("/feed.xml", generateRssFeed);
 
   // Dynamic Open Graph Tags for Social Sharing (Facebook, WhatsApp, etc.)
   app.get("/actividades/:id", async (req, res, next) => {

@@ -18,6 +18,7 @@ import AdminNewsletter from './pages/admin/AdminNewsletter';
 import AdminSettings from './pages/admin/AdminSettings';
 import Cursos from './pages/Cursos';
 import MisCursos from './pages/MisCursos';
+import Lideres from './pages/Lideres';
 import Legal from './pages/Legal';
 import CookieBanner from './components/CookieBanner';
 import { AuthProvider, ErrorBoundary } from './AuthContext';
@@ -37,7 +38,7 @@ export default function App() {
       <AuthProvider>
         <Router>
           <ScrollToTop />
-          <div className="min-h-screen flex flex-col">
+          <div className="min-h-screen flex flex-col overflow-x-hidden">
             <Navbar />
             <main className="flex-grow">
               <Routes>
@@ -51,6 +52,7 @@ export default function App() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/cursos" element={<Cursos />} />
                 <Route path="/mis-cursos" element={<MisCursos />} />
+                <Route path="/lideres" element={<Lideres />} />
                 <Route path="/legal" element={<Legal />} />
                 
                 {/* Admin Routes */}

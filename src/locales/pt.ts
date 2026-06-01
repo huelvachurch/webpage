@@ -15,6 +15,7 @@ export const pt = {
       adminComms: 'Comunicações',
       adminNewsletter: 'Boletim / E-mail',
       adminUsers: 'Usuários',
+      leaders: 'Líderes',
     },
     common: {
       save: 'Salvar',

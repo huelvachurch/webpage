@@ -43,6 +43,8 @@ interface Post {
   imageUrl?: string;
   featured?: boolean;
   publishedAt?: any;
+  content?: string;
+  slug?: string;
 }
 
 export default function AdminNewsletter() {
@@ -266,7 +268,7 @@ export default function AdminNewsletter() {
         hasPostContext = true;
         const postsContext = selectedPostIds.map(id => {
           const post = posts.find(p => p.id === id);
-          return post ? `[Noticia Titulo: "${post.title.es}"] Contenido: ${post.content.es}` : '';
+          return post ? `[Noticia Titulo: "${post.title}"] Contenido: ${post.content || ''}` : '';
         }).join('\n\n');
         promptText = `${specialContent}\n\n=== Contexto de Publicaciones Seleccionadas ===\n${postsContext}`;
         
@@ -274,7 +276,7 @@ export default function AdminNewsletter() {
         if (!specialButtonUrl) {
           const firstPost = posts.find(p => p.id === selectedPostIds[0]);
           if (firstPost) {
-             setSpecialButtonUrl(`https://huelvachurch.com/post/${firstPost.slug}`);
+             setSpecialButtonUrl(`${window.location.origin}/actividades/${firstPost.id}`);
              if (!specialButtonText) setSpecialButtonText('Leer más');
           }
         }

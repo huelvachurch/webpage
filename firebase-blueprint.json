@@ -13,7 +13,7 @@
           "type": "array", 
           "items": {
             "type": "string", 
-            "enum": ["admin", "comunicador", "profesor", "alumno"]
+            "enum": ["admin", "comunicador", "profesor", "alumno", "lider"]
           },
           "description": "User roles for access control"
         },
@@ -110,6 +110,51 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["type", "subject", "contentHtml", "status"]
+    },
+    "MeetingReport": {
+      "title": "Meeting Report",
+      "description": "Weekly group meeting report submitted by a cell group leader",
+      "type": "object",
+      "properties": {
+        "leaderId": { "type": "string" },
+        "leaderName": { "type": "string" },
+        "meetingDate": { "type": "string" },
+        "believersCount": { "type": "number" },
+        "nonBelieversCount": { "type": "number" },
+        "totalPresent": { "type": "number" },
+        "believersNames": { "type": "string" },
+        "nonBelieversNames": { "type": "string" },
+        "comments": { "type": "string" },
+        "submittedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["leaderId", "leaderName", "meetingDate", "believersCount", "nonBelieversCount", "totalPresent", "believersNames", "nonBelieversNames"]
+    },
+    "LeaderAnnouncement": {
+      "title": "Leader Announcement",
+      "description": "Announcement bulletin from admin users specific to cell group leaders",
+      "type": "object",
+      "properties": {
+        "content": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["content", "authorId", "authorName"]
+    },
+    "CellStudy": {
+      "title": "Cell Study Link",
+      "description": "Cell study material link shared by a leader or admin",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "link": { "type": "string" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "link", "authorId", "authorName"]
     }
   },
   "firestore": {
@@ -136,6 +181,18 @@
     "/newsletters/{newsletterId}": {
       "schema": "Newsletter",
       "description": "Collection of sent, draft, or scheduled newsletters"
+    },
+    "/meeting_reports/{reportId}": {
+      "schema": "MeetingReport",
+      "description": "Collection of leader meeting reports/statistics"
+    },
+    "/leader_announcements/{announcementId}": {
+      "schema": "LeaderAnnouncement",
+      "description": "Collection of announcements for cell leaders"
+    },
+    "/cell_studies/{studyId}": {
+      "schema": "CellStudy",
+      "description": "Collection of cell studies and materials links shared by leaders/admins"
     }
   }
 }

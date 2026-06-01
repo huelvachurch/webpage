@@ -15,6 +15,7 @@ export const en = {
       adminComms: 'Communications',
       adminNewsletter: 'Newsletter',
       adminUsers: 'Users',
+      leaders: 'Leaders',
     },
     common: {
       save: 'Save',

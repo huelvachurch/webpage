@@ -5,7 +5,7 @@ import { auth, db, handleFirestoreError, OperationType } from './firebase';
 
 interface AuthContextType {
   user: User | null;
-  roles: ('admin' | 'comunicador' | 'profesor' | 'alumno')[];
+  roles: ('admin' | 'comunicador' | 'profesor' | 'alumno' | 'lider')[];
   status: 'pending' | 'active' | 'blocked' | null;
   loading: boolean;
   isAuthReady: boolean;

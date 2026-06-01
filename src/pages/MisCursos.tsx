@@ -26,10 +26,18 @@ interface Enrollment {
 }
 
 export default function MisCursos() {
-  const { user, loading, isAuthReady } = useAuth();
+  const { user, roles, loading, isAuthReady } = useAuth();
   const navigate = useNavigate();
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [isDataLoading, setIsDataLoading] = useState(true);
+  const [showWelcomeBanner, setShowWelcomeBanner] = useState<boolean>(() => {
+    return localStorage.getItem('hide_welcome_banner_2026') !== 'true';
+  });
+
+  const dismissBanner = () => {
+    localStorage.setItem('hide_welcome_banner_2026', 'true');
+    setShowWelcomeBanner(false);
+  };
 
   useEffect(() => {
     if (isAuthReady && !loading && !user) {
@@ -85,6 +93,45 @@ export default function MisCursos() {
           <h1 className="text-4xl font-kenao text-primary mb-2">Mis Cursos</h1>
           <p className="text-primary/60">Sigue tu progreso y accede a tus programas de formación</p>
         </div>
+
+        {showWelcomeBanner && user && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="mb-12 bg-gradient-to-r from-[#0c1a30] to-[#122440] text-white p-8 rounded-[2.5rem] shadow-xl border border-primary/20 relative overflow-hidden"
+          >
+            {/* Ambient decorative circle */}
+            <div className="absolute -right-16 -top-16 w-48 h-48 rounded-full bg-secondary/10 pointer-events-none" />
+            <div className="absolute -left-12 -bottom-12 w-32 h-32 rounded-full bg-white/5 pointer-events-none" />
+
+            <div className="flex flex-col md:flex-row items-center md:items-start gap-6 relative z-10">
+              <div className="w-14 h-14 rounded-2xl bg-secondary flex items-center justify-center flex-shrink-0 shadow-lg">
+                <GraduationCap className="w-8 h-8 text-primary" />
+              </div>
+
+              <div className="flex-grow text-center md:text-left">
+                <h3 className="text-xl font-kenao text-secondary mb-2">¡Sesión iniciada correctamente!</h3>
+                <p className="text-slate-100 font-medium max-w-3xl leading-relaxed mb-4">
+                  Te damos la bienvenida a la plataforma oficial de <strong>Huelva Church</strong>. Ya tienes acceso completo para explorar, inscribirte y realizar todos nuestros cursos disponibles. ¡Comienza a aprender y crecer hoy mismo!
+                </p>
+                <p className="text-slate-300 text-sm max-w-3xl leading-relaxed">
+                  💡 Si estás esperando la asignación de roles especiales (como Líder de Célula, Profesor o Comunicador), no te preocupes, el equipo administrativo revisará y dará respuesta a tu solicitud muy pronto. Mientras tanto, ¡puedes realizar todos los cursos que desees!
+                </p>
+              </div>
+
+              <div className="flex-shrink-0 self-center md:self-start">
+                <button 
+                  onClick={dismissBanner}
+                  className="bg-white/10 hover:bg-white/20 text-white hover:text-secondary px-5 py-3 rounded-xl font-bold transition-all text-sm uppercase tracking-wider"
+                  style={{ minHeight: "44px" }}
+                >
+                  Entendido
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
 
         {enrollments.length === 0 ? (
           <div className="bg-white p-12 rounded-[3rem] shadow-sm text-center border border-slate-100">

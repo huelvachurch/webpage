@@ -15,6 +15,7 @@ export const es = {
       adminComms: 'Comunicaciones',
       adminNewsletter: 'Boletín / Correo',
       adminUsers: 'Usuarios',
+      leaders: 'Líderes',
     },
     common: {
       save: 'Guardar',

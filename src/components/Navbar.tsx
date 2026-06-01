@@ -40,6 +40,7 @@ export default function Navbar() {
   const isAdmin = roles.includes('admin');
   const isComunicador = roles.includes('comunicador') || isAdmin;
   const isProfesor = roles.includes('profesor') || isAdmin;
+  const isLider = roles.includes('lider') || isAdmin;
 
   const changeLanguage = (lng: string) => {
     i18n.changeLanguage(lng);
@@ -141,7 +142,17 @@ export default function Navbar() {
                           <div className="px-4 py-2 border-b border-slate-50 mb-1 text-xs text-primary/50 font-medium font-gordita truncate">
                             {user.displayName || user.email}
                           </div>
-                          
+                           {isLider && (
+                            <Link 
+                              onClick={() => setIsUserMenuOpen(false)}
+                              to="/lideres" 
+                              className="flex items-center gap-3 px-4 py-2.5 text-left text-sm rounded-lg bg-amber-50 hover:bg-amber-100/70 text-amber-900 font-bold transition-colors mb-1"
+                            >
+                              <Shield className="w-5 h-5 text-amber-500 animate-pulse shrink-0" />
+                              {t('nav.leaders')}
+                            </Link>
+                          )}
+
                           <Link 
                             onClick={() => setIsUserMenuOpen(false)}
                             to="/mis-cursos" 
@@ -304,6 +315,12 @@ export default function Navbar() {
               
               {user ? (
                 <div className="space-y-4 flex flex-col items-center w-full">
+                  {isLider && (
+                    <Link to="/lideres" className="flex items-center gap-3 text-amber-600 hover:text-amber-700 bg-amber-50 px-4 py-2 rounded-xl font-bold uppercase text-sm tracking-widest transition-colors">
+                      <Shield className="w-5 h-5 shrink-0 animate-pulse" />
+                      {t('nav.leaders')}
+                    </Link>
+                  )}
                   <Link to="/mis-cursos" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
                     <GraduationCap className="w-5 h-5 shrink-0" />
                     {t('nav.myCourses')}
