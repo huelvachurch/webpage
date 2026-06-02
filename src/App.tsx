@@ -20,6 +20,7 @@ import Cursos from './pages/Cursos';
 import MisCursos from './pages/MisCursos';
 import Lideres from './pages/Lideres';
 import Legal from './pages/Legal';
+import AsistenciaCompartida from './pages/AsistenciaCompartida';
 import CookieBanner from './components/CookieBanner';
 import { AuthProvider, ErrorBoundary } from './AuthContext';
 
@@ -53,6 +54,7 @@ export default function App() {
                 <Route path="/cursos" element={<Cursos />} />
                 <Route path="/mis-cursos" element={<MisCursos />} />
                 <Route path="/lideres" element={<Lideres />} />
+                <Route path="/asistencia-compartida" element={<AsistenciaCompartida />} />
                 <Route path="/legal" element={<Legal />} />
                 
                 {/* Admin Routes */}

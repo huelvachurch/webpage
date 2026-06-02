@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { MapPin, Users, Heart, BookOpen, Music, Target, FileText, Map, Smile } from 'lucide-react';
 import { Celula } from './admin/AdminCelulas';
 import { useTranslation } from 'react-i18next';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../firebase';
 
 export default function Celulas() {
   const { t } = useTranslation();
@@ -75,21 +77,33 @@ export default function Celulas() {
   }, [t]);
 
   useEffect(() => {
-    const saved = localStorage.getItem('celulas-data');
-    if (saved) {
-      setCelulas(JSON.parse(saved));
-    } else {
-      setCelulas([
-        {
-          id: '1',
-          name: 'Barriada Huerto Mena',
-          leader: 'Fabio',
-          schedule: 'Lunes, 19:30h',
-          address: 'Barriada Huerto Mena, Huelva',
-          googleMapsLink: 'https://maps.app.goo.gl/WPjd55a8XpctoAgS7'
+    const fetchCelulas = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, 'celulas'));
+        const list: Celula[] = [];
+        querySnapshot.forEach((doc) => {
+          list.push({ id: doc.id, ...doc.data() } as Celula);
+        });
+        if (list.length > 0) {
+          setCelulas(list);
+        } else {
+          // Default fallback data if empty in DB
+          setCelulas([
+            {
+              id: '1',
+              name: 'Barriada Huerto Mena',
+              leader: 'Fabio',
+              schedule: 'Lunes, 19:30h',
+              address: 'Barriada Huerto Mena, Huelva',
+              googleMapsLink: 'https://maps.app.goo.gl/WPjd55a8XpctoAgS7'
+            }
+          ]);
         }
-      ]);
-    }
+      } catch (err) {
+        console.error("Error loading celulas from Firestore:", err);
+      }
+    };
+    fetchCelulas();
   }, []);
 
   const handleSubmit = (e: React.FormEvent) => {

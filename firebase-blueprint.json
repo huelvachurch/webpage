@@ -155,12 +155,32 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["title", "link", "authorId", "authorName"]
+    },
+    "Celula": {
+      "title": "Celula Location",
+      "description": "Cell group location and schedule details managed by leader or admin",
+      "type": "object",
+      "properties": {
+        "leaderId": { "type": "string" },
+        "leader": { "type": "string" },
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "barriada": { "type": "string" },
+        "ciudad": { "type": "string" },
+        "schedule": { "type": "string" },
+        "googleMapsLink": { "type": "string" }
+      },
+      "required": ["leaderId", "leader", "name", "address", "barriada", "ciudad", "schedule"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": "User",
       "description": "Collection of user profiles"
+    },
+    "/celulas/{celulaId}": {
+      "schema": "Celula",
+      "description": "Collection of cell group locations"
     },
     "/posts/{postId}": {
       "schema": "Post",

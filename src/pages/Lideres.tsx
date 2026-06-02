@@ -31,7 +31,10 @@ import {
   onSnapshot, 
   deleteDoc, 
   doc, 
-  serverTimestamp 
+  serverTimestamp,
+  setDoc,
+  getDoc,
+  getDocs
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../AuthContext';
@@ -91,7 +94,22 @@ export default function Lideres() {
   const isLider = roles.includes('lider') || isAdmin;
 
   // Tabs state
-  const [activeTab, setActiveTab] = useState<'form' | 'stats' | 'announcements' | 'studies'>('form');
+  const [activeTab, setActiveTab] = useState<'form' | 'stats' | 'announcements' | 'studies' | 'cell'>('form');
+
+  // My Cell states
+  const [cellProfile, setCellProfile] = useState<any>(null);
+  const [isCellLoading, setIsCellLoading] = useState(false);
+  const [cellProfileForm, setCellProfileForm] = useState({
+    name: '',
+    leader: '',
+    schedule: '',
+    address: '',
+    barriada: '',
+    ciudad: 'Huelva',
+    googleMapsLink: ''
+  });
+  const [isSavingCell, setIsSavingCell] = useState(false);
+  const [copiedCellLink, setCopiedCellLink] = useState(false);
 
   // Form states
   const [leaderName, setLeaderName] = useState('');
@@ -131,6 +149,88 @@ export default function Lideres() {
       setLeaderName(user.displayName);
     }
   }, [user]);
+
+  // Load my cell profile in real-time
+  useEffect(() => {
+    if (!user?.uid) return;
+    
+    setIsCellLoading(true);
+    const q = query(collection(db, 'celulas'), where('leaderId', '==', user.uid));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        const docSnap = snapshot.docs[0];
+        const data = docSnap.data();
+        const profile = { id: docSnap.id, ...data };
+        setCellProfile(profile);
+        setCellProfileForm({
+          name: data.name || '',
+          leader: data.leader || user.displayName || '',
+          schedule: data.schedule || '',
+          address: data.address || '',
+          barriada: data.barriada || '',
+          ciudad: data.ciudad || 'Huelva',
+          googleMapsLink: data.googleMapsLink || ''
+        });
+      } else {
+        setCellProfile(null);
+        setCellProfileForm(prev => ({
+          ...prev,
+          leader: user.displayName || '',
+          name: 'Célula de ' + (user.displayName || 'Líder'),
+          ciudad: 'Huelva'
+        }));
+      }
+      setIsCellLoading(false);
+    }, (err) => {
+      console.error("Error loading cell profile:", err);
+      setIsCellLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  const handleSaveCellProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user?.uid) return;
+    setIsSavingCell(true);
+    try {
+      const dataToSave = {
+        leaderId: user.uid,
+        leader: cellProfileForm.leader || user.displayName || '',
+        name: cellProfileForm.name || 'Célula de ' + (cellProfileForm.leader || user.displayName || 'Líder'),
+        schedule: cellProfileForm.schedule || '',
+        address: cellProfileForm.address || '',
+        barriada: cellProfileForm.barriada || '',
+        ciudad: cellProfileForm.ciudad || 'Huelva',
+        googleMapsLink: cellProfileForm.googleMapsLink || ''
+      };
+
+      if (cellProfile?.id) {
+        await setDoc(doc(db, 'celulas', cellProfile.id), dataToSave);
+      } else {
+        await setDoc(doc(db, 'celulas', user.uid), dataToSave);
+      }
+      alert("¡Datos de su célula guardados con éxito!");
+    } catch (err) {
+      console.error("Error saving cell profile:", err);
+      alert("Error al guardar los datos de su célula.");
+    } finally {
+      setIsSavingCell(false);
+    }
+  };
+
+  const handleCopyCellLink = () => {
+    const linkToCopy = `${window.location.origin}/asistencia-compartida?leaderId=${user.uid}`;
+    navigator.clipboard.writeText(linkToCopy);
+    setCopiedCellLink(true);
+    setTimeout(() => setCopiedCellLink(false), 3000);
+  };
+
+  const handleShareFormToWhatsApp = () => {
+    const link = `${window.location.origin}/asistencia-compartida?leaderId=${user.uid}`;
+    const text = encodeURIComponent(`Hola, por favor ayúdanos a rellenar el formulario de asistencia de la célula ingresando a este enlace: ${link}`);
+    window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
+  };
 
   // Handle redirect if not lider
   useEffect(() => {
@@ -450,7 +550,7 @@ export default function Lideres() {
         </div>
 
         {/* Tab Selection Navigation Bar */}
-        <div className="flex bg-white p-2 rounded-2xl shadow-sm border border-slate-100 max-w-fit mb-10 overflow-x-auto gap-1">
+        <div className="flex flex-col md:flex-row bg-white p-2 rounded-2xl shadow-sm border border-slate-100 w-full md:max-w-fit mb-10 gap-1">
           <button
             onClick={() => setActiveTab('form')}
             className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase ${
@@ -460,7 +560,7 @@ export default function Lideres() {
             }`}
           >
             <FileText className="w-4 h-4 shrink-0" />
-            Reportar Reunión
+            Formulario
           </button>
           
           <button
@@ -472,7 +572,7 @@ export default function Lideres() {
             }`}
           >
             <TrendingUp className="w-4 h-4 shrink-0" />
-            Estadísticas {isAdmin ? 'Consolidadas' : 'Personales'}
+            Estadísticas
           </button>
 
           <button
@@ -484,7 +584,7 @@ export default function Lideres() {
             }`}
           >
             <Bell className="w-4 h-4 shrink-0" />
-            Avisos de Líderes
+            Avisos
             {announcements.length > 0 && (
               <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
             )}
@@ -499,7 +599,19 @@ export default function Lideres() {
             }`}
           >
             <BookOpen className="w-4 h-4 shrink-0" />
-            Estudios de Célula
+            Estudios
+          </button>
+
+          <button
+            onClick={() => setActiveTab('cell')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase ${
+              activeTab === 'cell' 
+                ? 'bg-amber-100 text-amber-950 border border-amber-200' 
+                : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+            }`}
+          >
+            <Shield className="w-4 h-4 shrink-0" />
+            Mi Célula
           </button>
         </div>
 
@@ -519,7 +631,7 @@ export default function Lideres() {
                 {/* Form column */}
                 <div className="lg:col-span-2 bg-white rounded-[2rem] shadow-sm border border-slate-100 p-8">
                   <div className="mb-6 border-b border-slate-100 pb-4">
-                    <h2 className="text-2xl font-kenao text-primary">Formulario Semanal de Célula</h2>
+                    <h2 className="text-2xl font-kenao text-primary">Formulario</h2>
                     <p className="text-sm text-slate-400 mt-1">Completa estos datos al final del encuentro para actualizar el contador de estadísticas.</p>
                   </div>
 
@@ -616,7 +728,7 @@ export default function Lideres() {
                     <div className="space-y-4">
                       <div>
                         <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">
-                          Nombres de Creyentes *
+                          Nombre de Creyentes *
                         </label>
                         <textarea
                           required
@@ -630,7 +742,7 @@ export default function Lideres() {
 
                       <div>
                         <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">
-                          Nombres de No Creyentes *
+                          Nombre de No Creyentes *
                         </label>
                         <textarea
                           required
@@ -659,14 +771,12 @@ export default function Lideres() {
                     <button
                       type="submit"
                       disabled={isSubmitting}
-                      className="w-full py-4 rounded-xl bg-primary text-white font-bold hover:bg-secondary hover:text-primary tracking-wide transition-all uppercase shadow-md flex items-center justify-center gap-2 select-none"
+                      className="w-full py-4 rounded-xl bg-primary text-white font-bold hover:bg-secondary hover:text-primary tracking-wide transition-all uppercase shadow-md flex items-center justify-center select-none"
                     >
                       {isSubmitting ? (
                         <span>Enviando reporte...</span>
                       ) : (
-                        <>
-                          <Send className="w-4 h-4" /> Enviar Reporte de Célula
-                        </>
+                        <span>Enviar Reporte</span>
                       )}
                     </button>
                   </form>
@@ -793,18 +903,18 @@ export default function Lideres() {
                     {/* Chart Container */}
                     {chartDataset.length > 0 && (
                       <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-slate-100 shadow-sm">
-                        <div className="mb-6 flex items-center justify-between">
+                        <div className="mb-6 text-left">
                           <div>
-                            <h3 className="text-xl font-kenao text-primary">Tendencia de Asistencia</h3>
+                            <h3 className="text-xl font-kenao text-primary font-bold">Tendencia de Asistencia</h3>
                             <p className="text-xs text-slate-400 mt-1">Evolución de los últimos 10 encuentros registrados</p>
                           </div>
                           
-                          <div className="flex gap-4 text-xs font-bold uppercase tracking-wider">
+                          <div className="flex gap-4 mt-4 text-xs font-bold uppercase tracking-wider">
                             <span className="flex items-center gap-1.5 text-primary">
                               <span className="w-3 h-3 bg-[#eab308] rounded-full"></span> Creyentes
                             </span>
-                            <span className="flex items-center gap-1.5 text-primary/60">
-                              <span className="w-3 h-3 bg-[#f43f5e] rounded-full"></span> Bienvenidos Nuevos
+                            <span className="flex items-center gap-1.5 text-primary">
+                              <span className="w-3 h-3 bg-[#f43f5e] rounded-full"></span> No Creyentes
                             </span>
                           </div>
                         </div>
@@ -1056,88 +1166,90 @@ export default function Lideres() {
                 exit={{ opacity: 0, y: -15 }}
                 className="grid grid-cols-1 lg:grid-cols-3 gap-8"
               >
-                {/* Save study link form */}
-                <div className="lg:col-span-1 space-y-6">
-                  <div className="bg-white rounded-[2rem] border border-slate-100 p-6 md:p-8 shadow-sm">
-                    <div className="mb-6">
-                      <h2 className="text-xl font-kenao text-primary flex items-center gap-2">
-                        <Plus className="w-5 h-5 text-secondary" /> Compartir Estudio
-                      </h2>
-                      <p className="text-xs text-slate-400 mt-1">Sube el enlace de la guía o estudio bíblico para que otros líderes puedan utilizarlo.</p>
-                    </div>
-
-                    <form onSubmit={handleAddStudySubmit} className="space-y-4">
-                      <div>
-                        <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">Título del Estudio</label>
-                        <input
-                          type="text"
-                          required
-                          placeholder="Ej: Estudio sobre el Amor al Prójimo - Sem. 4"
-                          value={studyTitle}
-                          onChange={(e) => setStudyTitle(e.target.value)}
-                          className="p-4 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all text-sm font-medium"
-                        />
+                {/* Save study link form (Admin + Leader only) */}
+                {isAdmin && (
+                  <div className="lg:col-span-1 space-y-6">
+                    <div className="bg-white rounded-[2rem] border border-slate-100 p-6 md:p-8 shadow-sm">
+                      <div className="mb-6">
+                        <h2 className="text-xl font-kenao text-primary flex items-center gap-2">
+                          <Plus className="w-5 h-5 text-secondary" /> Compartir Estudio
+                        </h2>
+                        <p className="text-xs text-slate-400 mt-1">Sube el enlace de la guía o estudio bíblico para que otros líderes puedan utilizarlo.</p>
                       </div>
 
-                      <div>
-                        <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">Enlace / URL</label>
-                        <div className="relative">
-                          <Link className="absolute left-4 top-3.5 w-4 h-4 text-slate-400" />
+                      <form onSubmit={handleAddStudySubmit} className="space-y-4">
+                        <div>
+                          <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">Título del Estudio</label>
                           <input
                             type="text"
                             required
-                            placeholder="Ej: drive.google.com/... o huelvachurch.com/estudio"
-                            value={studyLink}
-                            onChange={(e) => setStudyLink(e.target.value)}
-                            className="pl-11 pr-4 py-3.5 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all text-sm font-medium"
+                            placeholder="Ej: Estudio sobre el Amor al Prójimo - Sem. 4"
+                            value={studyTitle}
+                            onChange={(e) => setStudyTitle(e.target.value)}
+                            className="p-4 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all text-sm font-medium"
                           />
                         </div>
-                      </div>
 
-                      <div>
-                        <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">Categoría</label>
-                        <select
-                          value={studyCategory}
-                          onChange={(e) => setStudyCategory(e.target.value)}
-                          className="p-4 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all text-sm font-medium"
+                        <div>
+                          <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">Enlace / URL</label>
+                          <div className="relative">
+                            <Link className="absolute left-4 top-3.5 w-4 h-4 text-slate-400" />
+                            <input
+                              type="text"
+                              required
+                              placeholder="Ej: drive.google.com/... o huelvachurch.com/estudio"
+                              value={studyLink}
+                              onChange={(e) => setStudyLink(e.target.value)}
+                              className="pl-11 pr-4 py-3.5 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all text-sm font-medium"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">Categoría</label>
+                          <select
+                            value={studyCategory}
+                            onChange={(e) => setStudyCategory(e.target.value)}
+                            className="p-4 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all text-sm font-medium"
+                          >
+                            <option value="Estudio General">Estudio General</option>
+                            <option value="Evangelismo">Evangelismo</option>
+                            <option value="Oración & Discipulado">Oración & Discipulado</option>
+                            <option value="Familia & Relaciones">Familia & Relaciones</option>
+                            <option value="Fe & Teología">Fe & Teología</option>
+                            <option value="Otros">Otros</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">Descripción Corta (Opcional)</label>
+                          <textarea
+                            rows={3}
+                            placeholder="Introduce un breve resumen o instrucciones del estudio..."
+                            value={studyDescription}
+                            onChange={(e) => setStudyDescription(e.target.value)}
+                            className="p-4 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all text-sm font-medium animate-none"
+                          />
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={isSubmittingStudy || !studyTitle.trim() || !studyLink.trim()}
+                          className="w-full py-4 bg-primary text-white font-bold rounded-xl hover:bg-secondary hover:text-primary transition-all uppercase tracking-wide text-xs shadow-md disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                         >
-                          <option value="Estudio General">Estudio General</option>
-                          <option value="Evangelismo">Evangelismo</option>
-                          <option value="Oración & Discipulado">Oración & Discipulado</option>
-                          <option value="Familia & Relaciones">Familia & Relaciones</option>
-                          <option value="Fe & Teología">Fe & Teología</option>
-                          <option value="Otros">Otros</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">Descripción Corta (Opcional)</label>
-                        <textarea
-                          rows={3}
-                          placeholder="Introduce un breve resumen o instrucciones del estudio..."
-                          value={studyDescription}
-                          onChange={(e) => setStudyDescription(e.target.value)}
-                          className="p-4 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all text-sm font-medium animate-none"
-                        />
-                      </div>
-
-                      <button
-                        type="submit"
-                        disabled={isSubmittingStudy || !studyTitle.trim() || !studyLink.trim()}
-                        className="w-full py-4 bg-primary text-white font-bold rounded-xl hover:bg-secondary hover:text-primary transition-all uppercase tracking-wide text-xs shadow-md disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                      >
-                        {isSubmittingStudy ? 'Añadiendo estudio...' : 'Agregar Estudio'}
-                      </button>
-                    </form>
+                          {isSubmittingStudy ? 'Añadiendo estudio...' : 'Agregar Estudio'}
+                        </button>
+                      </form>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Library logs content list */}
-                <div className="lg:col-span-2 space-y-6">
+                <div className={`${isAdmin ? 'lg:col-span-2' : 'lg:col-span-3'} space-y-6`}>
                   <div className="border-b border-slate-100 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                       <h2 className="text-2xl font-kenao text-primary flex items-center gap-2">
-                        <BookOpen className="w-6 h-6 text-secondary" /> Biblioteca de Estudios Colectivos
+                        <BookOpen className="w-6 h-6 text-secondary" /> Biblioteca de Estudios
                       </h2>
                       <p className="text-xs text-slate-400 mt-1">Recursos y guías de estudios bíblicos disponibles para la red de líderes.</p>
                     </div>
@@ -1148,7 +1260,7 @@ export default function Lideres() {
 
                   {studies.length === 0 ? (
                     <div className="bg-white p-12 text-center rounded-[2rem] border border-slate-100 text-slate-400 font-bold shadow-sm">
-                      📖 No hay estudios añadidos en la biblioteca todavía. ¡Añade el primer enlace a la izquierda!
+                      📖 No hay estudios añadidos en la biblioteca todavía. {isAdmin ? '¡Añade el primer enlace a la izquierda!' : 'Espera a que un administrador añada estudios para verlos aquí.'}
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1251,6 +1363,193 @@ export default function Lideres() {
                       })}
                     </div>
                   )}
+                </div>
+              </motion.div>
+            )}
+
+            {activeTab === 'cell' && (
+              <motion.div
+                key="cell-view"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                className="bg-white rounded-[2rem] shadow-sm border border-slate-100 p-8 max-w-4xl mx-auto"
+              >
+                <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 pb-6 border-b border-slate-100 gap-4 text-left">
+                  <div>
+                    <h2 className="text-3xl font-kenao font-bold text-primary mb-2">Gestionar Datos de Mi Célula</h2>
+                    <p className="text-sm text-slate-500">
+                      Configure el punto de encuentro de su célula. Estos datos aparecerán de forma automática en la página de Ubicaciones pública de Huelva Church.
+                    </p>
+                  </div>
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                      <Shield className="w-3.5 h-3.5" />
+                      Líder Autorizado
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                  {/* Form configuration column */}
+                  <form onSubmit={handleSaveCellProfile} className="md:col-span-2 space-y-6 text-left">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                          Nombre / Identificador de Célula
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={cellProfileForm.name}
+                          onChange={(e) => setCellProfileForm({ ...cellProfileForm, name: e.target.value })}
+                          placeholder="Ej. Célula de Juan / Célula de Huerto Mena"
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                          Nombre del Líder / Líderes
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={cellProfileForm.leader}
+                          onChange={(e) => setCellProfileForm({ ...cellProfileForm, leader: e.target.value })}
+                          placeholder="Ej. Juan de Dios"
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                          Día y Hora (Horario)
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={cellProfileForm.schedule}
+                          onChange={(e) => setCellProfileForm({ ...cellProfileForm, schedule: e.target.value })}
+                          placeholder="Ej. Jueves, 20:00h"
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                          Calle Principal / Dirección
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={cellProfileForm.address}
+                          onChange={(e) => setCellProfileForm({ ...cellProfileForm, address: e.target.value })}
+                          placeholder="Ej. Calle San José 15"
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                          Barriada / Zona
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={cellProfileForm.barriada}
+                          onChange={(e) => setCellProfileForm({ ...cellProfileForm, barriada: e.target.value })}
+                          placeholder="Ej. Isla Chica / Centro"
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                          Ciudad
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={cellProfileForm.ciudad}
+                          onChange={(e) => setCellProfileForm({ ...cellProfileForm, ciudad: e.target.value })}
+                          placeholder="Ej. Huelva"
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                        Enlace de Google Maps (Opcional)
+                      </label>
+                      <input
+                        type="url"
+                        value={cellProfileForm.googleMapsLink}
+                        onChange={(e) => setCellProfileForm({ ...cellProfileForm, googleMapsLink: e.target.value })}
+                        placeholder="https://maps.app.goo.gl/..."
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-sm"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isSavingCell}
+                      className="px-6 py-3 bg-primary hover:bg-secondary hover:text-primary text-white font-bold rounded-xl transition-all uppercase tracking-wide text-xs disabled:opacity-50 cursor-pointer shadow-sm"
+                    >
+                      {isSavingCell ? 'Guardando...' : 'Guardar Información'}
+                    </button>
+                  </form>
+
+                  {/* Shareable Box Column */}
+                  <div className="bg-slate-50 rounded-2xl border border-slate-200 p-6 flex flex-col justify-between text-left">
+                    <div>
+                      <span className="inline-block bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-4">
+                        💡 Recurso de Relevo
+                      </span>
+                      <h3 className="text-lg font-kenao text-primary font-bold mb-3">Compartir Formulario</h3>
+                      <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+                        ¿Un colaborador o hermano le ayudará a rellenar la asistencia hoy? Comparta su enlace único. No necesitan iniciar sesión para enviarlo, y se asociará inmediatamente a su perfil y estadísticas de célula.
+                      </p>
+                    </div>
+
+                    <div className="space-y-3">
+                      <button
+                        type="button"
+                        onClick={handleCopyCellLink}
+                        className={`w-full py-3 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm border ${
+                          copiedCellLink 
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                            : 'bg-white text-primary border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {copiedCellLink ? (
+                          <>
+                            <CheckCircle className="w-4 h-4 animate-pulse" />
+                            ¡Enlace Copiado!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4" />
+                            Copiar Enlace
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleShareFormToWhatsApp}
+                        className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                      >
+                        <Share2 className="w-4 h-4" />
+                        Enviar por WhatsApp
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </motion.div>
             )}

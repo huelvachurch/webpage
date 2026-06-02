@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Plus, Edit2, Trash2, MapPin, Map, Check, X } from 'lucide-react';
+import { collection, addDoc, query, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { db } from '../../firebase';
 
 export interface Celula {
   id: string;
@@ -9,6 +11,9 @@ export interface Celula {
   schedule: string;
   address: string;
   googleMapsLink: string;
+  leaderId?: string;
+  barriada?: string;
+  ciudad?: string;
 }
 
 export default function AdminCelulas() {
@@ -17,32 +22,29 @@ export default function AdminCelulas() {
   const [editForm, setEditForm] = useState<Partial<Celula>>({});
   const [isAdding, setIsAdding] = useState(false);
 
-  // Load from local storage for now (MVP for data management)
+  // Load from Firestore
   useEffect(() => {
-    const saved = localStorage.getItem('celulas-data');
-    if (saved) {
-      setCelulas(JSON.parse(saved));
-    } else {
-      // Default data
-      const initialData = [
-        {
-          id: '1',
-          name: 'Barriada Huerto Mena',
-          leader: 'Fabio',
-          schedule: 'Lunes, 19:30h',
-          address: 'Calle Ejemplo 123, Huelva',
-          googleMapsLink: 'https://maps.app.goo.gl/xxx'
-        }
-      ];
-      setCelulas(initialData);
-      localStorage.setItem('celulas-data', JSON.stringify(initialData));
-    }
+    const q = query(collection(db, 'celulas'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: Celula[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        list.push({ 
+          id: doc.id, 
+          name: data.name || '',
+          leader: data.leader || '',
+          schedule: data.schedule || '',
+          address: data.address || '',
+          googleMapsLink: data.googleMapsLink || '',
+          leaderId: data.leaderId || '',
+          barriada: data.barriada || '',
+          ciudad: data.ciudad || ''
+        });
+      });
+      setCelulas(list);
+    });
+    return () => unsubscribe();
   }, []);
-
-  const saveToStorage = (data: Celula[]) => {
-    setCelulas(data);
-    localStorage.setItem('celulas-data', JSON.stringify(data));
-  };
 
   const handleAdd = () => {
     setIsAdding(true);
@@ -51,22 +53,32 @@ export default function AdminCelulas() {
       leader: '',
       schedule: '',
       address: '',
-      googleMapsLink: ''
+      googleMapsLink: '',
+      leaderId: '',
+      barriada: '',
+      ciudad: 'Huelva'
     });
   };
 
-  const handleSaveAdd = () => {
+  const handleSaveAdd = async () => {
     if (!editForm.name || !editForm.leader) return;
-    const newCelula: Celula = {
-      id: Date.now().toString(),
-      name: editForm.name || '',
-      leader: editForm.leader || '',
-      schedule: editForm.schedule || '',
-      address: editForm.address || '',
-      googleMapsLink: editForm.googleMapsLink || ''
-    };
-    saveToStorage([...celulas, newCelula]);
-    setIsAdding(false);
+    try {
+      const celulaData = {
+        leaderId: editForm.leaderId || 'admin',
+        leader: editForm.leader || '',
+        name: editForm.name || '',
+        address: editForm.address || '',
+        barriada: editForm.barriada || '',
+        ciudad: editForm.ciudad || 'Huelva',
+        schedule: editForm.schedule || '',
+        googleMapsLink: editForm.googleMapsLink || ''
+      };
+      await addDoc(collection(db, 'celulas'), celulaData);
+      setIsAdding(false);
+    } catch (err) {
+      console.error("Error adding cell destination", err);
+      alert("Error al guardar la nueva célula en Firestore.");
+    }
   };
 
   const handleEdit = (celula: Celula) => {
@@ -74,18 +86,36 @@ export default function AdminCelulas() {
     setEditForm(celula);
   };
 
-  const handleSaveEdit = () => {
-    const updated = celulas.map(c => 
-      c.id === isEditing ? { ...c, ...editForm } as Celula : c
-    );
-    saveToStorage(updated);
-    setIsEditing(null);
+  const handleSaveEdit = async () => {
+    if (!isEditing) return;
+    try {
+      const celulaDoc = doc(db, 'celulas', isEditing);
+      const celulaData = {
+        leaderId: editForm.leaderId || 'admin',
+        leader: editForm.leader || '',
+        name: editForm.name || '',
+        address: editForm.address || '',
+        barriada: editForm.barriada || '',
+        ciudad: editForm.ciudad || 'Huelva',
+        schedule: editForm.schedule || '',
+        googleMapsLink: editForm.googleMapsLink || ''
+      };
+      await setDoc(celulaDoc, celulaData);
+      setIsEditing(null);
+    } catch (err) {
+      console.error("Error editing celula in Firestore:", err);
+      alert("Error al guardar los cambios de la célula en Firestore.");
+    }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm('¿Estás seguro de eliminar esta ubicación de célula?')) {
-      const updated = celulas.filter(c => c.id !== id);
-      saveToStorage(updated);
+      try {
+        await deleteDoc(doc(db, 'celulas', id));
+      } catch (err) {
+        console.error("Error deleting celula from Firestore:", err);
+        alert("Error al eliminar la célula.");
+      }
     }
   };
 
@@ -94,8 +124,8 @@ export default function AdminCelulas() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-12 gap-6">
           <div>
-            <h1 className="text-5xl font-kenao text-primary mb-4">Gestión de Células</h1>
-            <p className="text-lg text-primary/70">Administra las ubicaciones y datos de las células.</p>
+            <h1 className="text-5xl font-kenao text-primary mb-4 font-bold">Gestión de Células</h1>
+            <p className="text-lg text-primary/70">Administra las ubicaciones y datos de las células en tiempo real.</p>
           </div>
           <button
             onClick={handleAdd}
@@ -113,22 +143,34 @@ export default function AdminCelulas() {
               <h3 className="font-kenao text-2xl text-primary mb-6">Agregar Nueva Célula</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <div>
-                  <label className="block text-sm font-bold text-primary/70 mb-2">Nombre / Zona</label>
-                  <input type="text" value={editForm.name || ''} onChange={(e) => setEditForm({...editForm, name: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200" placeholder="Ej. Barriada Huerto Mena" />
+                  <label className="block text-sm font-bold text-primary/70 mb-2">Nombre / Identificador de la Célula</label>
+                  <input type="text" value={editForm.name || ''} onChange={(e) => setEditForm({...editForm, name: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200" placeholder="Ej. Célula del Centro / Célula de Juan" />
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-primary/70 mb-2">Líder(es)</label>
                   <input type="text" value={editForm.leader || ''} onChange={(e) => setEditForm({...editForm, leader: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200" placeholder="Ej. Fabio" />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-primary/70 mb-2">Día y Hora</label>
+                  <label className="block text-sm font-bold text-primary/70 mb-2">Día y Hora (Horario)</label>
                   <input type="text" value={editForm.schedule || ''} onChange={(e) => setEditForm({...editForm, schedule: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200" placeholder="Ej. Jueves, 20:00h" />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-primary/70 mb-2">Dirección Completa</label>
-                  <input type="text" value={editForm.address || ''} onChange={(e) => setEditForm({...editForm, address: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200" placeholder="Calle, Número, Localidad" />
+                  <label className="block text-sm font-bold text-primary/70 mb-2">Calle Principal (Dirección)</label>
+                  <input type="text" value={editForm.address || ''} onChange={(e) => setEditForm({...editForm, address: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200" placeholder="Ej. Calle Concepción 14" />
                 </div>
-                <div className="md:col-span-2">
+                <div>
+                  <label className="block text-sm font-bold text-primary/70 mb-2">Barriada / Zona</label>
+                  <input type="text" value={editForm.barriada || ''} onChange={(e) => setEditForm({...editForm, barriada: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200" placeholder="Ej. Huerto Mena" />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-primary/70 mb-2">Ciudad</label>
+                  <input type="text" value={editForm.ciudad || ''} onChange={(e) => setEditForm({...editForm, ciudad: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200" placeholder="Ej. Huelva" />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-primary/70 mb-2">UID Opcional del Líder (para que pueda editarlo)</label>
+                  <input type="text" value={editForm.leaderId || ''} onChange={(e) => setEditForm({...editForm, leaderId: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200" placeholder="ID de Usuario de Firebase" />
+                </div>
+                <div>
                   <label className="block text-sm font-bold text-primary/70 mb-2">Enlace de Google Maps</label>
                   <input type="url" value={editForm.googleMapsLink || ''} onChange={(e) => setEditForm({...editForm, googleMapsLink: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200" placeholder="https://maps.app.goo.gl/..." />
                 </div>
@@ -146,34 +188,46 @@ export default function AdminCelulas() {
             )}
             
             {celulas.map((celula) => (
-              <div key={celula.id} className="p-6 border border-slate-100 rounded-2xl hover:shadow-md transition-all">
+              <div key={celula.id} className="p-6 border border-slate-100 rounded-2xl hover:shadow-md transition-all bg-white">
                 {isEditing === celula.id ? (
                   <div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                       <div>
-                        <label className="block text-xs font-bold text-primary/70 mb-1">Nombre / Zona</label>
+                        <label className="block text-xs font-bold text-primary/70 mb-1">Nombre de Célula</label>
                         <input type="text" value={editForm.name || ''} onChange={(e) => setEditForm({...editForm, name: e.target.value})} className="w-full p-2 rounded-lg border border-slate-200" />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-primary/70 mb-1">Líder</label>
+                        <label className="block text-xs font-bold text-primary/70 mb-1">Líderes</label>
                         <input type="text" value={editForm.leader || ''} onChange={(e) => setEditForm({...editForm, leader: e.target.value})} className="w-full p-2 rounded-lg border border-slate-200" />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-primary/70 mb-1">Horario</label>
+                        <label className="block text-xs font-bold text-primary/70 mb-1">Horario / Día y Hora</label>
                         <input type="text" value={editForm.schedule || ''} onChange={(e) => setEditForm({...editForm, schedule: e.target.value})} className="w-full p-2 rounded-lg border border-slate-200" />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-primary/70 mb-1">Dirección</label>
+                        <label className="block text-xs font-bold text-primary/70 mb-1">Calle Principal</label>
                         <input type="text" value={editForm.address || ''} onChange={(e) => setEditForm({...editForm, address: e.target.value})} className="w-full p-2 rounded-lg border border-slate-200" />
                       </div>
-                      <div className="md:col-span-2">
+                      <div>
+                        <label className="block text-xs font-bold text-primary/70 mb-1">Barriada</label>
+                        <input type="text" value={editForm.barriada || ''} onChange={(e) => setEditForm({...editForm, barriada: e.target.value})} className="w-full p-2 rounded-lg border border-slate-200" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-primary/70 mb-1">Ciudad</label>
+                        <input type="text" value={editForm.ciudad || ''} onChange={(e) => setEditForm({...editForm, ciudad: e.target.value})} className="w-full p-2 rounded-lg border border-slate-200" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-primary/70 mb-1">UID del Líder</label>
+                        <input type="text" value={editForm.leaderId || ''} onChange={(e) => setEditForm({...editForm, leaderId: e.target.value})} className="w-full p-2 rounded-lg border border-slate-200" />
+                      </div>
+                      <div>
                         <label className="block text-xs font-bold text-primary/70 mb-1">Google Maps URL</label>
                         <input type="url" value={editForm.googleMapsLink || ''} onChange={(e) => setEditForm({...editForm, googleMapsLink: e.target.value})} className="w-full p-2 rounded-lg border border-slate-200" />
                       </div>
                     </div>
                     <div className="flex justify-end gap-2 mt-4">
-                      <button onClick={() => setIsEditing(null)} className="p-2 rounded-lg bg-slate-100 text-primary hover:bg-slate-200"><X className="w-5 h-5" /></button>
-                      <button onClick={handleSaveEdit} className="p-2 rounded-lg bg-green-500 text-white hover:bg-green-600"><Check className="w-5 h-5" /></button>
+                      <button onClick={() => setIsEditing(null)} className="p-2 rounded-lg bg-slate-100 text-primary hover:bg-slate-200 text-sm font-bold flex items-center gap-1 px-4 py-2"><X className="w-5 h-5" /> Cancelar</button>
+                      <button onClick={handleSaveEdit} className="p-2 rounded-lg bg-green-500 text-white hover:bg-green-600 text-sm font-bold flex items-center gap-1 px-4 py-2"><Check className="w-5 h-5" /> Guardar</button>
                     </div>
                   </div>
                 ) : (
@@ -183,7 +237,7 @@ export default function AdminCelulas() {
                       <p className="text-primary/70 text-sm mb-2">Líder: <span className="font-semibold">{celula.leader}</span> • {celula.schedule}</p>
                       <div className="flex items-center gap-2 text-sm text-primary/60">
                         <MapPin className="w-4 h-4 text-secondary" />
-                        <span>{celula.address}</span>
+                        <span>{celula.address}{celula.barriada ? `, ${celula.barriada}` : ''}{celula.ciudad ? `, ${celula.ciudad}` : ''}</span>
                       </div>
                     </div>
                     <div className="flex gap-2 w-full md:w-auto">

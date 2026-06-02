@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { LogIn, Heart, Shield, MessageSquare, BookOpen } from 'lucide-react';
+import { LogIn, Heart, Shield, MessageSquare, BookOpen, AlertCircle } from 'lucide-react';
 import { loginWithGoogle } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 export default function Login() {
   const { user, roles, loading, isAuthReady } = useAuth();
   const navigate = useNavigate();
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (isAuthReady && !loading && user) {
@@ -24,10 +25,18 @@ export default function Login() {
   }, [user, roles, loading, isAuthReady, navigate]);
 
   const handleLogin = async () => {
+    setErrorMsg(null);
     try {
       await loginWithGoogle();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login failed", error);
+      if (error && (error.code === 'auth/popup-closed-by-user' || error.message?.includes('popup-closed-by-user'))) {
+        setErrorMsg('La ventana de inicio de sesión se cerró antes de completar el acceso. Por favor, inténtalo de nuevo.');
+      } else if (error && (error.code === 'auth/popup-blocked' || error.message?.includes('popup-blocked'))) {
+        setErrorMsg('El navegador bloqueó la ventana emergente de Google. Por favor, permite las ventanas emergentes para este sitio.');
+      } else {
+        setErrorMsg('Ocurrió un error al iniciar sesión con Google: ' + (error?.message || error));
+      }
     }
   };
 
@@ -77,6 +86,17 @@ export default function Login() {
             </div>
           </div>
         </div>
+
+        {errorMsg && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 text-left"
+          >
+            <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+            <p className="text-sm text-red-700 font-medium leading-relaxed">{errorMsg}</p>
+          </motion.div>
+        )}
 
         <button 
           onClick={handleLogin}
