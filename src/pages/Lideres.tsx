@@ -72,6 +72,7 @@ interface LeaderAnnouncement {
   authorId: string;
   authorName: string;
   createdAt: any;
+  expirationDate?: string;
 }
 
 interface CellStudy {
@@ -94,7 +95,7 @@ export default function Lideres() {
   const isLider = roles.includes('lider') || isAdmin;
 
   // Tabs state
-  const [activeTab, setActiveTab] = useState<'form' | 'stats' | 'announcements' | 'studies' | 'cell'>('form');
+  const [activeTab, setActiveTab] = useState<'form' | 'stats' | 'announcements' | 'studies' | 'cell'>('cell');
 
   // My Cell states
   const [cellProfile, setCellProfile] = useState<any>(null);
@@ -102,11 +103,14 @@ export default function Lideres() {
   const [cellProfileForm, setCellProfileForm] = useState({
     name: '',
     leader: '',
-    schedule: '',
+    schedule: 'Viernes 20:00hrs',
     address: '',
     barriada: '',
     ciudad: 'Huelva',
-    googleMapsLink: ''
+    googleMapsLink: '',
+    lugar: 'Ciudad de Huelva',
+    municipio: '',
+    lugarDetalle: ''
   });
   const [isSavingCell, setIsSavingCell] = useState(false);
   const [copiedCellLink, setCopiedCellLink] = useState(false);
@@ -130,6 +134,13 @@ export default function Lideres() {
   // Announcements administrator creation section
   const [newAnnouncement, setNewAnnouncement] = useState('');
   const [isPublishingAnnouncement, setIsPublishingAnnouncement] = useState(false);
+  const [announcementExpirationDate, setAnnouncementExpirationDate] = useState(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  });
 
   // Studies creation states
   const [studyTitle, setStudyTitle] = useState('');
@@ -165,20 +176,29 @@ export default function Lideres() {
         setCellProfileForm({
           name: data.name || '',
           leader: data.leader || user.displayName || '',
-          schedule: data.schedule || '',
+          schedule: data.schedule || 'Viernes 20:00hrs',
           address: data.address || '',
           barriada: data.barriada || '',
           ciudad: data.ciudad || 'Huelva',
-          googleMapsLink: data.googleMapsLink || ''
+          googleMapsLink: data.googleMapsLink || '',
+          lugar: data.lugar || (data.ciudad === 'Sevilla' ? 'Sevilla' : data.ciudad === 'Portugal' ? 'Portugal' : 'Ciudad de Huelva'),
+          municipio: data.municipio || '',
+          lugarDetalle: data.lugarDetalle || ''
         });
       } else {
         setCellProfile(null);
-        setCellProfileForm(prev => ({
-          ...prev,
+        setCellProfileForm({
+          name: '',
           leader: user.displayName || '',
-          name: 'Célula de ' + (user.displayName || 'Líder'),
-          ciudad: 'Huelva'
-        }));
+          schedule: 'Viernes 20:00hrs',
+          address: '',
+          barriada: '',
+          ciudad: 'Huelva',
+          googleMapsLink: '',
+          lugar: 'Ciudad de Huelva',
+          municipio: '',
+          lugarDetalle: ''
+        });
       }
       setIsCellLoading(false);
     }, (err) => {
@@ -197,12 +217,15 @@ export default function Lideres() {
       const dataToSave = {
         leaderId: user.uid,
         leader: cellProfileForm.leader || user.displayName || '',
-        name: cellProfileForm.name || 'Célula de ' + (cellProfileForm.leader || user.displayName || 'Líder'),
-        schedule: cellProfileForm.schedule || '',
+        name: 'Célula de ' + (cellProfileForm.leader || user.displayName || 'Líder'),
+        schedule: cellProfileForm.schedule || 'Viernes 20:00hrs',
         address: cellProfileForm.address || '',
-        barriada: cellProfileForm.barriada || '',
-        ciudad: cellProfileForm.ciudad || 'Huelva',
-        googleMapsLink: cellProfileForm.googleMapsLink || ''
+        barriada: cellProfileForm.lugar === 'Ciudad de Huelva' ? (cellProfileForm.barriada || '') : '',
+        ciudad: cellProfileForm.lugar === 'Sevilla' ? 'Sevilla' : cellProfileForm.lugar === 'Portugal' ? 'Portugal' : 'Huelva',
+        googleMapsLink: cellProfileForm.googleMapsLink || '',
+        lugar: cellProfileForm.lugar || 'Ciudad de Huelva',
+        municipio: cellProfileForm.lugar === 'Otro Municipio de Huelva' ? (cellProfileForm.municipio || '') : '',
+        lugarDetalle: cellProfileForm.lugar === 'Otro' ? (cellProfileForm.lugarDetalle || '') : ''
       };
 
       if (cellProfile?.id) {
@@ -214,6 +237,39 @@ export default function Lideres() {
     } catch (err) {
       console.error("Error saving cell profile:", err);
       alert("Error al guardar los datos de su célula.");
+    } finally {
+      setIsSavingCell(false);
+    }
+  };
+
+  const handleResetCellProfile = async () => {
+    if (!user?.uid) return;
+    if (!window.confirm("¿Está seguro de que desea restablecer los datos de su célula? Esto eliminará la ubicación del mapa.")) return;
+    
+    setIsSavingCell(true);
+    try {
+      if (cellProfile?.id) {
+        await deleteDoc(doc(db, 'celulas', cellProfile.id));
+      } else {
+        await deleteDoc(doc(db, 'celulas', user.uid));
+      }
+      setCellProfile(null);
+      setCellProfileForm({
+        name: '',
+        leader: user.displayName || '',
+        schedule: 'Viernes 20:00hrs',
+        address: '',
+        barriada: '',
+        ciudad: 'Huelva',
+        googleMapsLink: '',
+        lugar: 'Ciudad de Huelva',
+        municipio: '',
+        lugarDetalle: ''
+      });
+      alert("¡Los datos de su célula han sido restablecidos con éxito!");
+    } catch (err) {
+      console.error("Error resetting cell profile:", err);
+      alert("Error al restablecer los datos.");
     } finally {
       setIsSavingCell(false);
     }
@@ -368,11 +424,19 @@ export default function Lideres() {
         content: newAnnouncement.trim(),
         authorId: user.uid,
         authorName: user.displayName || 'Pastor / Administrador',
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
+        expirationDate: announcementExpirationDate
       };
 
       await addDoc(collection(db, 'leader_announcements'), announcementData);
       setNewAnnouncement('');
+      
+      // Reset expiration date to today
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      setAnnouncementExpirationDate(`${year}-${month}-${day}`);
     } catch (err) {
       console.error("Error publishing announcement:", err);
     } finally {
@@ -529,6 +593,21 @@ export default function Lideres() {
       leader: r.leaderName
     }));
 
+  // Expiration-aware announcements formatting
+  const todayStr = (() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  })();
+
+  const displayedAnnouncements = isAdmin 
+    ? announcements 
+    : announcements.filter(ann => !ann.expirationDate || ann.expirationDate >= todayStr);
+
+  const activeAnnouncementsForBadge = announcements.filter(ann => !ann.expirationDate || ann.expirationDate >= todayStr);
+
   return (
     <div className="pt-32 pb-24 bg-slate-50 min-h-screen font-sans">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -552,6 +631,30 @@ export default function Lideres() {
         {/* Tab Selection Navigation Bar */}
         <div className="flex flex-col md:flex-row bg-white p-2 rounded-2xl shadow-sm border border-slate-100 w-full md:max-w-fit mb-10 gap-1">
           <button
+            onClick={() => setActiveTab('cell')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase ${
+              activeTab === 'cell' 
+                ? 'bg-amber-100 text-amber-950 border border-amber-200' 
+                : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+            }`}
+          >
+            <Shield className="w-4 h-4 shrink-0" />
+            Mi Célula
+          </button>
+
+          <button
+            onClick={() => setActiveTab('studies')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase ${
+              activeTab === 'studies' 
+                ? 'bg-amber-100 text-amber-950 border border-amber-200' 
+                : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+            }`}
+          >
+            <BookOpen className="w-4 h-4 shrink-0" />
+            Estudios
+          </button>
+
+          <button
             onClick={() => setActiveTab('form')}
             className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase ${
               activeTab === 'form' 
@@ -560,9 +663,9 @@ export default function Lideres() {
             }`}
           >
             <FileText className="w-4 h-4 shrink-0" />
-            Formulario
+            Formularios
           </button>
-          
+
           <button
             onClick={() => setActiveTab('stats')}
             className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase ${
@@ -585,33 +688,9 @@ export default function Lideres() {
           >
             <Bell className="w-4 h-4 shrink-0" />
             Avisos
-            {announcements.length > 0 && (
+            {activeAnnouncementsForBadge.length > 0 && (
               <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
             )}
-          </button>
-
-          <button
-            onClick={() => setActiveTab('studies')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase ${
-              activeTab === 'studies' 
-                ? 'bg-amber-100 text-amber-950 border border-amber-200' 
-                : 'text-slate-500 hover:text-primary hover:bg-slate-50'
-            }`}
-          >
-            <BookOpen className="w-4 h-4 shrink-0" />
-            Estudios
-          </button>
-
-          <button
-            onClick={() => setActiveTab('cell')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase ${
-              activeTab === 'cell' 
-                ? 'bg-amber-100 text-amber-950 border border-amber-200' 
-                : 'text-slate-500 hover:text-primary hover:bg-slate-50'
-            }`}
-          >
-            <Shield className="w-4 h-4 shrink-0" />
-            Mi Célula
           </button>
         </div>
 
@@ -814,6 +893,52 @@ export default function Lideres() {
                         <span>Los comentarios de testimonios y oraciones son leídos personalmente por el equipo pastoral para interceder por ellos.</span>
                       </li>
                     </ul>
+                  </div>
+
+                  {/* Shareable Box Column */}
+                  <div className="bg-slate-50 rounded-2xl border border-slate-200 p-6 flex flex-col justify-between text-left mt-6">
+                    <div>
+                      <span className="inline-block bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-4">
+                        💡 Recurso de Relevo
+                      </span>
+                      <h3 className="text-lg font-kenao text-primary font-bold mb-3">Compartir Formulario</h3>
+                      <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+                        ¿Un colaborador o hermano le ayudará a rellenar la asistencia hoy? Comparta su enlace único. No necesitan iniciar sesión para enviarlo, y se asociará inmediatamente a su perfil y estadísticas de célula.
+                      </p>
+                    </div>
+
+                    <div className="space-y-3">
+                      <button
+                        type="button"
+                        onClick={handleCopyCellLink}
+                        className={`w-full py-3 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm border ${
+                          copiedCellLink 
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                            : 'bg-white text-primary border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {copiedCellLink ? (
+                          <>
+                            <CheckCircle className="w-4 h-4 animate-pulse" />
+                            ¡Enlace Copiado!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4" />
+                            Copiar Enlace
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleShareFormToWhatsApp}
+                        className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                      >
+                        <Share2 className="w-4 h-4" />
+                        Enviar por WhatsApp
+                      </button>
+                    </div>
                   </div>
                 </div>
               </motion.div>
@@ -1079,6 +1204,18 @@ export default function Lideres() {
                           />
                         </div>
 
+                        <div>
+                          <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">Fecha de Vencimiento *</label>
+                          <input
+                            type="date"
+                            required
+                            value={announcementExpirationDate}
+                            onChange={(e) => setAnnouncementExpirationDate(e.target.value)}
+                            className="p-4 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all text-sm font-medium"
+                          />
+                          <p className="text-[10px] text-slate-400 mt-1">El aviso se ocultará automáticamente para los líderes después de esta fecha.</p>
+                        </div>
+
                         <button
                           type="submit"
                           disabled={isPublishingAnnouncement || !newAnnouncement.trim()}
@@ -1110,46 +1247,57 @@ export default function Lideres() {
                     <p className="text-xs text-slate-400 mt-1">Sigue el hilo de los recordatorios actuales del liderazgo general.</p>
                   </div>
 
-                  {announcements.length === 0 ? (
+                  {displayedAnnouncements.length === 0 ? (
                     <div className="bg-white p-12 text-center rounded-[2rem] border border-slate-100 text-slate-400 font-bold shadow-sm">
                       No hay ningún aviso registrado actualmente para la red de líderes. ¡Que tengas una gran semana de bendición!
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {announcements.map((ann) => (
-                        <div 
-                          key={ann.id}
-                          className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative group hover:shadow-md transition-shadow"
-                        >
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-primary/75 text-xs font-bold font-kenao">
-                                {ann.authorName.slice(0, 2).toUpperCase()}
+                      {displayedAnnouncements.map((ann) => {
+                        const isExpired = ann.expirationDate && ann.expirationDate < todayStr;
+                        return (
+                          <div 
+                            key={ann.id}
+                            className={`bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative group hover:shadow-md transition-shadow ${isExpired ? 'opacity-60 border-dashed bg-slate-50/50' : ''}`}
+                          >
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-primary/75 text-xs font-bold font-kenao">
+                                  {ann.authorName.slice(0, 2).toUpperCase()}
+                                </div>
+                                <div>
+                                  <h4 className="text-xs font-bold text-primary flex items-center gap-2">
+                                    {ann.authorName}
+                                    {isExpired && (
+                                      <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-[9px] font-mono uppercase tracking-wider font-bold">Vencido</span>
+                                    )}
+                                    {ann.expirationDate && !isExpired && (
+                                      <span className="px-2 py-0.5 bg-emerald-50 text-emerald-800 rounded-full text-[9px] font-mono uppercase tracking-wider font-bold">Expira: {ann.expirationDate.split('-').reverse().join('/')}</span>
+                                    )}
+                                  </h4>
+                                  <span className="text-[10px] text-slate-400">
+                                    {ann.createdAt ? new Date(ann.createdAt.toDate ? ann.createdAt.toDate() : ann.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Recientemente'}
+                                  </span>
+                                </div>
                               </div>
-                              <div>
-                                <h4 className="text-xs font-bold text-primary">{ann.authorName}</h4>
-                                <span className="text-[10px] text-slate-400">
-                                  {ann.createdAt ? new Date(ann.createdAt.toDate ? ann.createdAt.toDate() : ann.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Recientemente'}
-                                </span>
-                              </div>
-                            </div>
 
-                            {isAdmin && (
-                              <button
-                                onClick={() => handleDeleteAnnouncement(ann.id)}
-                                className="text-slate-400 hover:text-red-600 p-2 rounded-xl hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100 absolute top-4 right-4"
-                                title="Eliminar este aviso permanentemente"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            )}
+                              {isAdmin && (
+                                <button
+                                  onClick={() => handleDeleteAnnouncement(ann.id)}
+                                  className="text-slate-400 hover:text-red-600 p-2 rounded-xl hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100 absolute top-4 right-4 cursor-pointer"
+                                  title="Eliminar este aviso permanentemente"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                            
+                            <p className="text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-line bg-slate-50/50 p-4 rounded-2xl border border-slate-100/50 mt-2">
+                              {ann.content}
+                            </p>
                           </div>
-                          
-                          <p className="text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-line bg-slate-50/50 p-4 rounded-2xl border border-slate-100/50 mt-2">
-                            {ann.content}
-                          </p>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -1377,7 +1525,7 @@ export default function Lideres() {
               >
                 <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 pb-6 border-b border-slate-100 gap-4 text-left">
                   <div>
-                    <h2 className="text-3xl font-kenao font-bold text-primary mb-2">Gestionar Datos de Mi Célula</h2>
+                    <h2 className="text-3xl font-kenao font-bold text-primary mb-2">Gestionar Datos</h2>
                     <p className="text-sm text-slate-500">
                       Configure el punto de encuentro de su célula. Estos datos aparecerán de forma automática en la página de Ubicaciones pública de Huelva Church.
                     </p>
@@ -1390,24 +1538,10 @@ export default function Lideres() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-left">
                   {/* Form configuration column */}
-                  <form onSubmit={handleSaveCellProfile} className="md:col-span-2 space-y-6 text-left">
+                  <form onSubmit={handleSaveCellProfile} className="md:col-span-2 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                          Nombre / Identificador de Célula
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={cellProfileForm.name}
-                          onChange={(e) => setCellProfileForm({ ...cellProfileForm, name: e.target.value })}
-                          placeholder="Ej. Célula de Juan / Célula de Huerto Mena"
-                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-sm"
-                        />
-                      </div>
-
                       <div>
                         <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
                           Nombre del Líder / Líderes
@@ -1417,23 +1551,49 @@ export default function Lideres() {
                           required
                           value={cellProfileForm.leader}
                           onChange={(e) => setCellProfileForm({ ...cellProfileForm, leader: e.target.value })}
-                          placeholder="Ej. Juan de Dios"
+                          placeholder="Ej. José y María"
                           className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-sm"
                         />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                          Día de Encuentro
+                        </label>
+                        <select
+                          required
+                          value={cellProfileForm.schedule.split(' ')[0] || ''}
+                          onChange={(e) => {
+                             const time = cellProfileForm.schedule.split(' ').slice(1).join(' ') || '20:00';
+                             setCellProfileForm({ ...cellProfileForm, schedule: `${e.target.value} ${time}` });
+                          }}
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-sm animate-none"
+                        >
+                          <option value="">Selecciona el día</option>
+                          <option value="Lunes">Lunes</option>
+                          <option value="Martes">Martes</option>
+                          <option value="Miércoles">Miércoles</option>
+                          <option value="Jueves">Jueves</option>
+                          <option value="Viernes">Viernes</option>
+                          <option value="Sábado">Sábado</option>
+                          <option value="Domingo">Domingo</option>
+                        </select>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                          Día y Hora (Horario)
+                          Hora de Encuentro
                         </label>
                         <input
-                          type="text"
+                          type="time"
                           required
-                          value={cellProfileForm.schedule}
-                          onChange={(e) => setCellProfileForm({ ...cellProfileForm, schedule: e.target.value })}
-                          placeholder="Ej. Jueves, 20:00h"
+                          value={cellProfileForm.schedule.split(' ').slice(1).join(' ').replace('hrs', '').trim() || '20:00'}
+                          onChange={(e) => {
+                             const day = cellProfileForm.schedule.split(' ')[0] || 'Viernes';
+                             setCellProfileForm({ ...cellProfileForm, schedule: `${day} ${e.target.value}hrs` });
+                          }}
                           className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-sm"
                         />
                       </div>
@@ -1447,7 +1607,7 @@ export default function Lideres() {
                           required
                           value={cellProfileForm.address}
                           onChange={(e) => setCellProfileForm({ ...cellProfileForm, address: e.target.value })}
-                          placeholder="Ej. Calle San José 15"
+                          placeholder="Ej. Av. Andalucía (Sin número, por seguridad)"
                           className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-sm"
                         />
                       </div>
@@ -1456,98 +1616,222 @@ export default function Lideres() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                          Barriada / Zona
+                          Lugar en dónde esté
                         </label>
-                        <input
-                          type="text"
+                        <select
                           required
-                          value={cellProfileForm.barriada}
-                          onChange={(e) => setCellProfileForm({ ...cellProfileForm, barriada: e.target.value })}
-                          placeholder="Ej. Isla Chica / Centro"
-                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-sm"
-                        />
+                          value={cellProfileForm.lugar}
+                          onChange={(e) => setCellProfileForm({ ...cellProfileForm, lugar: e.target.value, barriada: '', municipio: '', lugarDetalle: '' })}
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-sm animate-none"
+                        >
+                          <option value="Ciudad de Huelva">Ciudad de Huelva</option>
+                          <option value="Otro Municipio de Huelva">Otro Municipio de Huelva</option>
+                          <option value="Sevilla">Sevilla</option>
+                          <option value="Portugal">Portugal</option>
+                          <option value="Otro">Otro</option>
+                        </select>
                       </div>
 
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                          Ciudad
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={cellProfileForm.ciudad}
-                          onChange={(e) => setCellProfileForm({ ...cellProfileForm, ciudad: e.target.value })}
-                          placeholder="Ej. Huelva"
-                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-sm"
-                        />
-                      </div>
+                      {cellProfileForm.lugar === 'Ciudad de Huelva' && (
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                            Barriada / Zona
+                          </label>
+                          <select
+                            required
+                            value={cellProfileForm.barriada}
+                            onChange={(e) => setCellProfileForm({ ...cellProfileForm, barriada: e.target.value })}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-sm animate-none"
+                          >
+                            <option value="">Selecciona la barriada</option>
+                            <optgroup label="Zona Centro y Sur">
+                              <option value="Zona Centro">Zona Centro</option>
+                              <option value="Pescadería">Pescadería</option>
+                              <option value="Zafra">Zafra</option>
+                              <option value="Matadero">Matadero</option>
+                              <option value="Reina Victoria / Barrio Obrero">Reina Victoria / Barrio Obrero</option>
+                            </optgroup>
+                            <optgroup label="Zona Este">
+                              <option value="Isla Chica">Isla Chica (Polvorín / Tartessos / Yáñez Pinzón)</option>
+                              <option value="Pérez Cubillas">Pérez Cubillas</option>
+                              <option value="Los Rosales / Viaplana">Los Rosales / Viaplana</option>
+                              <option value="El Higueral">El Higueral</option>
+                              <option value="La Florida">La Florida</option>
+                              <option value="Príncipe Felipe">Príncipe Felipe</option>
+                            </optgroup>
+                            <optgroup label="Zona Norte">
+                              <option value="La Orden">La Orden</option>
+                              <option value="Santa Marta">Santa Marta</option>
+                              <option value="El Torrejón">El Torrejón (Alcalde Diego Sayago)</option>
+                              <option value="Hispanidad / Verdeluz">Hispanidad / Verdeluz</option>
+                              <option value="El Seminario">El Seminario</option>
+                              <option value="Parque Moret">Parque Moret (Alrededores)</option>
+                              <option value="Tres Ventanas / San Antonio">Tres Ventanas / San Antonio</option>
+                              <option value="Huerta Mena">Huerta Mena</option>
+                              <option value="Guadalupe / San Sebastián">Guadalupe / Polígono San Sebastián</option>
+                              <option value="Adoratrices">Adoratrices</option>
+                            </optgroup>
+                            <optgroup label="Zona Oeste / Ría">
+                              <option value="El Conquero">El Conquero</option>
+                              <option value="Las Colonias">Las Colonias</option>
+                              <option value="El Carmen">El Carmen</option>
+                              <option value="Marismas del Odiel / Cardeñas">Marismas del Odiel / Cardeñas</option>
+                              <option value="La Navidad / Santa Lucía">La Navidad / Santa Lucía</option>
+                              <option value="Molino de la Vega">Molino de la Vega</option>
+                            </optgroup>
+                            <option value="Otra zona / Alrededores">Otra zona / Alrededores</option>
+                          </select>
+                        </div>
+                      )}
+
+                      {cellProfileForm.lugar === 'Otro Municipio de Huelva' && (
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                            Municipio de Huelva
+                          </label>
+                          <select
+                            required
+                            value={cellProfileForm.municipio}
+                            onChange={(e) => setCellProfileForm({ ...cellProfileForm, municipio: e.target.value })}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-sm animate-none"
+                          >
+                            <option value="">Selecciona el municipio</option>
+                            <option value="Aljaraque">Aljaraque</option>
+                            <option value="Almonaster la Real">Almonaster la Real</option>
+                            <option value="Almonte">Almonte</option>
+                            <option value="Alosno">Alosno</option>
+                            <option value="Aracena">Aracena</option>
+                            <option value="Aroche">Aroche</option>
+                            <option value="Ayamonte">Ayamonte</option>
+                            <option value="Beas">Beas</option>
+                            <option value="Bollullos Par del Condado">Bollullos Par del Condado</option>
+                            <option value="Bonares">Bonares</option>
+                            <option value="Cabezas Rubias">Cabezas Rubias</option>
+                            <option value="Cala">Cala</option>
+                            <option value="Calañas">Calañas</option>
+                            <option value="Cartaya">Cartaya</option>
+                            <option value="Chucena">Chucena</option>
+                            <option value="Corteconcepción">Corteconcepción</option>
+                            <option value="Cortegana">Cortegana</option>
+                            <option value="Cortelazor">Cortelazor</option>
+                            <option value="Cumbres de Enmedio">Cumbres de Enmedio</option>
+                            <option value="Cumbres de San Bartolomé">Cumbres de San Bartolomé</option>
+                            <option value="Cumbres Mayores">Cumbres Mayores</option>
+                            <option value="El Campillo">El Campillo</option>
+                            <option value="El Cerro de Andévalo">El Cerro de Andévalo</option>
+                            <option value="El Granado">El Granado</option>
+                            <option value="Encinasola">Encinasola</option>
+                            <option value="Escacena del Campo">Escacena del Campo</option>
+                            <option value="Fuenteheridos">Fuenteheridos</option>
+                            <option value="Galaroza">Galaroza</option>
+                            <option value="Gibraleón">Gibraleón</option>
+                            <option value="Higuera de la Sierra">Higuera de la Sierra</option>
+                            <option value="Hinojos">Hinojos</option>
+                            <option value="Huelva">Huelva</option>
+                            <option value="Isla Cristina">Isla Cristina</option>
+                            <option value="Jabugo">Jabugo</option>
+                            <option value="La Granada de Río-Tinto">La Granada de Río-Tinto</option>
+                            <option value="La Nava">La Nava</option>
+                            <option value="La Palma del Condado">La Palma del Condado</option>
+                            <option value="Lepe">Lepe</option>
+                            <option value="Linares de la Sierra">Linares de la Sierra</option>
+                            <option value="Los Marines">Los Marines</option>
+                            <option value="Lucena del Puerto">Lucena del Puerto</option>
+                            <option value="Manzanilla">Manzanilla</option>
+                            <option value="Minas de Riotinto">Minas de Riotinto</option>
+                            <option value="Moguer">Moguer</option>
+                            <option value="Nerva">Nerva</option>
+                            <option value="Niebla">Niebla</option>
+                            <option value="Palos de la Frontera">Palos de la Frontera</option>
+                            <option value="Paterna del Campo">Paterna del Campo</option>
+                            <option value="Paymogo">Paymogo</option>
+                            <option value="Puebla de Guzmán">Puebla de Guzmán</option>
+                            <option value="Puerto Moral">Puerto Moral</option>
+                            <option value="Punta Umbría">Punta Umbría</option>
+                            <option value="Rociana del Condado">Rociana del Condado</option>
+                            <option value="Rosal de la Frontera">Rosal de la Frontera</option>
+                            <option value="San Bartolomé de la Torre">San Bartolomé de la Torre</option>
+                            <option value="San Juan del Puerto">San Juan del Puerto</option>
+                            <option value="San Silvestre de Guzmán">San Silvestre de Guzmán</option>
+                            <option value="Sanlúcar de Guadiana">Sanlúcar de Guadiana</option>
+                            <option value="Santa Ana la Real">Santa Ana la Real</option>
+                            <option value="Santa Bárbara de Casa">Santa Bárbara de Casa</option>
+                            <option value="Santa Olalla del Cala">Santa Olalla del Cala</option>
+                            <option value="Trigueros">Trigueros</option>
+                            <option value="Valverde del Camino">Valverde del Camino</option>
+                            <option value="Villablanca">Villablanca</option>
+                            <option value="Villalba del Alcor">Villalba del Alcor</option>
+                            <option value="Villanueva de las Cruces">Villanueva de las Cruces</option>
+                            <option value="Villanueva de los Castillejos">Villanueva de los Castillejos</option>
+                            <option value="Villarrasa">Villarrasa</option>
+                            <option value="Zalamea la Real">Zalamea la Real</option>
+                            <option value="Zufre">Zufre</option>
+                          </select>
+                        </div>
+                      )}
+
+                      {cellProfileForm.lugar === 'Otro' && (
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                            Especifique el Lugar / Ubicación
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={cellProfileForm.lugarDetalle}
+                            onChange={(e) => setCellProfileForm({ ...cellProfileForm, lugarDetalle: e.target.value })}
+                            placeholder="Ej. Madrid, Extremadura, etc."
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-sm"
+                          />
+                        </div>
+                      )}
                     </div>
 
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                        Enlace de Google Maps (Opcional)
+                        Referencia *
                       </label>
                       <input
                         type="url"
+                        required
                         value={cellProfileForm.googleMapsLink}
                         onChange={(e) => setCellProfileForm({ ...cellProfileForm, googleMapsLink: e.target.value })}
-                        placeholder="https://maps.app.goo.gl/..."
+                        placeholder="https://maps.app.goo.gl/... (Usa una referencia cercana por seguridad)"
                         className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-sm"
                       />
                     </div>
 
-                    <button
-                      type="submit"
-                      disabled={isSavingCell}
-                      className="px-6 py-3 bg-primary hover:bg-secondary hover:text-primary text-white font-bold rounded-xl transition-all uppercase tracking-wide text-xs disabled:opacity-50 cursor-pointer shadow-sm"
-                    >
-                      {isSavingCell ? 'Guardando...' : 'Guardar Información'}
-                    </button>
+                    <div>
+                      <button
+                        type="submit"
+                        disabled={isSavingCell}
+                        className="px-6 py-3 bg-primary hover:bg-secondary hover:text-primary text-white font-bold rounded-xl transition-all uppercase tracking-wide text-xs disabled:opacity-50 cursor-pointer shadow-sm"
+                      >
+                        {isSavingCell ? 'Guardando...' : 'Guardar Información'}
+                      </button>
+                    </div>
                   </form>
 
-                  {/* Shareable Box Column */}
-                  <div className="bg-slate-50 rounded-2xl border border-slate-200 p-6 flex flex-col justify-between text-left">
-                    <div>
-                      <span className="inline-block bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-4">
-                        💡 Recurso de Relevo
-                      </span>
-                      <h3 className="text-lg font-kenao text-primary font-bold mb-3">Compartir Formulario</h3>
-                      <p className="text-xs text-slate-500 mb-6 leading-relaxed">
-                        ¿Un colaborador o hermano le ayudará a rellenar la asistencia hoy? Comparta su enlace único. No necesitan iniciar sesión para enviarlo, y se asociará inmediatamente a su perfil y estadísticas de célula.
-                      </p>
-                    </div>
-
-                    <div className="space-y-3">
-                      <button
-                        type="button"
-                        onClick={handleCopyCellLink}
-                        className={`w-full py-3 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm border ${
-                          copiedCellLink 
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-                            : 'bg-white text-primary border-slate-200 hover:bg-slate-100'
-                        }`}
+                  {/* Sidebar Panel containing download map */}
+                  <div className="md:col-span-1 space-y-6">
+                    <div className="bg-slate-50 rounded-3xl border border-slate-200/60 p-6 shadow-sm flex flex-col justify-between">
+                      <div>
+                        <h3 className="text-lg font-kenao font-bold text-primary mb-2 flex items-center gap-2">
+                          <FileText className="w-5 h-5 text-secondary" /> Mapa de Barriadas
+                        </h3>
+                        <p className="text-xs text-slate-500 leading-relaxed mb-4">
+                          Descarga el plano oficial del Ayuntamiento de Huelva con las delimitaciones de barriadas de la ciudad en PDF.
+                        </p>
+                      </div>
+                      
+                      <a
+                        href="/Barriadas%20de%20Huelva.pdf"
+                        download="Barriadas de Huelva.pdf"
+                        className="flex items-center justify-center gap-2 px-4 py-3 bg-white hover:bg-secondary border border-slate-200 hover:border-transparent transition-all text-primary font-bold rounded-xl text-xs w-full text-center shadow-sm cursor-pointer"
+                        title="Descargar plano PDF oficial de Barriadas"
                       >
-                        {copiedCellLink ? (
-                          <>
-                            <CheckCircle className="w-4 h-4 animate-pulse" />
-                            ¡Enlace Copiado!
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-4 h-4" />
-                            Copiar Enlace
-                          </>
-                        )}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={handleShareFormToWhatsApp}
-                        className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-                      >
-                        <Share2 className="w-4 h-4" />
-                        Enviar por WhatsApp
-                      </button>
+                        Descargar Mapa de Barriadas de Huelva
+                      </a>
                     </div>
                   </div>
                 </div>

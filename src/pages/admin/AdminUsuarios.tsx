@@ -14,6 +14,7 @@ interface UserProfile {
   roles: ('admin' | 'comunicador' | 'profesor' | 'alumno' | 'lider')[];
   status: 'pending' | 'active' | 'blocked';
   createdAt: any;
+  requestedAlumnoRole?: boolean;
 }
 
 export default function AdminUsuarios() {
@@ -51,70 +52,118 @@ export default function AdminUsuarios() {
     }
   }, [isAuthReady, user, isAdmin]);
 
-  const toggleRole = async (uid: string, roleToToggle: UserProfile['roles'][number], currentRoles: UserProfile['roles']) => {
-    try {
-      let newRoles = [...currentRoles];
-      if (newRoles.includes(roleToToggle)) {
-        // Don't allow removing 'alumno' if it's the only one, or ensure at least one role?
-        // Actually, roles can be multiple.
-        newRoles = newRoles.filter(r => r !== roleToToggle);
-      } else {
-        newRoles.push(roleToToggle);
+  // Local drafts for accumulated changes (so we don't spam emails on single button presses)
+  interface UserDraft {
+    roles?: ('admin' | 'comunicador' | 'profesor' | 'alumno' | 'lider')[];
+    status?: 'pending' | 'active' | 'blocked';
+  }
+  const [drafts, setDrafts] = useState<Record<string, UserDraft>>({});
+  const [isApplying, setIsApplying] = useState<Record<string, boolean>>({});
+
+  const getUserRoles = (u: UserProfile) => {
+    if (drafts[u.uid] && drafts[u.uid].roles !== undefined) {
+      return drafts[u.uid].roles!;
+    }
+    return u.roles || [];
+  };
+
+  const getUserStatus = (u: UserProfile) => {
+    if (drafts[u.uid] && drafts[u.uid].status !== undefined) {
+      return drafts[u.uid].status!;
+    }
+    return u.status;
+  };
+
+  const hasDraft = (uid: string) => {
+    return drafts[uid] !== undefined;
+  };
+
+  const toggleRoleDraft = (uid: string, roleToToggle: UserProfile['roles'][number], currentRoles: UserProfile['roles']) => {
+    const userDraft = drafts[uid] || {};
+    let draftRoles = userDraft.roles !== undefined ? [...userDraft.roles] : [...currentRoles];
+    
+    if (draftRoles.includes(roleToToggle)) {
+      draftRoles = draftRoles.filter(r => r !== roleToToggle);
+    } else {
+      draftRoles.push(roleToToggle);
+    }
+    
+    // Ensure at least 'alumno' if empty
+    if (draftRoles.length === 0) draftRoles = ['alumno'];
+    
+    setDrafts(prev => ({
+      ...prev,
+      [uid]: {
+        ...userDraft,
+        roles: draftRoles
       }
+    }));
+  };
 
-      // Ensure at least 'alumno' if empty
-      if (newRoles.length === 0) newRoles = ['alumno'];
+  const handleStatusChangeDraft = (uid: string, newStatus: UserProfile['status']) => {
+    const userDraft = drafts[uid] || {};
+    setDrafts(prev => ({
+      ...prev,
+      [uid]: {
+        ...userDraft,
+        status: newStatus
+      }
+    }));
+  };
 
-      const userRef = doc(db, 'users', uid);
-      await updateDoc(userRef, {
-        roles: newRoles,
+  const applyChanges = async (u: UserProfile) => {
+    const draft = drafts[u.uid];
+    if (!draft) return;
+
+    setIsApplying(prev => ({ ...prev, [u.uid]: true }));
+    try {
+      const finalRoles = draft.roles !== undefined ? draft.roles : (u.roles || []);
+      const finalStatus = draft.status !== undefined ? draft.status : u.status;
+
+      const userRef = doc(db, 'users', u.uid);
+      const updates: any = {
+        roles: finalRoles,
+        status: finalStatus,
         updatedAt: serverTimestamp()
+      };
+      if (finalRoles.includes('alumno')) {
+        updates.requestedAlumnoRole = false;
+      }
+      await updateDoc(userRef, updates);
+
+      // Send a single combined email notification through the endpoint
+      await fetch("/api/admin/notify-role-change", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: u.email,
+          displayName: u.displayName,
+          roles: finalRoles,
+          status: finalStatus
+        })
       });
 
-      // Send email notification via endpoint
-      const targetUser = users.find(u => u.uid === uid);
-      if (targetUser) {
-        fetch("/api/admin/notify-role-change", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: targetUser.email,
-            displayName: targetUser.displayName,
-            roles: newRoles,
-            status: targetUser.status
-          })
-        }).catch(err => console.error("Error notifying role change:", err));
-      }
+      // Clear draft for this user
+      setDrafts(prev => {
+        const next = { ...prev };
+        delete next[u.uid];
+        return next;
+      });
+
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
+      console.error("Error committing role/status changes:", error);
+      handleFirestoreError(error, OperationType.UPDATE, `users/${u.uid}`);
+    } finally {
+      setIsApplying(prev => ({ ...prev, [u.uid]: false }));
     }
   };
 
-  const handleStatusChange = async (uid: string, newStatus: UserProfile['status']) => {
-    try {
-      const userRef = doc(db, 'users', uid);
-      await updateDoc(userRef, {
-        status: newStatus,
-        updatedAt: serverTimestamp()
-      });
-
-      // Send email notification via endpoint
-      const targetUser = users.find(u => u.uid === uid);
-      if (targetUser) {
-        fetch("/api/admin/notify-role-change", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: targetUser.email,
-            displayName: targetUser.displayName,
-            roles: targetUser.roles,
-            status: newStatus
-          })
-        }).catch(err => console.error("Error notifying status change:", err));
-      }
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
-    }
+  const discardChanges = (uid: string) => {
+    setDrafts(prev => {
+      const next = { ...prev };
+      delete next[uid];
+      return next;
+    });
   };
 
   const filteredUsers = users.filter(u => {
@@ -277,88 +326,139 @@ export default function AdminUsuarios() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredUsers.map((u) => (
-                  <tr key={u.uid} className="hover:bg-slate-50/50 transition-all">
-                    <td className="px-8 py-6">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-100 flex-shrink-0">
-                          {u.photoURL ? (
-                            <img src={u.photoURL} alt={u.displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-primary/20">
-                              <UserIcon className="w-6 h-6" />
+                {filteredUsers.map((u) => {
+                  const draftActive = hasDraft(u.uid);
+                  const activeRoles = getUserRoles(u);
+                  const activeStatus = getUserStatus(u);
+                  return (
+                    <tr key={u.uid} className={`transition-all ${draftActive ? 'bg-amber-50/40 border-l-4 border-amber-400 hover:bg-amber-50/60' : 'hover:bg-slate-50/50'}`}>
+                      <td className="px-8 py-6">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-100 flex-shrink-0">
+                            {u.photoURL ? (
+                              <img src={u.photoURL} alt={u.displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-primary/20">
+                                <UserIcon className="w-6 h-6" />
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <div className="font-bold text-primary flex items-center gap-2">
+                              {u.displayName || 'Sin nombre'}
+                              {draftActive && (
+                                <span className="text-[9px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse">Sin guardar</span>
+                              )}
+                              {u.requestedAlumnoRole && !activeRoles.includes('alumno') && (
+                                <span className="text-[9px] font-black bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse border border-blue-200">Solicitó Alumno</span>
+                              )}
+                            </div>
+                            <div className="text-sm text-primary/40 flex items-center gap-1">
+                              <Mail className="w-3 h-3" />
+                              {u.email}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-8 py-6">
+                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${getStatusBadgeColor(activeStatus)}`}>
+                          {activeStatus === 'pending' ? 'Pendiente' : activeStatus === 'active' ? 'Activo' : 'Bloqueado'}
+                        </span>
+                      </td>
+                      <td className="px-8 py-6">
+                        <div className="flex flex-wrap gap-2 max-w-xs">
+                          {availableRoles.map(roleName => {
+                            const isAssigned = activeRoles.includes(roleName);
+                            const isSuperAdmin = u.email === 'huelvachurch@gmail.com';
+                            return (
+                              <button
+                                key={roleName}
+                                onClick={() => toggleRoleDraft(u.uid, roleName, u.roles || [])}
+                                disabled={isSuperAdmin && roleName === 'admin'}
+                                className={`px-3 py-1 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
+                                  isAssigned 
+                                    ? getRoleBadgeColor(roleName)
+                                    : 'bg-white text-slate-300 border-slate-100 hover:border-slate-300'
+                                }`}
+                              >
+                                {roleName.toUpperCase()}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </td>
+                      <td className="px-8 py-6">
+                        <div className="flex flex-col gap-3">
+                          <div className="flex items-center gap-2">
+                            {activeStatus === 'pending' && (
+                              <button 
+                                onClick={() => handleStatusChangeDraft(u.uid, 'active')}
+                                className="p-2 bg-green-50 text-green-600 rounded-xl hover:bg-green-100 transition-all cursor-pointer"
+                                title="Aceptar Miembro (Borrador)"
+                              >
+                                <CheckCircle className="w-5 h-5" />
+                              </button>
+                            )}
+                            {activeStatus === 'active' && u.email !== 'huelvachurch@gmail.com' && (
+                              <button 
+                                onClick={() => handleStatusChangeDraft(u.uid, 'blocked')}
+                                className="p-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-all cursor-pointer"
+                                title="Bloquear Usuario (Borrador)"
+                              >
+                                <AlertCircle className="w-5 h-5" />
+                              </button>
+                            )}
+                            {activeStatus === 'blocked' && (
+                              <button 
+                                onClick={() => handleStatusChangeDraft(u.uid, 'active')}
+                                className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all cursor-pointer"
+                                title="Desbloquear Usuario (Borrador)"
+                              >
+                                <UserCheck className="w-5 h-5" />
+                              </button>
+                            )}
+                          </div>
+
+                          {u.requestedAlumnoRole && !activeRoles.includes('alumno') && (
+                            <button 
+                              onClick={() => {
+                                if (!activeRoles.includes('alumno')) {
+                                  toggleRoleDraft(u.uid, 'alumno', u.roles || []);
+                                }
+                              }}
+                              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-md flex items-center gap-1.5 self-start"
+                              title="Aprobar Solicitud de Alumno"
+                            >
+                              <CheckCircle className="w-3.5 h-3.5" /> Aprobar Alumno
+                            </button>
+                          )}
+
+                          {draftActive && (
+                            <div className="flex flex-col gap-1 mt-1 border-t border-slate-100 pt-2 animate-fadeIn">
+                              <span className="text-[9px] font-black text-amber-600 uppercase tracking-wider">Cambios pendientes</span>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  onClick={() => applyChanges(u)}
+                                  disabled={isApplying[u.uid]}
+                                  className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-[9px] uppercase tracking-wider cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-sm transition-all"
+                                >
+                                  {isApplying[u.uid] ? 'Aplicando...' : 'Aplicar'}
+                                </button>
+                                <button
+                                  onClick={() => discardChanges(u.uid)}
+                                  disabled={isApplying[u.uid]}
+                                  className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold rounded-lg text-[9px] uppercase tracking-wider cursor-pointer shadow-xs transition-all"
+                                >
+                                  Descartar
+                                </button>
+                              </div>
                             </div>
                           )}
                         </div>
-                        <div>
-                          <div className="font-bold text-primary">{u.displayName || 'Sin nombre'}</div>
-                          <div className="text-sm text-primary/40 flex items-center gap-1">
-                            <Mail className="w-3 h-3" />
-                            {u.email}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-8 py-6">
-                      <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${getStatusBadgeColor(u.status)}`}>
-                        {u.status === 'pending' ? 'Pendiente' : u.status === 'active' ? 'Activo' : 'Bloqueado'}
-                      </span>
-                    </td>
-                    <td className="px-8 py-6">
-                      <div className="flex flex-wrap gap-2 max-w-xs">
-                        {availableRoles.map(roleName => {
-                          const isAssigned = u.roles?.includes(roleName);
-                          const isSuperAdmin = u.email === 'huelvachurch@gmail.com';
-                          return (
-                            <button
-                              key={roleName}
-                              onClick={() => toggleRole(u.uid, roleName, u.roles || [])}
-                              disabled={isSuperAdmin && roleName === 'admin'}
-                              className={`px-3 py-1 rounded-lg text-[10px] font-bold border transition-all ${
-                                isAssigned 
-                                  ? getRoleBadgeColor(roleName)
-                                  : 'bg-white text-slate-300 border-slate-100 hover:border-slate-300'
-                              }`}
-                            >
-                              {roleName.toUpperCase()}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </td>
-                    <td className="px-8 py-6">
-                      <div className="flex items-center gap-2">
-                        {u.status === 'pending' && (
-                          <button 
-                            onClick={() => handleStatusChange(u.uid, 'active')}
-                            className="p-2 bg-green-50 text-green-600 rounded-xl hover:bg-green-100 transition-all"
-                            title="Aceptar Miembro"
-                          >
-                            <CheckCircle className="w-5 h-5" />
-                          </button>
-                        )}
-                        {u.status === 'active' && u.email !== 'huelvachurch@gmail.com' && (
-                          <button 
-                            onClick={() => handleStatusChange(u.uid, 'blocked')}
-                            className="p-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-all"
-                            title="Bloquear Usuario"
-                          >
-                            <AlertCircle className="w-5 h-5" />
-                          </button>
-                        )}
-                        {u.status === 'blocked' && (
-                          <button 
-                            onClick={() => handleStatusChange(u.uid, 'active')}
-                            className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all"
-                            title="Desbloquear Usuario"
-                          >
-                            <UserCheck className="w-5 h-5" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -81,8 +81,8 @@ export const loginWithGoogle = async () => {
         email: user.email,
         displayName: user.displayName,
         photoURL: user.photoURL,
-        roles: isSuperAdmin ? ['admin'] : ['alumno'],
-        status: isSuperAdmin ? 'active' : 'pending',
+        roles: isSuperAdmin ? ['admin'] : [],
+        status: isSuperAdmin ? 'active' : 'active',
         createdAt: serverTimestamp()
       });
     }

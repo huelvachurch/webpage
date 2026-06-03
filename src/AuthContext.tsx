@@ -58,8 +58,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setStatus(isSuperAdmin ? 'active' : dbStatus);
         } else {
           // If document doesn't exist yet, check if it's the super admin email
-          setRoles(isSuperAdmin ? ['admin'] : ['alumno']);
-          setStatus(isSuperAdmin ? 'active' : 'pending');
+          setRoles(isSuperAdmin ? ['admin'] : []);
+          setStatus(isSuperAdmin ? 'active' : 'active');
         }
         setLoading(false);
         setIsAuthReady(true);

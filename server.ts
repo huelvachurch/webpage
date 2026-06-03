@@ -377,6 +377,16 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
             </table>
           </div>
           
+          ${(roles || []).includes('lider') ? `
+          <div style="background-color: #f1f5f9; border-left: 4px solid #b59410; padding: 16px; margin-bottom: 24px; border-radius: 0 8px 8px 0;">
+            <p style="font-size: 14px; color: #334155; margin-top: 0; font-weight: bold;">🌟 ¡Felicidades por tu nuevo rol de Líder de Célula!</p>
+            <p style="font-size: 13px; color: #475569; line-height: 1.5; margin-bottom: 0;">
+              Al iniciar sesión con tu cuenta de Gmail, ahora tendrás acceso al <strong>menú exclusivo para Líderes</strong> en el portal.
+              Desde allí podrás rellenar rápidamente el Formulario semanal de tu grupo, acceder a la Biblioteca de Lecciones en PDF para compartirlas, visualizar estadísticas y modificar los datos de tu célula.
+            </p>
+          </div>
+          ` : ''}
+
           <p style="font-size: 14px; color: #475569; line-height: 1.6;">
             Si tienes dudas o deseas solicitar cambios adicionales, no dudes en ponerte en contacto con nosotros. Puedes empezar a disfrutar de nuestros servicios comunitarios e inscribirte a tus cursos ahora mismo.
           </p>

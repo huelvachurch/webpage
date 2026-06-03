@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MapPin, Users, Heart, BookOpen, Music, Target, FileText, Map, Smile } from 'lucide-react';
+import { Users, Heart, BookOpen, Music, Target, Smile } from 'lucide-react';
 import { Celula } from './admin/AdminCelulas';
 import { useTranslation } from 'react-i18next';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
+import { InteractiveCelulasMap, CelulaMapData } from '../components/InteractiveCelulasMap';
 
 export default function Celulas() {
   const { t } = useTranslation();
@@ -230,36 +231,9 @@ export default function Celulas() {
             <div className="w-16 h-1 bg-secondary mx-auto mb-10 relative z-10"></div>
           </div>
 
-          {celulas.length === 0 ? (
-            <p className="text-center text-primary/60 text-lg">{t('cells.noLocations')}</p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
-              {celulas.map((celula) => (
-                <div key={celula.id} className="bg-white p-6 rounded-2xl shadow-sm hover:shadow-md transition-all border border-slate-200 flex flex-col items-center text-center group">
-                  <div className="w-16 h-16 bg-secondary/10 rounded-full flex items-center justify-center text-secondary mb-4 group-hover:bg-secondary group-hover:text-primary transition-colors">
-                    <MapPin className="w-8 h-8" />
-                  </div>
-                  <h3 className="text-xl font-bold text-primary mb-2">{celula.name}</h3>
-                  <div className="space-y-1 mb-6 text-primary/70">
-                    <p className="font-semibold text-primary">{t('cells.leader')}: {celula.leader}</p>
-                    <p>{celula.schedule}</p>
-                    <p className="text-sm">{celula.address}</p>
-                  </div>
-                  {celula.googleMapsLink && (
-                    <a 
-                      href={celula.googleMapsLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-auto px-6 py-3 w-full bg-slate-50 text-primary font-bold rounded-xl hover:bg-secondary transition-colors text-sm flex justify-center items-center gap-2"
-                    >
-                      <Map className="w-4 h-4" />
-                      {t('cells.viewMaps')}
-                    </a>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="mb-4">
+            <InteractiveCelulasMap celulas={celulas as CelulaMapData[]} />
+          </div>
         </div>
       </section>
 

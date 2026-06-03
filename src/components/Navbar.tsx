@@ -41,6 +41,7 @@ export default function Navbar() {
   const isComunicador = roles.includes('comunicador') || isAdmin;
   const isProfesor = roles.includes('profesor') || isAdmin;
   const isLider = roles.includes('lider') || isAdmin;
+  const isStudent = roles.includes('alumno') || isProfesor || isAdmin;
 
   const changeLanguage = (lng: string) => {
     i18n.changeLanguage(lng);
@@ -155,8 +156,16 @@ export default function Navbar() {
 
                           <Link 
                             onClick={() => setIsUserMenuOpen(false)}
-                            to="/mis-cursos" 
+                            to="/mis-datos" 
                             className="flex items-center gap-3 px-4 py-2.5 text-left text-sm rounded-lg hover:bg-slate-50 text-primary font-medium transition-colors"
+                          >
+                            <UserIcon className="w-5 h-5 text-primary/60" />
+                            Mis Datos
+                          </Link>
+
+                          <Link 
+                            onClick={() => setIsUserMenuOpen(false)}
+                            to="/mis-cursos" style={{ display: isStudent ? 'flex' : 'none' }}                            className="flex items-center gap-3 px-4 py-2.5 text-left text-sm rounded-lg hover:bg-slate-50 text-primary font-medium transition-colors"
                           >
                             <GraduationCap className="w-5 h-5 text-primary/60" />
                             {t('nav.myCourses')}
@@ -321,10 +330,16 @@ export default function Navbar() {
                       {t('nav.leaders')}
                     </Link>
                   )}
-                  <Link to="/mis-cursos" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
-                    <GraduationCap className="w-5 h-5 shrink-0" />
-                    {t('nav.myCourses')}
+                  <Link to="/mis-datos" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
+                    <UserIcon className="w-5 h-5 shrink-0" />
+                    Mis Datos
                   </Link>
+                  {isStudent && (
+                    <Link to="/mis-cursos" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
+                      <GraduationCap className="w-5 h-5 shrink-0" />
+                      {t('nav.myCourses')}
+                    </Link>
+                  )}
                   {isProfesor && (
                     <Link to="/admin/cursos" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
                       <Layout className="w-5 h-5 shrink-0" />
