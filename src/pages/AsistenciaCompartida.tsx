@@ -13,7 +13,8 @@ import {
   Info, 
   Smile,
   Heart,
-  Home
+  Home,
+  X
 } from 'lucide-react';
 import { collection, query, where, getDocs, addDoc, getDoc, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -98,6 +99,24 @@ export default function AsistenciaCompartida() {
     setCellMembers(prev => prev.map(member => 
       member.id === id ? { ...member, isActive: !member.isActive } : member
     ));
+  };
+
+  const handleDeleteMember = async (memberId: string) => {
+    if (memberId.startsWith('temp-')) {
+      setCellMembers(prev => prev.filter(m => m.id !== memberId));
+      return;
+    }
+    if (!window.confirm("¿Está seguro de que desea eliminar permanentemente este asistente de la lista?")) {
+      return;
+    }
+    
+    try {
+      await deleteDoc(doc(db, 'cell_members', memberId));
+      setCellMembers(prev => prev.filter(m => m.id !== memberId));
+    } catch (err) {
+      console.error("Error deleting member:", err);
+      alert("Error al eliminar el asistente.");
+    }
   };
 
   const handleAddNewMember = async (name: string, category: 'bautizado' | 'no_bautizado' | 'no_creyente', clearInput: () => void) => {
@@ -325,23 +344,28 @@ export default function AsistenciaCompartida() {
                         cellMembers
                           .filter(m => m.category === 'bautizado')
                           .map(member => (
-                            <button
+                            <div
                               key={member.id}
-                              type="button"
-                              onClick={() => toggleMemberActive(member.id)}
-                              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold select-none transition-all flex items-center gap-1.5 cursor-pointer ${
-                                member.isActive
-                                  ? 'bg-primary text-white border border-primary/20 shadow-sm animate-none'
-                                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                              }`}
+                              style={{ contentVisibility: 'auto' }}
+                              className="inline-flex items-center gap-1"
                             >
-                              {member.name}
-                              {member.consecutiveAbsences > 0 && (
-                                <span className={`text-[9px] px-1 rounded-md ${member.isActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600 font-bold'}`}>
-                                  -{member.consecutiveAbsences}
-                                </span>
-                              )}
-                            </button>
+                              <button
+                                type="button"
+                                onClick={() => toggleMemberActive(member.id)}
+                                className={`px-4 py-1.5 rounded-full text-xs font-semibold select-none transition-all flex items-center gap-1.5 cursor-pointer ${
+                                  member.isActive
+                                    ? 'bg-primary text-white border border-primary/20 shadow-sm animate-none'
+                                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                                }`}
+                              >
+                                <span>{member.name}</span>
+                                {member.consecutiveAbsences > 0 && (
+                                  <span className={`text-[9px] px-1 rounded-md ${member.isActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600 font-bold'}`}>
+                                    -{member.consecutiveAbsences}
+                                  </span>
+                                )}
+                              </button>
+                            </div>
                           ))
                       )}
                     </div>
@@ -391,23 +415,28 @@ export default function AsistenciaCompartida() {
                         cellMembers
                           .filter(m => m.category === 'no_bautizado')
                           .map(member => (
-                            <button
+                            <div
                               key={member.id}
-                              type="button"
-                              onClick={() => toggleMemberActive(member.id)}
-                              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold select-none transition-all flex items-center gap-1.5 cursor-pointer ${
-                                member.isActive
-                                  ? 'bg-primary text-white border border-primary/20 shadow-sm animate-none'
-                                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                              }`}
+                              style={{ contentVisibility: 'auto' }}
+                              className="inline-flex items-center gap-1"
                             >
-                              {member.name}
-                              {member.consecutiveAbsences > 0 && (
-                                <span className={`text-[9px] px-1 rounded-md ${member.isActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600 font-bold'}`}>
-                                  -{member.consecutiveAbsences}
-                                </span>
-                              )}
-                            </button>
+                              <button
+                                type="button"
+                                onClick={() => toggleMemberActive(member.id)}
+                                className={`px-4 py-1.5 rounded-full text-xs font-semibold select-none transition-all flex items-center gap-1.5 cursor-pointer ${
+                                  member.isActive
+                                    ? 'bg-primary text-white border border-primary/20 shadow-sm animate-none'
+                                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                                }`}
+                              >
+                                <span>{member.name}</span>
+                                {member.consecutiveAbsences > 0 && (
+                                  <span className={`text-[9px] px-1 rounded-md ${member.isActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600 font-bold'}`}>
+                                    -{member.consecutiveAbsences}
+                                  </span>
+                                )}
+                              </button>
+                            </div>
                           ))
                       )}
                     </div>
@@ -457,23 +486,28 @@ export default function AsistenciaCompartida() {
                         cellMembers
                           .filter(m => m.category === 'no_creyente')
                           .map(member => (
-                            <button
+                            <div
                               key={member.id}
-                              type="button"
-                              onClick={() => toggleMemberActive(member.id)}
-                              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold select-none transition-all flex items-center gap-1.5 cursor-pointer ${
-                                member.isActive
-                                  ? 'bg-primary text-white border border-primary/20 shadow-sm animate-none'
-                                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                              }`}
+                              style={{ contentVisibility: 'auto' }}
+                              className="inline-flex items-center gap-1"
                             >
-                              {member.name}
-                              {member.consecutiveAbsences > 0 && (
-                                <span className={`text-[9px] px-1 rounded-md ${member.isActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600 font-bold'}`}>
-                                  -{member.consecutiveAbsences}
-                                </span>
-                              )}
-                            </button>
+                              <button
+                                type="button"
+                                onClick={() => toggleMemberActive(member.id)}
+                                className={`px-4 py-1.5 rounded-full text-xs font-semibold select-none transition-all flex items-center gap-1.5 cursor-pointer ${
+                                  member.isActive
+                                    ? 'bg-primary text-white border border-primary/20 shadow-sm animate-none'
+                                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                                }`}
+                              >
+                                <span>{member.name}</span>
+                                {member.consecutiveAbsences > 0 && (
+                                  <span className={`text-[9px] px-1 rounded-md ${member.isActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600 font-bold'}`}>
+                                    -{member.consecutiveAbsences}
+                                  </span>
+                                )}
+                              </button>
+                            </div>
                           ))
                       )}
                     </div>

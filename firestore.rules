@@ -120,15 +120,15 @@ service cloud.firestore {
     }
 
     function isValidMeetingReport(data) {
-      return data.keys().hasAll(['leaderId', 'leaderName', 'meetingDate', 'believersCount', 'nonBelieversCount', 'totalPresent', 'believersNames', 'nonBelieversNames']) &&
+      return data.keys().hasAll(['leaderId', 'leaderName', 'meetingDate']) &&
              data.leaderId is string &&
              data.leaderName is string &&
              data.meetingDate is string &&
-             (data.believersCount is int || data.believersCount is float) &&
-             (data.nonBelieversCount is int || data.nonBelieversCount is float) &&
-             (data.totalPresent is int || data.totalPresent is float) &&
-             data.believersNames is string &&
-             data.nonBelieversNames is string;
+             (!('believersCount' in data) || data.believersCount is int || data.believersCount is float) &&
+             (!('nonBelieversCount' in data) || data.nonBelieversCount is int || data.nonBelieversCount is float) &&
+             (!('totalPresent' in data) || data.totalPresent is int || data.totalPresent is float) &&
+             (!('believersNames' in data) || data.believersNames is string) &&
+             (!('nonBelieversNames' in data) || data.nonBelieversNames is string);
     }
 
     function isValidLeaderAnnouncement(data) {
@@ -158,11 +158,11 @@ service cloud.firestore {
     }
 
     function isValidCellMember(data) {
-      return data.keys().hasAll(['leaderId', 'name', 'category', 'consecutiveAbsences', 'updatedAt']) &&
+      return data.keys().hasAll(['leaderId', 'name', 'category']) &&
              data.leaderId is string &&
              data.name is string && data.name.size() < 150 &&
              data.category is string && data.category in ['bautizado', 'no_bautizado', 'no_creyente'] &&
-             (data.consecutiveAbsences is int || data.consecutiveAbsences is float);
+             (!('consecutiveAbsences' in data) || data.consecutiveAbsences is int || data.consecutiveAbsences is float);
     }
 
     // ===============================================================
