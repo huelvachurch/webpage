@@ -153,10 +153,27 @@
         "totalPresent": { "type": "number" },
         "believersNames": { "type": "string" },
         "nonBelieversNames": { "type": "string" },
+        "believersBaptizedCount": { "type": "number" },
+        "believersNotBaptizedCount": { "type": "number" },
+        "believersBaptizedNames": { "type": "string" },
+        "believersNotBaptizedNames": { "type": "string" },
         "comments": { "type": "string" },
         "submittedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["leaderId", "leaderName", "meetingDate", "believersCount", "nonBelieversCount", "totalPresent", "believersNames", "nonBelieversNames"]
+    },
+    "CellMember": {
+      "title": "Cell Member Memory",
+      "description": "Cell attendee memory tracked per leader to enable automated attendance tags",
+      "type": "object",
+      "properties": {
+        "leaderId": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string", "enum": ["bautizado", "no_bautizado", "no_creyente"] },
+        "consecutiveAbsences": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["leaderId", "name", "category", "consecutiveAbsences", "updatedAt"]
     },
     "LeaderAnnouncement": {
       "title": "Leader Announcement",
@@ -250,6 +267,10 @@
     "/cell_studies/{studyId}": {
       "schema": "CellStudy",
       "description": "Collection of cell studies and materials links shared by leaders/admins"
+    },
+    "/cell_members/{memberId}": {
+      "schema": "CellMember",
+      "description": "Collection of cell group attendees/members memory for auto-attendance badges"
     }
   }
 }

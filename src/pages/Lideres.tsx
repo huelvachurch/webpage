@@ -62,6 +62,10 @@ interface MeetingReport {
   totalPresent: number;
   believersNames: string;
   nonBelieversNames: string;
+  believersBaptizedCount?: number;
+  believersNotBaptizedCount?: number;
+  believersBaptizedNames?: string;
+  believersNotBaptizedNames?: string;
   comments: string;
   submittedAt: any;
 }
@@ -125,6 +129,34 @@ export default function Lideres() {
   const [comments, setComments] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+
+  // Attendees memory tags state
+  const [newBaptizedName, setNewBaptizedName] = useState('');
+  const [newNotBaptizedName, setNewNotBaptizedName] = useState('');
+  const [newNonBelieverName, setNewNonBelieverName] = useState('');
+  const [cellMembers, setCellMembers] = useState<any[]>([]);
+
+  // Synchronize counts and lists from active cell members
+  useEffect(() => {
+    const bBaptized = cellMembers.filter(m => m.category === 'bautizado' && m.isActive);
+    const bNotBaptized = cellMembers.filter(m => m.category === 'no_bautizado' && m.isActive);
+    const nBelievers = cellMembers.filter(m => m.category === 'no_creyente' && m.isActive);
+
+    const bCount = bBaptized.length + bNotBaptized.length;
+    const nCount = nBelievers.length;
+
+    const bNames = [
+      bBaptized.map(m => m.name).join(', '),
+      bNotBaptized.map(m => m.name).join(', ')
+    ].filter(Boolean).join(', ');
+    
+    const nNames = nBelievers.map(m => m.name).join(', ') || 'Ninguno';
+
+    setBelieversCount(bCount);
+    setNonBelieversCount(nCount);
+    setBelieversNames(bNames);
+    setNonBelieversNames(nNames);
+  }, [cellMembers]);
 
   // Firestore lists
   const [reports, setReports] = useState<MeetingReport[]>([]);
@@ -370,39 +402,163 @@ export default function Lideres() {
     return () => unsubscribe();
   }, [isLider, user]);
 
+  // Load Cell Members / Attendees Memory list in real-time
+  useEffect(() => {
+    if (!isLider || !user) return;
+
+    const q = query(
+      collection(db, 'cell_members'),
+      where('leaderId', '==', user.uid)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach((doc) => {
+        list.push({ id: doc.id, ...doc.data() });
+      });
+
+      // Merge with local state to preserve isActive toggles
+      setCellMembers((prev) => {
+        return list.map(dbMember => {
+          const existing = prev.find(p => p.id === dbMember.id || (p.name.toLowerCase() === dbMember.name.toLowerCase() && p.category === dbMember.category));
+          return {
+            ...dbMember,
+            isActive: existing ? existing.isActive : false
+          };
+        });
+      });
+    }, (error) => {
+      console.error("Error loading cell members:", error);
+    });
+
+    return () => unsubscribe();
+  }, [isLider, user]);
+
+  // Helper to toggle active status of a loaded tag
+  const toggleMemberActive = (memberId: string) => {
+    setCellMembers(prev => prev.map(m => m.id === memberId ? { ...m, isActive: !m.isActive } : m));
+  };
+
+  // Helper to add new attendee name to a sub-category in Firestore memory and auto-activate it
+  const handleAddNewMember = async (name: string, category: 'bautizado' | 'no_bautizado' | 'no_creyente', clearInput: () => void) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+
+    // Check if duplicate already exists locally in that category
+    const exists = cellMembers.find(
+      m => m.name.toLowerCase() === trimmed.toLowerCase() && m.category === category
+    );
+
+    if (exists) {
+      // If found, simply activate it!
+      setCellMembers(prev => prev.map(m => m.id === exists.id ? { ...m, isActive: true } : m));
+      clearInput();
+      return;
+    }
+
+    // Create a local temporary item for zero-latency UI feedback
+    const tempId = 'temp-' + Date.now();
+    const tempMember = {
+      id: tempId,
+      name: trimmed,
+      category,
+      consecutiveAbsences: 0,
+      isActive: true
+    };
+
+    setCellMembers(prev => [...prev, tempMember]);
+    clearInput();
+
+    try {
+      // Create document in database
+      await addDoc(collection(db, 'cell_members'), {
+        leaderId: user?.uid,
+        name: trimmed,
+        category,
+        consecutiveAbsences: 0,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (err) {
+      console.error("Error creating cell member document:", err);
+    }
+  };
+
   // Create report submit handler
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
 
-    if (!leaderName.trim()) {
-      alert('Por favor introduce el nombre del líder');
-      return;
-    }
+    const resolvedLeaderName = leaderName.trim() || cellProfile?.leader || user.displayName || user.email || 'Líder de Célula';
 
     setIsSubmitting(true);
     try {
-      const newReport: Omit<MeetingReport, 'id'> = {
+      const activeBaptizedNames = cellMembers.filter(m => m.category === 'bautizado' && m.isActive).map(m => m.name).join(', ');
+      const activeNotBaptizedNames = cellMembers.filter(m => m.category === 'no_bautizado' && m.isActive).map(m => m.name).join(', ');
+      const activeNonBelieversNames = cellMembers.filter(m => m.category === 'no_creyente' && m.isActive).map(m => m.name).join(', ');
+
+      const countBaptized = cellMembers.filter(m => m.category === 'bautizado' && m.isActive).length;
+      const countNotBaptized = cellMembers.filter(m => m.category === 'no_bautizado' && m.isActive).length;
+      const countNonBelievers = cellMembers.filter(m => m.category === 'no_creyente' && m.isActive).length;
+
+      const calculatedBelieversCount = countBaptized + countNotBaptized;
+      const calculatedNonBelieversCount = countNonBelievers;
+
+      const newReport: any = {
         leaderId: user.uid,
-        leaderName: leaderName.trim(),
+        leaderName: resolvedLeaderName,
         meetingDate,
-        believersCount,
-        nonBelieversCount,
-        totalPresent: believersCount + nonBelieversCount,
-        believersNames: believersNames.trim(),
-        nonBelieversNames: nonBelieversNames.trim(),
+        believersCount: calculatedBelieversCount,
+        nonBelieversCount: calculatedNonBelieversCount,
+        totalPresent: calculatedBelieversCount + calculatedNonBelieversCount,
+        believersNames: [activeBaptizedNames, activeNotBaptizedNames].filter(Boolean).join(', '),
+        nonBelieversNames: activeNonBelieversNames || 'Ninguno',
+        believersBaptizedCount: countBaptized,
+        believersNotBaptizedCount: countNotBaptized,
+        believersBaptizedNames: activeBaptizedNames,
+        believersNotBaptizedNames: activeNotBaptizedNames,
         comments: comments.trim(),
         submittedAt: serverTimestamp()
       };
 
       await addDoc(collection(db, 'meeting_reports'), newReport);
-      
-      // Clean up form
-      setBelieversCount(0);
-      setNonBelieversCount(0);
-      setBelieversNames('');
-      setNonBelieversNames('');
+
+      // Save absences memory tracking
+      await Promise.all(
+        cellMembers
+          .filter(member => !member.id.startsWith('temp-'))
+          .map(async (member) => {
+            const memberDocRef = doc(db, 'cell_members', member.id);
+            if (member.isActive) {
+              // Reset consecutive absences
+              await setDoc(memberDocRef, {
+                consecutiveAbsences: 0,
+                updatedAt: new Date().toISOString()
+              }, { merge: true });
+            } else {
+              // Increment consecutive absences
+              const newAbsences = (member.consecutiveAbsences || 0) + 1;
+              if (newAbsences >= 10) {
+                // Delete from memory if absent 10 times consecutively
+                await deleteDoc(memberDocRef);
+              } else {
+                // Save updated absences count
+                await setDoc(memberDocRef, {
+                  consecutiveAbsences: newAbsences,
+                  updatedAt: new Date().toISOString()
+                }, { merge: true });
+              }
+            }
+          })
+      );
+
+      // Reset the isActive status of cell members locally
+      setCellMembers(prev => prev.map(m => ({ ...m, isActive: false })));
+
+      // Clean up inputs and comments
       setComments('');
+      setNewBaptizedName('');
+      setNewNotBaptizedName('');
+      setNewNonBelieverName('');
       setShowSuccessModal(true);
     } catch (err) {
       console.error("Error creating report:", err);
@@ -629,7 +785,7 @@ export default function Lideres() {
         </div>
 
         {/* Tab Selection Navigation Bar */}
-        <div className="flex flex-col md:flex-row bg-white p-2 rounded-2xl shadow-sm border border-slate-100 w-full md:max-w-fit mb-10 gap-1">
+        <div className="flex flex-col lg:flex-row bg-white p-2 rounded-2xl shadow-sm border border-slate-100 w-full lg:max-w-fit mb-10 gap-1">
           <button
             onClick={() => setActiveTab('cell')}
             className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase ${
@@ -715,142 +871,238 @@ export default function Lideres() {
                   </div>
 
                   <form onSubmit={handleFormSubmit} className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">Nombre del Líder</label>
-                        <div className="relative">
-                          <User className="absolute left-4 top-3.5 w-5 h-5 text-slate-400" />
-                          <input
-                            type="text"
-                            required
-                            placeholder="Escribe tu nombre..."
-                            value={leaderName}
-                            onChange={(e) => setLeaderName(e.target.value)}
-                            className="pl-12 pr-4 py-3 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all text-sm text-primary font-medium"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">Fecha de la Reunión</label>
-                        <div className="relative">
-                          <Calendar className="absolute left-4 top-3.5 w-5 h-5 text-slate-400" />
-                          <input
-                            type="date"
-                            required
-                            value={meetingDate}
-                            onChange={(e) => setMeetingDate(e.target.value)}
-                            className="pl-12 pr-4 py-3 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all text-sm text-primary font-medium"
-                          />
-                        </div>
+                    <div>
+                      <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">Fecha de la Reunión</label>
+                      <div className="relative max-w-md">
+                        <Calendar className="absolute left-4 top-3.5 w-5 h-5 text-slate-400" />
+                        <input
+                          id="meetingDateInput"
+                          type="date"
+                          required
+                          value={meetingDate}
+                          onChange={(e) => setMeetingDate(e.target.value)}
+                          className="pl-12 pr-4 py-3 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all text-sm text-primary font-medium"
+                        />
                       </div>
                     </div>
 
-                    {/* Twin Counters for Believers vs Non-Believers */}
-                    <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100/80">
-                      <h3 className="text-xs uppercase tracking-widest font-bold text-slate-400 mb-6 flex items-center gap-2">
-                        <Users className="w-4 h-4 text-secondary" /> Participantes de la Reunión
-                      </h3>
+                    {/* Category 1: Creyentes Bautizados */}
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200/60 shadow-sm space-y-4">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                        <h3 className="text-xs uppercase tracking-widest font-bold text-slate-500 flex items-center gap-2 select-none">
+                          <span className="w-2.5 h-2.5 rounded-full bg-primary"></span>
+                          Creyentes Bautizados
+                        </h3>
+                        <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-primary text-xs font-bold font-mono">
+                          {cellMembers.filter(m => m.category === 'bautizado' && m.isActive).length} Activos
+                        </span>
+                      </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        {/* Believers */}
-                        <div className="flex flex-col items-center p-4 bg-white rounded-xl border border-slate-200/50 shadow-sm">
-                          <span className="text-xs font-bold uppercase text-slate-500 tracking-wider text-center mb-1">Creyentes</span>
-                          <div className="flex items-center gap-4 mt-2">
-                            <button
-                              type="button"
-                              onClick={() => setBelieversCount(prev => Math.max(0, prev - 1))}
-                              className="w-10 h-10 rounded-full border border-slate-200 flex items-center justify-center hover:bg-slate-50 text-slate-600 transition-colors"
-                            >
-                              <Minus className="w-5 h-5" />
-                            </button>
-                            <span className="text-3xl font-bold font-kenao text-primary w-12 text-center">
-                              {believersCount}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setBelieversCount(prev => prev + 1)}
-                              className="w-10 h-10 rounded-full border border-slate-200 flex items-center justify-center hover:bg-slate-50 text-slate-600 transition-colors"
-                            >
-                              <Plus className="w-5 h-5" />
-                            </button>
-                          </div>
-                        </div>
+                      {/* List of Tags */}
+                      <div className="flex flex-wrap gap-2 py-1 min-h-[40px]">
+                        {cellMembers.filter(m => m.category === 'bautizado').length === 0 ? (
+                          <p className="text-xs text-slate-400 italic">No hay etiquetas en esta categoría aún. Añada una escribiendo abajo.</p>
+                        ) : (
+                          cellMembers
+                            .filter(m => m.category === 'bautizado')
+                            .map(member => (
+                              <button
+                                key={member.id}
+                                type="button"
+                                onClick={() => toggleMemberActive(member.id)}
+                                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold select-none transition-all flex items-center gap-1.5 cursor-pointer ${
+                                  member.isActive
+                                    ? 'bg-primary text-white border border-primary/20 shadow-sm animate-none'
+                                    : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
+                                }`}
+                              >
+                                {member.name}
+                                {member.consecutiveAbsences > 0 && (
+                                  <span className={`text-[9px] px-1 rounded-md ${member.isActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600 font-bold'}`}>
+                                    -{member.consecutiveAbsences}
+                                  </span>
+                                )}
+                              </button>
+                            ))
+                        )}
+                      </div>
 
-                        {/* Non-Believers */}
-                        <div className="flex flex-col items-center p-4 bg-white rounded-xl border border-slate-200/50 shadow-sm">
-                          <span className="text-xs font-bold uppercase text-slate-500 tracking-wider text-center mb-1">No Creyentes</span>
-                          <div className="flex items-center gap-4 mt-2">
-                            <button
-                              type="button"
-                              onClick={() => setNonBelieversCount(prev => Math.max(0, prev - 1))}
-                              className="w-10 h-10 rounded-full border border-slate-200 flex items-center justify-center hover:bg-slate-50 text-slate-600 transition-colors"
-                            >
-                              <Minus className="w-5 h-5" />
-                            </button>
-                            <span className="text-3xl font-bold font-kenao text-primary w-12 text-center">
-                              {nonBelieversCount}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setNonBelieversCount(prev => prev + 1)}
-                              className="w-10 h-10 rounded-full border border-slate-200 flex items-center justify-center hover:bg-slate-50 text-slate-600 transition-colors"
-                            >
-                              <Plus className="w-5 h-5" />
-                            </button>
-                          </div>
-                        </div>
+                      {/* Input Box to add member */}
+                      <div className="flex items-center gap-2 pt-1">
+                        <input
+                          type="text"
+                          placeholder="Nombre del creyente bautizado..."
+                          value={newBaptizedName}
+                          onChange={(e) => setNewBaptizedName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddNewMember(newBaptizedName, 'bautizado', () => setNewBaptizedName(''));
+                            }
+                          }}
+                          className="px-3.5 py-2 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-1 focus:ring-primary focus:border-transparent outline-none transition-all text-xs text-primary font-medium"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleAddNewMember(newBaptizedName, 'bautizado', () => setNewBaptizedName(''))}
+                          className="px-4 py-2 bg-primary hover:bg-primary/95 text-white text-xs font-bold rounded-xl transition-all shadow-sm shrink-0 flex items-center gap-1 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Añadir
+                        </button>
                       </div>
                     </div>
 
-                    {/* Rich Names textareas */}
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">
-                          Nombre de Creyentes *
-                        </label>
-                        <textarea
-                          required
-                          rows={3}
-                          placeholder="Introduce los nombres separados por comas (ej. Ana López, Juan Pérez, Carlos Sanz)..."
-                          value={believersNames}
-                          onChange={(e) => setBelieversNames(e.target.value)}
-                          className="p-4 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all text-sm font-medium"
-                        />
+                    {/* Category 2: Creyentes No Bautizados */}
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200/60 shadow-sm space-y-4">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                        <h3 className="text-xs uppercase tracking-widest font-bold text-slate-500 flex items-center gap-2 select-none">
+                          <span className="w-2.5 h-2.5 rounded-full bg-primary"></span>
+                          Creyentes No Bautizados
+                        </h3>
+                        <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-primary text-xs font-bold font-mono">
+                          {cellMembers.filter(m => m.category === 'no_bautizado' && m.isActive).length} Activos
+                        </span>
                       </div>
 
-                      <div>
-                        <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">
-                          Nombre de No Creyentes *
-                        </label>
-                        <textarea
-                          required
-                          rows={3}
-                          placeholder="Introduce sus nombres (escribe 'Ninguno' si no asistió ningún invitado no creyente esta semana)..."
-                          value={nonBelieversNames}
-                          onChange={(e) => setNonBelieversNames(e.target.value)}
-                          className="p-4 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all text-sm font-medium"
-                        />
+                      {/* List of Tags */}
+                      <div className="flex flex-wrap gap-2 py-1 min-h-[40px]">
+                        {cellMembers.filter(m => m.category === 'no_bautizado').length === 0 ? (
+                          <p className="text-xs text-slate-400 italic">No hay etiquetas en esta categoría aún. Añada una escribiendo abajo.</p>
+                        ) : (
+                          cellMembers
+                            .filter(m => m.category === 'no_bautizado')
+                            .map(member => (
+                              <button
+                                key={member.id}
+                                type="button"
+                                onClick={() => toggleMemberActive(member.id)}
+                                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold select-none transition-all flex items-center gap-1.5 cursor-pointer ${
+                                  member.isActive
+                                    ? 'bg-primary text-white border border-primary/20 shadow-sm animate-none'
+                                    : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
+                                }`}
+                              >
+                                {member.name}
+                                {member.consecutiveAbsences > 0 && (
+                                  <span className={`text-[9px] px-1 rounded-md ${member.isActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600 font-bold'}`}>
+                                    -{member.consecutiveAbsences}
+                                  </span>
+                                )}
+                              </button>
+                            ))
+                        )}
                       </div>
 
-                      <div>
-                        <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">
-                          Comentarios / Peticiones de Oración / Logros (Opcional)
-                        </label>
-                        <textarea
-                          rows={4}
-                          placeholder="Anota cualquier testimonio especial de la reunión, peticiones urgentes de oración levantadas, o incidencias..."
-                          value={comments}
-                          onChange={(e) => setComments(e.target.value)}
-                          className="p-4 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all text-sm font-medium"
+                      {/* Input Box */}
+                      <div className="flex items-center gap-2 pt-1">
+                        <input
+                          type="text"
+                          placeholder="Nombre del creyente no bautizado..."
+                          value={newNotBaptizedName}
+                          onChange={(e) => setNewNotBaptizedName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddNewMember(newNotBaptizedName, 'no_bautizado', () => setNewNotBaptizedName(''));
+                            }
+                          }}
+                          className="px-3.5 py-2 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-1 focus:ring-primary focus:border-transparent outline-none transition-all text-xs text-primary font-medium"
                         />
+                        <button
+                          type="button"
+                          onClick={() => handleAddNewMember(newNotBaptizedName, 'no_bautizado', () => setNewNotBaptizedName(''))}
+                          className="px-4 py-2 bg-primary hover:bg-primary/95 text-white text-xs font-bold rounded-xl transition-all shadow-sm shrink-0 flex items-center gap-1 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Añadir
+                        </button>
                       </div>
+                    </div>
+
+                    {/* Category 3: No Creyentes */}
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200/60 shadow-sm space-y-4">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                        <h3 className="text-xs uppercase tracking-widest font-bold text-slate-500 flex items-center gap-2 select-none">
+                          <span className="w-2.5 h-2.5 rounded-full bg-primary"></span>
+                          No Creyentes
+                        </h3>
+                        <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-primary text-xs font-bold font-mono">
+                          {cellMembers.filter(m => m.category === 'no_creyente' && m.isActive).length} Activos
+                        </span>
+                      </div>
+
+                      {/* List of Tags */}
+                      <div className="flex flex-wrap gap-2 py-1 min-h-[40px]">
+                        {cellMembers.filter(m => m.category === 'no_creyente').length === 0 ? (
+                          <p className="text-xs text-slate-400 italic">No hay etiquetas en esta categoría aún. Añada una escribiendo abajo.</p>
+                        ) : (
+                          cellMembers
+                            .filter(m => m.category === 'no_creyente')
+                            .map(member => (
+                              <button
+                                key={member.id}
+                                type="button"
+                                onClick={() => toggleMemberActive(member.id)}
+                                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold select-none transition-all flex items-center gap-1.5 cursor-pointer ${
+                                  member.isActive
+                                    ? 'bg-primary text-white border border-primary/20 shadow-sm animate-none'
+                                    : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
+                                }`}
+                              >
+                                {member.name}
+                                {member.consecutiveAbsences > 0 && (
+                                  <span className={`text-[9px] px-1 rounded-md ${member.isActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600 font-bold'}`}>
+                                    -{member.consecutiveAbsences}
+                                  </span>
+                                )}
+                              </button>
+                            ))
+                        )}
+                      </div>
+
+                      {/* Input Box */}
+                      <div className="flex items-center gap-2 pt-1">
+                        <input
+                          type="text"
+                          placeholder="Nombre del invitado no creyente..."
+                          value={newNonBelieverName}
+                          onChange={(e) => setNewNonBelieverName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddNewMember(newNonBelieverName, 'no_creyente', () => setNewNonBelieverName(''));
+                            }
+                          }}
+                          className="px-3.5 py-2 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-1 focus:ring-primary focus:border-transparent outline-none transition-all text-xs text-primary font-medium"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleAddNewMember(newNonBelieverName, 'no_creyente', () => setNewNonBelieverName(''))}
+                          className="px-4 py-2 bg-primary hover:bg-primary/95 text-white text-xs font-bold rounded-xl transition-all shadow-sm shrink-0 flex items-center gap-1 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Añadir
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Comments block */}
+                    <div>
+                      <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2 select-none">
+                        Comentarios / Peticiones de Oración / Logros (Opcional)
+                      </label>
+                      <textarea
+                        rows={4}
+                        placeholder="Anota cualquier testimonio especial de la reunión, peticiones urgentes de oración levantadas, o de incidencias..."
+                        value={comments}
+                        onChange={(e) => setComments(e.target.value)}
+                        className="p-4 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all text-sm font-medium animate-none"
+                      />
                     </div>
 
                     <button
+                      id="btnSubmitReport"
                       type="submit"
                       disabled={isSubmitting}
-                      className="w-full py-4 rounded-xl bg-primary text-white font-bold hover:bg-secondary hover:text-primary tracking-wide transition-all uppercase shadow-md flex items-center justify-center select-none"
+                      className="w-full py-4 rounded-xl bg-primary text-white font-bold hover:bg-secondary hover:text-primary tracking-wide transition-all uppercase shadow-md flex items-center justify-center select-none cursor-pointer"
                     >
                       {isSubmitting ? (
                         <span>Enviando reporte...</span>
@@ -863,13 +1115,12 @@ export default function Lideres() {
 
                 {/* Dynamic live calculation column */}
                 <div className="space-y-6">
-                  <div className="bg-gradient-to-br from-amber-400 to-orange-500 rounded-[2rem] p-6 text-white shadow-md text-center flex flex-col items-center justify-center min-h-[250px]">
-                    <span className="text-xs uppercase tracking-widest font-mono font-bold text-white/80 mb-2">Total de Participantes</span>
-                    <span className="text-[11px] text-white/75 max-w-[200px] mb-4">Calculado automáticamente (Creyentes + Nuevos)</span>
-                    <div className="w-28 h-28 bg-white/20 rounded-full flex items-center justify-center border-4 border-white/30 backdrop-blur-md text-5xl font-bold font-kenao mb-4">
+                  <div className="bg-gradient-to-br from-amber-300 via-secondary to-amber-500 rounded-[2rem] p-6 text-primary shadow-md text-center flex flex-col items-center justify-center min-h-[250px] border border-amber-400/20">
+                    <span className="text-xs uppercase tracking-widest font-mono font-bold text-primary/80 mb-4">Total de Participantes</span>
+                    <div className="w-28 h-28 bg-[#2D4B73]/15 rounded-full flex items-center justify-center border-4 border-[#2D4B73]/30 backdrop-blur-sm text-5xl font-bold font-kenao mb-4 text-[#2D4B73]">
                       {believersCount + nonBelieversCount}
                     </div>
-                    <p className="text-xs font-semibold max-w-[220px] text-amber-50">
+                    <p className="text-xs font-semibold max-w-[220px] text-primary/90">
                       Un reporte de estadísticas preciso nos ayuda a pastorear mejor la ciudad de Huelva. ¡Gracias por servir!
                     </p>
                   </div>
@@ -1142,12 +1393,25 @@ export default function Lideres() {
                                       <td colSpan={6} className="bg-slate-50/80 px-8 py-6 text-sm text-slate-600 border-t border-b border-slate-100">
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                           <div>
-                                            <p className="text-xs uppercase tracking-wider font-bold text-slate-400 mb-1">Nombres de Creyentes:</p>
-                                            <p className="font-semibold text-primary">{report.believersNames || 'Ninguno especificado'}</p>
+                                            <p className="text-xs uppercase tracking-wider font-bold text-slate-400 mb-1">Creyentes:</p>
+                                            {report.believersBaptizedCount !== undefined ? (
+                                              <div className="space-y-2 mt-1">
+                                                <div>
+                                                  <span className="font-bold text-xs text-slate-500">Bautizados ({report.believersBaptizedCount || 0}):</span>
+                                                  <p className="font-semibold text-primary">{report.believersBaptizedNames || 'Ninguno especificado'}</p>
+                                                </div>
+                                                <div>
+                                                  <span className="font-bold text-xs text-slate-500">No Bautizados ({report.believersNotBaptizedCount || 0}):</span>
+                                                  <p className="font-semibold text-primary">{report.believersNotBaptizedNames || 'Ninguno especificado'}</p>
+                                                </div>
+                                              </div>
+                                            ) : (
+                                              <p className="font-semibold text-primary mt-1">{report.believersNames || 'Ninguno especificado'}</p>
+                                            )}
                                           </div>
                                           <div>
-                                            <p className="text-xs uppercase tracking-wider font-bold text-slate-400 mb-1">Nombres de No Creyentes:</p>
-                                            <p className="font-semibold text-primary">{report.nonBelieversNames || 'Ninguno especificado'}</p>
+                                            <p className="text-xs uppercase tracking-wider font-bold text-slate-400 mb-1">No Creyentes ({report.nonBelieversCount || 0}):</p>
+                                            <p className="font-semibold text-primary mt-1">{report.nonBelieversNames || 'Ninguno'}</p>
                                           </div>
                                         </div>
                                         {report.comments && (

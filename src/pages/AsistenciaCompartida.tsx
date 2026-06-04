@@ -15,7 +15,7 @@ import {
   Heart,
   Home
 } from 'lucide-react';
-import { collection, query, where, getDocs, addDoc, getDoc, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, getDoc, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
 export default function AsistenciaCompartida() {
@@ -29,13 +29,15 @@ export default function AsistenciaCompartida() {
 
   // Form states
   const [meetingDate, setMeetingDate] = useState(new Date().toISOString().split('T')[0]);
-  const [believersCount, setBelieversCount] = useState(0);
-  const [nonBelieversCount, setNonBelieversCount] = useState(0);
-  const [believersNames, setBelieversNames] = useState('');
-  const [nonBelieversNames, setNonBelieversNames] = useState('');
   const [comments, setComments] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+
+  // Tag memory tracking states
+  const [cellMembers, setCellMembers] = useState<any[]>([]);
+  const [newBaptizedName, setNewBaptizedName] = useState('');
+  const [newNotBaptizedName, setNewNotBaptizedName] = useState('');
+  const [newNonBelieverName, setNewNonBelieverName] = useState('');
 
   // Load parent cell information
   useEffect(() => {
@@ -70,6 +72,71 @@ export default function AsistenciaCompartida() {
     fetchCell();
   }, [leaderId]);
 
+  // Fetch cell members memory on load
+  useEffect(() => {
+    if (!leaderId) return;
+
+    const fetchMembers = async () => {
+      try {
+        const q = query(collection(db, 'cell_members'), where('leaderId', '==', leaderId));
+        const querySnap = await getDocs(q);
+        const membersList = querySnap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          isActive: false // Initialized as inactive
+        }));
+        setCellMembers(membersList);
+      } catch (err) {
+        console.error("Error fetching cell members:", err);
+      }
+    };
+
+    fetchMembers();
+  }, [leaderId]);
+
+  const toggleMemberActive = (id: string) => {
+    setCellMembers(prev => prev.map(member => 
+      member.id === id ? { ...member, isActive: !member.isActive } : member
+    ));
+  };
+
+  const handleAddNewMember = async (name: string, category: 'bautizado' | 'no_bautizado' | 'no_creyente', clearInput: () => void) => {
+    const trimmedName = name.trim();
+    if (!trimmedName || !leaderId) return;
+
+    // Check if name already exists in memory to prevent duplicate entries
+    const exists = cellMembers.some(m => m.name.toLowerCase() === trimmedName.toLowerCase() && m.category === category);
+    if (exists) {
+      alert("Este nombre ya existe en esta categoría.");
+      return;
+    }
+
+    try {
+      const newMemberRef = doc(collection(db, 'cell_members'));
+      const newMemberData = {
+        leaderId: leaderId,
+        name: trimmedName,
+        category: category,
+        consecutiveAbsences: 0,
+        updatedAt: new Date().toISOString()
+      };
+
+      await setDoc(newMemberRef, newMemberData);
+
+      // Append locally with activated state
+      setCellMembers(prev => [...prev, {
+        id: newMemberRef.id,
+        ...newMemberData,
+        isActive: true
+      }]);
+
+      clearInput();
+    } catch (err) {
+      console.error("Error adding new cell member:", err);
+      alert("Error al añadir miembro a la base de datos.");
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!leaderId) {
@@ -81,23 +148,70 @@ export default function AsistenciaCompartida() {
 
     try {
       const leaderName = cellData?.leader || "Líder de Célula";
-      const totalPresent = (Number(believersCount) || 0) + (Number(nonBelieversCount) || 0);
+
+      // Calculate automated counts and names representing the selected tags
+      const activeBaptized = cellMembers.filter(m => m.category === 'bautizado' && m.isActive);
+      const activeNotBaptized = cellMembers.filter(m => m.category === 'no_bautizado' && m.isActive);
+      const activeNonBelievers = cellMembers.filter(m => m.category === 'no_creyente' && m.isActive);
+
+      const baptizedCount = activeBaptized.length;
+      const notBaptizedCount = activeNotBaptized.length;
+      const computedNonBelieversCount = activeNonBelievers.length;
+      const computedBelieversCount = baptizedCount + notBaptizedCount;
+
+      const baptizedNamesStr = activeBaptized.map(m => m.name).join(', ');
+      const notBaptizedNamesStr = activeNotBaptized.map(m => m.name).join(', ');
+      const computedBelieversNamesStr = [baptizedNamesStr, notBaptizedNamesStr].filter(Boolean).join(', ');
+      const computedNonBelieversNamesStr = activeNonBelievers.map(m => m.name).join(', ') || 'Ninguno';
+
+      const totalPresent = computedBelieversCount + computedNonBelieversCount;
 
       const reportData = {
         leaderId: leaderId,
         leaderName: leaderName,
         meetingDate: meetingDate,
-        believersCount: Number(believersCount) || 0,
-        nonBelieversCount: Number(nonBelieversCount) || 0,
+        believersCount: computedBelieversCount,
+        nonBelieversCount: computedNonBelieversCount,
         totalPresent: totalPresent,
-        believersNames: believersNames || '',
-        nonBelieversNames: nonBelieversNames || '',
-        comments: comments || '', // Include comments if defined
+        believersNames: computedBelieversNamesStr,
+        nonBelieversNames: computedNonBelieversNamesStr,
+        believersBaptizedCount: baptizedCount,
+        believersNotBaptizedCount: notBaptizedCount,
+        believersBaptizedNames: baptizedNamesStr,
+        believersNotBaptizedNames: notBaptizedNamesStr,
+        comments: comments || '',
         createdAt: new Date().toISOString()
       };
 
       // Create meeting report
       await addDoc(collection(db, 'meeting_reports'), reportData);
+
+      // Save attendee memory tracking logic:
+      // Loop over cellMembers from database, update or prune consecutive absences.
+      for (const member of cellMembers) {
+        const memberRef = doc(db, 'cell_members', member.id);
+        if (member.isActive) {
+          // Reset absences
+          await updateDoc(memberRef, {
+            consecutiveAbsences: 0,
+            updatedAt: new Date().toISOString()
+          });
+        } else {
+          const newAbsences = (member.consecutiveAbsences || 0) + 1;
+          if (newAbsences >= 10) {
+            // Pruning memory tag
+            await deleteDoc(memberRef);
+          } else {
+            await updateDoc(memberRef, {
+              consecutiveAbsences: newAbsences,
+              updatedAt: new Date().toISOString()
+            });
+          }
+        }
+      }
+
+      // Reset activity status
+      setCellMembers(prev => prev.map(m => ({ ...m, isActive: false })));
       
       setShowSuccess(true);
     } catch (err) {
@@ -189,90 +303,205 @@ export default function AsistenciaCompartida() {
                   />
                 </div>
 
-                {/* Counter Stats Section */}
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Believers Count */}
-                  <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
-                      Creyentes
-                    </label>
-                    <div className="flex items-center justify-between">
-                      <button
-                        type="button"
-                        onClick={() => setBelieversCount(prev => Math.max(0, prev - 1))}
-                        className="w-9 h-9 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 flex items-center justify-center transition-all cursor-pointer font-bold"
-                      >
-                        <Minus className="w-4 h-4 text-primary" />
-                      </button>
-                      <span className="text-xl font-bold font-mono text-primary">
-                        {believersCount}
+                {/* Interactive Sub-Category Attendance Tags */}
+                <div className="space-y-6">
+                  {/* Category 1: Creyentes Bautizados */}
+                  <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/60 space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-200/50 pb-3">
+                      <h3 className="text-xs uppercase tracking-widest font-bold text-slate-500 flex items-center gap-2 select-none">
+                        <span className="w-2.5 h-2.5 rounded-full bg-primary"></span>
+                        Creyentes Bautizados
+                      </h3>
+                      <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-primary text-xs font-bold font-mono">
+                        {cellMembers.filter(m => m.category === 'bautizado' && m.isActive).length} Activos
                       </span>
+                    </div>
+
+                    {/* List of Tags */}
+                    <div className="flex flex-wrap gap-2 py-1 min-h-[40px]">
+                      {cellMembers.filter(m => m.category === 'bautizado').length === 0 ? (
+                        <p className="text-xs text-slate-400 italic">No hay etiquetas en esta categoría aún. Añada una escribiendo abajo.</p>
+                      ) : (
+                        cellMembers
+                          .filter(m => m.category === 'bautizado')
+                          .map(member => (
+                            <button
+                              key={member.id}
+                              type="button"
+                              onClick={() => toggleMemberActive(member.id)}
+                              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold select-none transition-all flex items-center gap-1.5 cursor-pointer ${
+                                member.isActive
+                                  ? 'bg-primary text-white border border-primary/20 shadow-sm animate-none'
+                                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                              }`}
+                            >
+                              {member.name}
+                              {member.consecutiveAbsences > 0 && (
+                                <span className={`text-[9px] px-1 rounded-md ${member.isActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600 font-bold'}`}>
+                                  -{member.consecutiveAbsences}
+                                </span>
+                              )}
+                            </button>
+                          ))
+                      )}
+                    </div>
+
+                    {/* Input Box to add member */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        type="text"
+                        placeholder="Nombre del creyente bautizado..."
+                        value={newBaptizedName}
+                        onChange={(e) => setNewBaptizedName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddNewMember(newBaptizedName, 'bautizado', () => setNewBaptizedName(''));
+                          }
+                        }}
+                        className="px-3.5 py-2 w-full bg-white rounded-xl border border-slate-200 focus:ring-1 focus:ring-primary focus:border-transparent outline-none transition-all text-xs text-primary font-medium"
+                      />
                       <button
                         type="button"
-                        onClick={() => setBelieversCount(prev => prev + 1)}
-                        className="w-9 h-9 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 flex items-center justify-center transition-all cursor-pointer font-bold"
+                        onClick={() => handleAddNewMember(newBaptizedName, 'bautizado', () => setNewBaptizedName(''))}
+                        className="px-4 py-2 bg-primary hover:bg-primary/90 text-white text-xs font-bold rounded-xl transition-all shadow-sm shrink-0 flex items-center gap-1 cursor-pointer"
                       >
-                        <Plus className="w-4 h-4 text-primary" />
+                        <Plus className="w-3.5 h-3.5" /> Añadir
                       </button>
                     </div>
                   </div>
 
-                  {/* Non Believers Count */}
-                  <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
-                      No Creyentes
-                    </label>
-                    <div className="flex items-center justify-between">
-                      <button
-                        type="button"
-                        onClick={() => setNonBelieversCount(prev => Math.max(0, prev - 1))}
-                        className="w-9 h-9 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 flex items-center justify-center transition-all cursor-pointer font-bold"
-                      >
-                        <Minus className="w-4 h-4 text-primary" />
-                      </button>
-                      <span className="text-xl font-bold font-mono text-primary">
-                        {nonBelieversCount}
+                  {/* Category 2: Creyentes No Bautizados */}
+                  <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/60 space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-200/50 pb-3">
+                      <h3 className="text-xs uppercase tracking-widest font-bold text-slate-500 flex items-center gap-2 select-none">
+                        <span className="w-2.5 h-2.5 rounded-full bg-primary"></span>
+                        Creyentes No Bautizados
+                      </h3>
+                      <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-primary text-xs font-bold font-mono">
+                        {cellMembers.filter(m => m.category === 'no_bautizado' && m.isActive).length} Activos
                       </span>
+                    </div>
+
+                    {/* List of Tags */}
+                    <div className="flex flex-wrap gap-2 py-1 min-h-[40px]">
+                      {cellMembers.filter(m => m.category === 'no_bautizado').length === 0 ? (
+                        <p className="text-xs text-slate-400 italic">No hay etiquetas en esta categoría aún. Añada una escribiendo abajo.</p>
+                      ) : (
+                        cellMembers
+                          .filter(m => m.category === 'no_bautizado')
+                          .map(member => (
+                            <button
+                              key={member.id}
+                              type="button"
+                              onClick={() => toggleMemberActive(member.id)}
+                              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold select-none transition-all flex items-center gap-1.5 cursor-pointer ${
+                                member.isActive
+                                  ? 'bg-primary text-white border border-primary/20 shadow-sm animate-none'
+                                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                              }`}
+                            >
+                              {member.name}
+                              {member.consecutiveAbsences > 0 && (
+                                <span className={`text-[9px] px-1 rounded-md ${member.isActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600 font-bold'}`}>
+                                  -{member.consecutiveAbsences}
+                                </span>
+                              )}
+                            </button>
+                          ))
+                      )}
+                    </div>
+
+                    {/* Input Box */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        type="text"
+                        placeholder="Nombre del creyente no bautizado..."
+                        value={newNotBaptizedName}
+                        onChange={(e) => setNewNotBaptizedName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddNewMember(newNotBaptizedName, 'no_bautizado', () => setNewNotBaptizedName(''));
+                          }
+                        }}
+                        className="px-3.5 py-2 w-full bg-white rounded-xl border border-slate-200 focus:ring-1 focus:ring-primary focus:border-transparent outline-none transition-all text-xs text-primary font-medium"
+                      />
                       <button
                         type="button"
-                        onClick={() => setNonBelieversCount(prev => prev + 1)}
-                        className="w-9 h-9 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 flex items-center justify-center transition-all cursor-pointer font-bold"
+                        onClick={() => handleAddNewMember(newNotBaptizedName, 'no_bautizado', () => setNewNotBaptizedName(''))}
+                        className="px-4 py-2 bg-primary hover:bg-primary/90 text-white text-xs font-bold rounded-xl transition-all shadow-sm shrink-0 flex items-center gap-1 cursor-pointer"
                       >
-                        <Plus className="w-4 h-4 text-primary" />
+                        <Plus className="w-3.5 h-3.5" /> Añadir
                       </button>
                     </div>
                   </div>
-                </div>
 
-                {/* Names of Believers */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <Users className="w-4 h-4 text-primary" />
-                    Nombre de Creyentes
-                  </label>
-                  <textarea
-                    required
-                    value={believersNames}
-                    onChange={(e) => setBelieversNames(e.target.value)}
-                    rows={2}
-                    placeholder="Escriba los nombres de los creyentes presentes separados por comas..."
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-sm leading-relaxed"
-                  />
-                </div>
+                  {/* Category 3: No Creyentes */}
+                  <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/60 space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-200/50 pb-3">
+                      <h3 className="text-xs uppercase tracking-widest font-bold text-slate-500 flex items-center gap-2 select-none">
+                        <span className="w-2.5 h-2.5 rounded-full bg-primary"></span>
+                        No Creyentes
+                      </h3>
+                      <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-primary text-xs font-bold font-mono">
+                        {cellMembers.filter(m => m.category === 'no_creyente' && m.isActive).length} Activos
+                      </span>
+                    </div>
 
-                {/* Names of Non-Believers */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <User className="w-4 h-4 text-secondary" />
-                    Nombre de No Creyentes
-                  </label>
-                  <textarea
-                    value={nonBelieversNames}
-                    onChange={(e) => setNonBelieversNames(e.target.value)}
-                    rows={2}
-                    placeholder="Escriba los nombres de los no creyentes presentes separdos por comas..."
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-sm leading-relaxed"
-                  />
+                    {/* List of Tags */}
+                    <div className="flex flex-wrap gap-2 py-1 min-h-[40px]">
+                      {cellMembers.filter(m => m.category === 'no_creyente').length === 0 ? (
+                        <p className="text-xs text-slate-400 italic">No hay etiquetas en esta categoría aún. Añada una escribiendo abajo.</p>
+                      ) : (
+                        cellMembers
+                          .filter(m => m.category === 'no_creyente')
+                          .map(member => (
+                            <button
+                              key={member.id}
+                              type="button"
+                              onClick={() => toggleMemberActive(member.id)}
+                              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold select-none transition-all flex items-center gap-1.5 cursor-pointer ${
+                                member.isActive
+                                  ? 'bg-primary text-white border border-primary/20 shadow-sm animate-none'
+                                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                              }`}
+                            >
+                              {member.name}
+                              {member.consecutiveAbsences > 0 && (
+                                <span className={`text-[9px] px-1 rounded-md ${member.isActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600 font-bold'}`}>
+                                  -{member.consecutiveAbsences}
+                                </span>
+                              )}
+                            </button>
+                          ))
+                      )}
+                    </div>
+
+                    {/* Input Box */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        type="text"
+                        placeholder="Nombre del invitado no creyente..."
+                        value={newNonBelieverName}
+                        onChange={(e) => setNewNonBelieverName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddNewMember(newNonBelieverName, 'no_creyente', () => setNewNonBelieverName(''));
+                          }
+                        }}
+                        className="px-3.5 py-2 w-full bg-white rounded-xl border border-slate-200 focus:ring-1 focus:ring-primary focus:border-transparent outline-none transition-all text-xs text-primary font-medium"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAddNewMember(newNonBelieverName, 'no_creyente', () => setNewNonBelieverName(''))}
+                        className="px-4 py-2 bg-primary hover:bg-primary/90 text-white text-xs font-bold rounded-xl transition-all shadow-sm shrink-0 flex items-center gap-1 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Añadir
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Remarks/Highlights */}
