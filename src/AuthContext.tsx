@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { auth, db, handleFirestoreError, OperationType } from './firebase';
+import { auth, db, handleFirestoreError, OperationType, handleRedirectResult } from './firebase';
 
 interface AuthContextType {
   user: User | null;
@@ -9,6 +9,7 @@ interface AuthContextType {
   status: 'pending' | 'active' | 'blocked' | null;
   loading: boolean;
   isAuthReady: boolean;
+  showWelcomePopup?: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -17,6 +18,7 @@ const AuthContext = createContext<AuthContextType>({
   status: null,
   loading: true,
   isAuthReady: false,
+  showWelcomePopup: false,
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -25,15 +27,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [roles, setRoles] = useState<AuthContextType['roles']>([]);
   const [status, setStatus] = useState<AuthContextType['status']>(null);
+  const [showWelcomePopup, setShowWelcomePopup] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
 
   useEffect(() => {
+    // Check for redirect result on mount
+    const checkRedirect = async () => {
+      try {
+        await handleRedirectResult();
+      } catch (err) {
+        console.error("Redirect login check failed:", err);
+      }
+    };
+    checkRedirect();
+
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       if (!currentUser) {
         setRoles([]);
         setStatus(null);
+        setShowWelcomePopup(false);
         setLoading(false);
         setIsAuthReady(true);
       }
@@ -52,14 +66,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const data = docSnap.data();
           const dbRoles = (data.roles || []) as AuthContextType['roles'];
           const dbStatus = data.status as AuthContextType['status'];
+          const dbShowWelcome = !!data.showWelcomePopup;
           
           // If it's super admin but DB says otherwise (e.g. old record), force admin
           setRoles(isSuperAdmin ? ['admin'] : dbRoles);
           setStatus(isSuperAdmin ? 'active' : dbStatus);
+          setShowWelcomePopup(dbShowWelcome);
         } else {
           // If document doesn't exist yet, check if it's the super admin email
           setRoles(isSuperAdmin ? ['admin'] : []);
           setStatus(isSuperAdmin ? 'active' : 'active');
+          setShowWelcomePopup(false);
         }
         setLoading(false);
         setIsAuthReady(true);
@@ -74,7 +91,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user]);
 
   return (
-    <AuthContext.Provider value={{ user, roles, status, loading, isAuthReady }}>
+    <AuthContext.Provider value={{ user, roles, status, loading, isAuthReady, showWelcomePopup }}>
       {children}
     </AuthContext.Provider>
   );

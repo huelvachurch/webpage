@@ -22,9 +22,12 @@ import MisDatos from './pages/MisDatos';
 import Lideres from './pages/Lideres';
 import Legal from './pages/Legal';
 import AsistenciaCompartida from './pages/AsistenciaCompartida';
+import CursoDetalle from './pages/CursoDetalle';
 import CookieBanner from './components/CookieBanner';
 import { AuthProvider, ErrorBoundary, useAuth } from './AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
+
+import { dismissWelcomePopup } from './firebase';
 
 // Scroll to top on route change
 function ScrollToTop() {
@@ -37,22 +40,21 @@ function ScrollToTop() {
 
 // Global Welcome Popup on Login
 function WelcomePopup() {
-  const { user, isAuthReady } = useAuth();
+  const { user, isAuthReady, showWelcomePopup } = useAuth();
   const [showPopup, setShowPopup] = useState(false);
 
   useEffect(() => {
-    if (isAuthReady && user) {
-      const shown = localStorage.getItem('huelvachurch_welcome_shown_2026');
-      if (shown !== 'true') {
-        setShowPopup(true);
-      }
+    if (isAuthReady && user && showWelcomePopup) {
+      setShowPopup(true);
     } else {
       setShowPopup(false);
     }
-  }, [user, isAuthReady]);
+  }, [user, isAuthReady, showWelcomePopup]);
 
-  const handleDismiss = () => {
-    localStorage.setItem('huelvachurch_welcome_shown_2026', 'true');
+  const handleDismiss = async () => {
+    if (user) {
+      await dismissWelcomePopup(user.uid);
+    }
     setShowPopup(false);
   };
 
@@ -119,6 +121,7 @@ export default function App() {
                 <Route path="/contacto" element={<Contacto />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/cursos" element={<Cursos />} />
+                <Route path="/cursos/:id" element={<CursoDetalle />} />
                 <Route path="/mis-cursos" element={<MisCursos />} />
                 <Route path="/mis-datos" element={<MisDatos />} />
                 <Route path="/lideres" element={<Lideres />} />

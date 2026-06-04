@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut } from 'firebase/auth';
+import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Firebase
@@ -83,7 +83,8 @@ export const loginWithGoogle = async () => {
         photoURL: user.photoURL,
         roles: isSuperAdmin ? ['admin'] : [],
         status: isSuperAdmin ? 'active' : 'active',
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
+        showWelcomePopup: true
       });
     }
     
@@ -91,6 +92,55 @@ export const loginWithGoogle = async () => {
   } catch (error) {
     console.error('Login error:', error);
     throw error;
+  }
+};
+
+export const loginWithGoogleRedirect = async () => {
+  try {
+    await signInWithRedirect(auth, googleProvider);
+  } catch (error) {
+    console.error('Login with redirect error:', error);
+    throw error;
+  }
+};
+
+export const handleRedirectResult = async () => {
+  try {
+    const result = await getRedirectResult(auth);
+    if (result) {
+      const user = result.user;
+      const userDocRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userDocRef);
+      if (!userDoc.exists()) {
+        const isSuperAdmin = user.email === 'huelvachurch@gmail.com';
+        await setDoc(userDocRef, {
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+          roles: isSuperAdmin ? ['admin'] : [],
+          status: isSuperAdmin ? 'active' : 'active',
+          createdAt: serverTimestamp(),
+          showWelcomePopup: true
+        });
+      }
+      return user;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error handling redirect result:', error);
+    throw error;
+  }
+};
+
+export const dismissWelcomePopup = async (uid: string) => {
+  try {
+    const userDocRef = doc(db, 'users', uid);
+    await updateDoc(userDocRef, {
+      showWelcomePopup: false
+    });
+  } catch (error) {
+    console.error('Error disabling welcome popup:', error);
   }
 };
 

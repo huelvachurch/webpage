@@ -48,7 +48,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && (
-        (request.auth.token.email == "huelvachurch@gmail.com" && request.auth.token.email_verified == true) ||
+        request.auth.token.email == "huelvachurch@gmail.com" ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 'admin' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles)
       );
     }
@@ -164,7 +164,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if isAuthenticated() && isValidUser(request.resource.data) && (
-        (isOwner(userId) && request.resource.data.roles == ['alumno'] && request.resource.data.status == 'pending') || 
+        (isOwner(userId) && (request.resource.data.roles == [] || request.resource.data.roles == ['alumno']) && (request.resource.data.status == 'pending' || request.resource.data.status == 'active')) || 
         isAdmin()
       );
       allow update: if isAuthenticated() && isValidUser(request.resource.data) && (
@@ -186,13 +186,26 @@ service cloud.firestore {
       allow create: if isProfesor() && isValidCourse(request.resource.data);
       allow update: if isProfesor() && isValidCourse(request.resource.data) && (request.resource.data.instructorId == resource.data.instructorId || isAdmin());
       allow delete: if isProfesor() && (resource.data.instructorId == request.auth.uid || isAdmin());
+
+      match /classes/{classId} {
+        allow read: if isAuthenticated();
+        allow write: if isProfesor();
+
+        match /steps/{stepId} {
+          allow read: if isAuthenticated();
+          allow write: if isProfesor();
+        }
+      }
     }
 
     match /enrollments/{enrollmentId} {
       allow read: if isAuthenticated() && (request.auth.uid == resource.data.studentId || isProfesor());
       allow create: if isAuthenticated() && isValidEnrollment(request.resource.data) && request.resource.data.studentId == request.auth.uid;
-      allow update: if isAuthenticated() && isValidEnrollment(request.resource.data) && (
-        (request.auth.uid == resource.data.studentId && request.resource.data.status == 'dropped') ||
+      allow update: if isAuthenticated() && (
+        (request.auth.uid == resource.data.studentId && (
+          request.resource.data.status == 'dropped' ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['progress', 'completedSteps', 'updatedAt'])
+        )) ||
         isProfesor()
       );
       allow delete: if isAdmin();

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { LogIn, Heart, Shield, MessageSquare, BookOpen, AlertCircle } from 'lucide-react';
-import { loginWithGoogle } from '../firebase';
+import { loginWithGoogle, loginWithGoogleRedirect } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { useNavigate } from 'react-router-dom';
 
@@ -31,12 +31,22 @@ export default function Login() {
     } catch (error: any) {
       console.error("Login failed", error);
       if (error && (error.code === 'auth/popup-closed-by-user' || error.message?.includes('popup-closed-by-user'))) {
-        setErrorMsg('La ventana de inicio de sesión se cerró antes de completar el acceso. Por favor, inténtalo de nuevo.');
+        setErrorMsg('La ventana emergente de inicio de sesión se cerró. Para solucionar esto en el visor de AI Studio, prueba el botón "Acceder con Google (Redirección)" o abre la app en una pestaña nueva.');
       } else if (error && (error.code === 'auth/popup-blocked' || error.message?.includes('popup-blocked'))) {
-        setErrorMsg('El navegador bloqueó la ventana emergente de Google. Por favor, permite las ventanas emergentes para este sitio.');
+        setErrorMsg('El navegador bloqueó la ventana emergente de Google. Por favor, permite las ventanas emergentes o utiliza "Acceder con Google (Redirección)".');
       } else {
         setErrorMsg('Ocurrió un error al iniciar sesión con Google: ' + (error?.message || error));
       }
+    }
+  };
+
+  const handleLoginRedirect = async () => {
+    setErrorMsg(null);
+    try {
+      await loginWithGoogleRedirect();
+    } catch (error: any) {
+      console.error("Login redirect failed", error);
+      setErrorMsg('Ocurrió un error al iniciar el acceso con redirección: ' + (error?.message || error));
     }
   };
 
@@ -100,9 +110,9 @@ export default function Login() {
 
         <button 
           onClick={handleLogin}
-          className="w-full bg-primary text-white font-bold py-5 rounded-2xl hover:bg-secondary hover:text-primary transition-all flex items-center justify-center gap-3 shadow-lg transform hover:-translate-y-1"
+          className="w-full bg-primary text-white font-bold py-5 rounded-2xl hover:bg-secondary hover:text-primary transition-all flex items-center justify-center gap-3 shadow-lg transform hover:-translate-y-1 cursor-pointer text-sm"
         >
-          <LogIn className="w-6 h-6" />
+          <LogIn className="w-5 h-5" />
           Acceder con Google
         </button>
         

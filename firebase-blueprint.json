@@ -67,6 +67,35 @@
       },
       "required": ["title", "instructorId", "modality", "durationMode"]
     },
+    "CourseClass": {
+      "title": "Course Class",
+      "description": "A section/class within a course",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "order": { "type": "number" },
+        "requiresPrevious": { "type": "boolean" },
+        "dayNumber": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "order"]
+    },
+    "CourseStep": {
+      "title": "Course Step",
+      "description": "An interactive step (theory or quiz) under a class",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "type": { "type": "string", "enum": ["theory", "quiz"] },
+        "order": { "type": "number" },
+        "content": { "type": "string" },
+        "attachments": { "type": "array" },
+        "questions": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "type", "order"]
+    },
     "Enrollment": {
       "title": "Enrollment",
       "description": "Student enrollment in a course",
@@ -189,6 +218,14 @@
     "/courses/{courseId}": {
       "schema": "Course",
       "description": "Collection of courses"
+    },
+    "/courses/{courseId}/classes/{classId}": {
+      "schema": "CourseClass",
+      "description": "Subcollection of sections/clases within a course"
+    },
+    "/courses/{courseId}/classes/{classId}/steps/{stepId}": {
+      "schema": "CourseStep",
+      "description": "Subcollection of steps/pasos within a course class"
     },
     "/enrollments/{enrollmentId}": {
       "schema": "Enrollment",
