@@ -74,6 +74,14 @@ service cloud.firestore {
       );
     }
 
+    function isCoLeaderOf(leaderId) {
+      return isAuthenticated() && (
+        exists(/databases/$(database)/documents/celulas/$(leaderId)) &&
+        get(/databases/$(database)/documents/celulas/$(leaderId)).data.coLeaderId == request.auth.uid &&
+        get(/databases/$(database)/documents/celulas/$(leaderId)).data.coLeaderInvitationStatus == 'accepted'
+      );
+    }
+
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'email', 'roles', 'status']) &&
              data.uid is string &&
@@ -154,7 +162,14 @@ service cloud.firestore {
              data.address is string &&
              data.barriada is string &&
              data.ciudad is string &&
-             data.schedule is string;
+             data.schedule is string &&
+             (!('coLeaderId' in data) || data.coLeaderId == null || data.coLeaderId is string) &&
+             (!('coLeaderName' in data) || data.coLeaderName == null || data.coLeaderName is string) &&
+             (!('coLeaderEmail' in data) || data.coLeaderEmail == null || data.coLeaderEmail is string) &&
+             (!('coLeaderInviteeId' in data) || data.coLeaderInviteeId == null || data.coLeaderInviteeId is string) &&
+             (!('coLeaderInviteeName' in data) || data.coLeaderInviteeName == null || data.coLeaderInviteeName is string) &&
+             (!('coLeaderInviteeEmail' in data) || data.coLeaderInviteeEmail == null || data.coLeaderInviteeEmail is string) &&
+             (!('coLeaderInvitationStatus' in data) || data.coLeaderInvitationStatus == null || data.coLeaderInvitationStatus is string);
     }
 
     function isValidCellMember(data) {
@@ -170,7 +185,7 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
+      allow read: if isOwner(userId) || isLider();
       allow create: if isAuthenticated() && isValidUser(request.resource.data) && (
         (isOwner(userId) && (request.resource.data.roles == [] || request.resource.data.roles == ['alumno']) && (request.resource.data.status == 'pending' || request.resource.data.status == 'active')) || 
         isAdmin()
@@ -239,16 +254,25 @@ service cloud.firestore {
     }
 
     match /meeting_reports/{reportId} {
-      allow read: if isAdmin() || (isLider() && resource.data.leaderId == request.auth.uid);
-      allow create: if isValidMeetingReport(request.resource.data);
-      allow update: if isLider() && isValidMeetingReport(request.resource.data) && request.resource.data.leaderId == request.auth.uid && resource.data.leaderId == request.auth.uid;
+      allow read: if isAdmin() || (isLider() && (resource.data.leaderId == request.auth.uid || isCoLeaderOf(resource.data.leaderId)));
+      allow create: if isValidMeetingReport(request.resource.data) && (isAdmin() || isLider() || request.resource.data.leaderId == request.auth.uid || isCoLeaderOf(request.resource.data.leaderId));
+      allow update: if isLider() && isValidMeetingReport(request.resource.data) && 
+                      (request.resource.data.leaderId == request.auth.uid || isCoLeaderOf(request.resource.data.leaderId)) && 
+                      (resource.data.leaderId == request.auth.uid || isCoLeaderOf(resource.data.leaderId));
       allow delete: if isAdmin();
     }
 
     match /celulas/{celulaId} {
       allow read: if true;
       allow create: if isAuthenticated() && isValidCelula(request.resource.data) && (isAdmin() || request.resource.data.leaderId == request.auth.uid);
-      allow update: if isAuthenticated() && isValidCelula(request.resource.data) && (isAdmin() || (isLider() && resource.data.leaderId == request.auth.uid && request.resource.data.leaderId == request.auth.uid));
+      allow update: if isAuthenticated() && isValidCelula(request.resource.data) && (
+        isAdmin() || 
+        (isLider() && resource.data.leaderId == request.auth.uid && request.resource.data.leaderId == request.auth.uid) ||
+        // Invite/Acceptance workflow
+        (resource.data.coLeaderInviteeId == request.auth.uid && request.resource.data.coLeaderId == request.auth.uid && request.resource.data.coLeaderInvitationStatus == 'accepted') ||
+        (resource.data.coLeaderInviteeId == request.auth.uid && request.resource.data.coLeaderInviteeId == null) ||
+        (resource.data.coLeaderId == request.auth.uid && request.resource.data.coLeaderId == null)
+      );
       allow delete: if isAdmin();
     }
 

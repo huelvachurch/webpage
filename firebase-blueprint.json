@@ -214,7 +214,14 @@
         "barriada": { "type": "string" },
         "ciudad": { "type": "string" },
         "schedule": { "type": "string" },
-        "googleMapsLink": { "type": "string" }
+        "googleMapsLink": { "type": "string" },
+        "coLeaderId": { "type": "string" },
+        "coLeaderName": { "type": "string" },
+        "coLeaderEmail": { "type": "string" },
+        "coLeaderInviteeId": { "type": "string" },
+        "coLeaderInviteeName": { "type": "string" },
+        "coLeaderInviteeEmail": { "type": "string" },
+        "coLeaderInvitationStatus": { "type": "string" }
       },
       "required": ["leaderId", "leader", "name", "address", "barriada", "ciudad", "schedule"]
     }

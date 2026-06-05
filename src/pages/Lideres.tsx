@@ -121,6 +121,18 @@ export default function Lideres() {
   const [isSavingCell, setIsSavingCell] = useState(false);
   const [copiedCellLink, setCopiedCellLink] = useState(false);
 
+  // Co-leadership states
+  const [coLedCell, setCoLedCell] = useState<any | null>(null);
+  const [pendingInvitation, setPendingInvitation] = useState<any | null>(null);
+  const [isCoLedLoading, setIsCoLedLoading] = useState(true);
+
+  // States for inviting others
+  const [searchLeaderTerm, setSearchLeaderTerm] = useState('');
+  const [foundLeaders, setFoundLeaders] = useState<any[]>([]);
+  const [searchingLeaders, setSearchingLeaders] = useState(false);
+  const [selectedLeaderToInvite, setSelectedLeaderToInvite] = useState<any | null>(null);
+  const [isInvitingLeader, setIsInvitingLeader] = useState(false);
+
   // Form states
   const [leaderName, setLeaderName] = useState('');
   const [meetingDate, setMeetingDate] = useState(new Date().toISOString().split('T')[0]);
@@ -389,6 +401,11 @@ export default function Lideres() {
     }
   };
 
+  // Computed values for Co-Leadership support
+  const isCoLeaderActive = coLedCell !== null;
+  const effectiveLeaderId = isCoLeaderActive ? coLedCell.leaderId : (user?.uid || '');
+  const effectiveLeaderName = isCoLeaderActive ? (coLedCell.leader || 'Co-Líder') : (user?.displayName || '');
+
   // Pre-fill leader name
   useEffect(() => {
     if (user && user.displayName) {
@@ -396,11 +413,202 @@ export default function Lideres() {
     }
   }, [user]);
 
-  // Load my cell profile in real-time
+  // Real-time listener for cells where we are the active co-leader
+  useEffect(() => {
+    if (!user?.uid) return;
+    
+    const qCo = query(
+      collection(db, 'celulas'), 
+      where('coLeaderId', '==', user.uid),
+      where('coLeaderInvitationStatus', '==', 'accepted')
+    );
+    
+    const unsubscribe = onSnapshot(qCo, (snapshot) => {
+      if (!snapshot.empty) {
+        setCoLedCell({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() });
+      } else {
+        setCoLedCell(null);
+      }
+      setIsCoLedLoading(false);
+    }, (err) => {
+      console.error("Error loading active co-led cells:", err);
+      setIsCoLedLoading(false);
+    });
+    
+    return () => unsubscribe();
+  }, [user]);
+
+  // Real-time listener for cells where we have a pending co-leader invitation
+  useEffect(() => {
+    if (!user?.uid) return;
+    
+    const qPend = query(
+      collection(db, 'celulas'), 
+      where('coLeaderInviteeId', '==', user.uid),
+      where('coLeaderInvitationStatus', '==', 'pending')
+    );
+    
+    const unsubscribe = onSnapshot(qPend, (snapshot) => {
+      if (!snapshot.empty) {
+        setPendingInvitation({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() });
+      } else {
+        setPendingInvitation(null);
+      }
+    }, (err) => {
+      console.error("Error loading pending invitations:", err);
+    });
+    
+    return () => unsubscribe();
+  }, [user]);
+
+  // Co-leadership methods
+  const handleSearchLeaders = async () => {
+    if (!searchLeaderTerm.trim()) return;
+    setSearchingLeaders(true);
+    try {
+      const q = query(collection(db, 'users'), where('roles', 'array-contains', 'lider'));
+      const snapshot = await getDocs(q);
+      const results: any[] = [];
+      snapshot.forEach(docSnap => {
+        const u = docSnap.data();
+        if (u.uid !== user?.uid) {
+          const term = searchLeaderTerm.toLowerCase();
+          const nameMatch = (u.displayName || '').toLowerCase().includes(term);
+          const emailMatch = (u.email || '').toLowerCase().includes(term);
+          if (nameMatch || emailMatch) {
+            results.push({ id: docSnap.id, ...u });
+          }
+        }
+      });
+      setFoundLeaders(results);
+    } catch (err) {
+      console.error("Error searching leaders:", err);
+    } finally {
+      setSearchingLeaders(false);
+    }
+  };
+
+  const handleInviteCoLeader = async () => {
+    if (!cellProfile?.id || !selectedLeaderToInvite) return;
+    setIsInvitingLeader(true);
+    try {
+      const cellRef = doc(db, 'celulas', cellProfile.id);
+      await setDoc(cellRef, {
+        coLeaderInviteeId: selectedLeaderToInvite.uid,
+        coLeaderInviteeName: selectedLeaderToInvite.displayName || selectedLeaderToInvite.email,
+        coLeaderInviteeEmail: selectedLeaderToInvite.email,
+        coLeaderInvitationStatus: 'pending',
+      }, { merge: true });
+      setSelectedLeaderToInvite(null);
+      setSearchLeaderTerm('');
+      setFoundLeaders([]);
+      alert("¡Invitación a Co-Liderar enviada con éxito!");
+    } catch (err) {
+      console.error("Error inviting co-leader:", err);
+      alert("Error al enviar la invitación.");
+    } finally {
+      setIsInvitingLeader(false);
+    }
+  };
+
+  const handleRemoveCoLeader = async () => {
+    if (!cellProfile?.id) return;
+    if (!window.confirm("¿Está seguro de que desea remover al Co-Líder o cancelar la invitación pendiente?")) return;
+    
+    try {
+      const cellRef = doc(db, 'celulas', cellProfile.id);
+      await setDoc(cellRef, {
+        coLeaderId: null,
+        coLeaderName: null,
+        coLeaderEmail: null,
+        coLeaderInviteeId: null,
+        coLeaderInviteeName: null,
+        coLeaderInviteeEmail: null,
+        coLeaderInvitationStatus: null
+      }, { merge: true });
+      alert("Se ha removido el Co-Líder o cancelado la invitación.");
+    } catch (err) {
+      console.error("Error removing co-leader:", err);
+      alert("Error al remover el Co-Líder.");
+    }
+  };
+
+  const handleAcceptCoLeadership = async (cellId: string) => {
+    try {
+      const cellRef = doc(db, 'celulas', cellId);
+      await setDoc(cellRef, {
+        coLeaderId: user.uid,
+        coLeaderName: user.displayName || user.email,
+        coLeaderEmail: user.email,
+        coLeaderInvitationStatus: 'accepted',
+        coLeaderInviteeId: null,
+        coLeaderInviteeName: null,
+        coLeaderInviteeEmail: null
+      }, { merge: true });
+      alert("¡Has aceptado la Co-Lideración con éxito!");
+    } catch (err) {
+      console.error("Error accepting co-leadership:", err);
+      alert("Error al aceptar la Co-Lideración.");
+    }
+  };
+
+  const handleDeclineCoLeadership = async (cellId: string) => {
+    try {
+      const cellRef = doc(db, 'celulas', cellId);
+      await setDoc(cellRef, {
+        coLeaderInviteeId: null,
+        coLeaderInviteeName: null,
+        coLeaderInviteeEmail: null,
+        coLeaderInvitationStatus: null
+      }, { merge: true });
+      alert("Has rechazado la invitación de Co-Liderazgo.");
+    } catch (err) {
+      console.error("Error declining co-leadership:", err);
+      alert("Error al rechazar.");
+    }
+  };
+
+  const handleLeaveCoLeadership = async (cellId: string) => {
+    if (!window.confirm("¿Está seguro de que desea dejar de co-liderar esta célula?")) return;
+    try {
+      const cellRef = doc(db, 'celulas', cellId);
+      await setDoc(cellRef, {
+        coLeaderId: null,
+        coLeaderName: null,
+        coLeaderEmail: null,
+        coLeaderInvitationStatus: null
+      }, { merge: true });
+      alert("Has dejado el Co-Liderazgo de esta célula.");
+    } catch (err) {
+      console.error("Error leaving co-leadership:", err);
+      alert("Error al dejar el Co-Liderazgo.");
+    }
+  };
+
+  // Load cell profile in real-time
   useEffect(() => {
     if (!user?.uid) return;
     
     setIsCellLoading(true);
+
+    if (isCoLeaderActive && coLedCell) {
+      setCellProfile(coLedCell);
+      setCellProfileForm({
+        name: coLedCell.name || '',
+        leader: coLedCell.leader || '',
+        schedule: coLedCell.schedule || 'Viernes 20:00hrs',
+        address: coLedCell.address || '',
+        barriada: coLedCell.barriada || '',
+        ciudad: coLedCell.ciudad || 'Huelva',
+        googleMapsLink: coLedCell.googleMapsLink || '',
+        lugar: coLedCell.lugar || (coLedCell.ciudad === 'Sevilla' ? 'Sevilla' : coLedCell.ciudad === 'Portugal' ? 'Portugal' : 'Ciudad de Huelva'),
+        municipio: coLedCell.municipio || '',
+        lugarDetalle: coLedCell.lugarDetalle || ''
+      });
+      setIsCellLoading(false);
+      return;
+    }
+
     const q = query(collection(db, 'celulas'), where('leaderId', '==', user.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       if (!snapshot.empty) {
@@ -442,7 +650,7 @@ export default function Lideres() {
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, isCoLeaderActive, coLedCell]);
 
   const handleSaveCellProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -478,7 +686,7 @@ export default function Lideres() {
   };
 
   const handleResetCellProfile = async () => {
-    if (!user?.uid) return;
+    if (!user?.uid || isCoLeaderActive) return;
     if (!window.confirm("¿Está seguro de que desea restablecer los datos de su célula? Esto eliminará la ubicación del mapa.")) return;
     
     setIsSavingCell(true);
@@ -511,14 +719,14 @@ export default function Lideres() {
   };
 
   const handleCopyCellLink = () => {
-    const linkToCopy = `${window.location.origin}/asistencia-compartida?leaderId=${user.uid}`;
+    const linkToCopy = `${window.location.origin}/asistencia-compartida?leaderId=${effectiveLeaderId}`;
     navigator.clipboard.writeText(linkToCopy);
     setCopiedCellLink(true);
     setTimeout(() => setCopiedCellLink(false), 3000);
   };
 
   const handleShareFormToWhatsApp = () => {
-    const link = `${window.location.origin}/asistencia-compartida?leaderId=${user.uid}`;
+    const link = `${window.location.origin}/asistencia-compartida?leaderId=${effectiveLeaderId}`;
     const text = encodeURIComponent(`Hola, por favor ayúdanos a rellenar el formulario de asistencia de la célula ingresando a este enlace: ${link}`);
     window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
   };
@@ -554,11 +762,11 @@ export default function Lideres() {
 
   // Load reports based on user (each leader loads only their own, even if they are Admin)
   useEffect(() => {
-    if (!isLider || !user) return;
+    if (!isLider || !user || !effectiveLeaderId) return;
 
     const q = query(
       collection(db, 'meeting_reports'),
-      where('leaderId', '==', user.uid),
+      where('leaderId', '==', effectiveLeaderId),
       orderBy('meetingDate', 'desc')
     );
 
@@ -573,7 +781,7 @@ export default function Lideres() {
     });
 
     return () => unsubscribe();
-  }, [isLider, user]);
+  }, [isLider, user, effectiveLeaderId]);
 
   // Load Cell Studies in real-time
   useEffect(() => {
@@ -599,11 +807,11 @@ export default function Lideres() {
 
   // Load Cell Members / Attendees Memory list in real-time
   useEffect(() => {
-    if (!isLider || !user) return;
+    if (!isLider || !user || !effectiveLeaderId) return;
 
     const q = query(
       collection(db, 'cell_members'),
-      where('leaderId', '==', user.uid)
+      where('leaderId', '==', effectiveLeaderId)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -627,7 +835,7 @@ export default function Lideres() {
     });
 
     return () => unsubscribe();
-  }, [isLider, user]);
+  }, [isLider, user, effectiveLeaderId]);
 
   // Helper to toggle active status of a loaded tag under a specific category
   const toggleMemberActive = (memberId: string, category: 'bautizado' | 'no_bautizado' | 'no_creyente') => {
@@ -713,7 +921,7 @@ export default function Lideres() {
     try {
       // Create document in database
       await addDoc(collection(db, 'cell_members'), {
-        leaderId: user?.uid,
+        leaderId: effectiveLeaderId,
         name: trimmed,
         category, // fallback for backward-compatibility
         categories: [category],
@@ -746,7 +954,7 @@ export default function Lideres() {
       const calculatedNonBelieversCount = countNonBelievers;
 
       const newReport: any = {
-        leaderId: user.uid,
+        leaderId: effectiveLeaderId,
         leaderName: resolvedLeaderName,
         meetingDate,
         believersCount: calculatedBelieversCount,
@@ -1178,7 +1386,7 @@ export default function Lideres() {
                       if (!nameInput) return;
                       try {
                         const newMemberDoc = {
-                          leaderId: user?.uid,
+                          leaderId: effectiveLeaderId,
                           name: nameInput,
                           category: selectedCategories[0], // fallback for backward-compatibility
                           categories: selectedCategories,
@@ -2765,8 +2973,18 @@ export default function Lideres() {
                     </div>
                   </div>
 
+                  {isCoLeaderActive && (
+                    <div className="mb-6 p-4 bg-blue-50 border border-blue-200 text-primary rounded-2xl flex items-start gap-3">
+                      <Info className="w-5 h-5 shrink-0 mt-0.5 text-secondary" />
+                      <p className="text-xs font-semibold leading-relaxed">
+                        Estás visualizando los datos de la Célula de <strong>{coLedCell?.leader || 'otro líder'}</strong> como Co-Líder. Puedes gestionar la asistencia, estadísticas, anuncios y estudios de esta célula, pero no tienes autorización para modificar la ubicación, día o dirección de encuentro.
+                      </p>
+                    </div>
+                  )}
+
                   <form onSubmit={handleSaveCellProfile} className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <fieldset disabled={isCoLeaderActive} className="space-y-6 border-0 p-0 m-0 w-full">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
                           Nombre del Líder / Líderes
@@ -3035,11 +3253,220 @@ export default function Lideres() {
                         {isSavingCell ? 'Guardando...' : 'Guardar Información'}
                       </button>
                     </div>
+                    </fieldset>
                   </form>
                 </div>
 
-                {/* Sidebar containing download map */}
-                <div className="lg:col-span-1 space-y-6 text-left">
+                {/* Sidebar containing download map and Co-Leadership tools */}
+                <div className="lg:col-span-1 space-y-6 text-left animate-fade-in">
+                  {/* Co-Leader Invite Alerts for Pending and Active Co-Leadership */}
+                  {pendingInvitation !== null && (
+                    <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-250 rounded-3xl p-6 shadow-sm">
+                      <span className="inline-block bg-amber-100 text-amber-800 border border-amber-250 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-4">
+                        ✉️ Invitación Recibida
+                      </span>
+                      <h3 className="text-base font-bold text-slate-800 mb-2 font-kenao">
+                        Te han invitado a Co-Liderar
+                      </h3>
+                      <p className="text-xs text-slate-600 leading-relaxed mb-4">
+                        El líder <strong className="text-primary">{pendingInvitation.leader}</strong> te ha invitado a co-liderar su grupo: <strong>{pendingInvitation.name || "Célula"}</strong>.
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleAcceptCoLeadership(pendingInvitation.id)}
+                          className="flex-1 py-2.5 bg-primary text-white hover:bg-secondary hover:text-primary rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer border border-transparent"
+                        >
+                          Aceptar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeclineCoLeadership(pendingInvitation.id)}
+                          className="flex-1 py-2.5 bg-slate-200 text-slate-700 hover:bg-slate-300 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
+                        >
+                          Rechazar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {isCoLeaderActive && coLedCell && (
+                    <div className="bg-blue-50 border border-blue-250 rounded-3xl p-6 shadow-sm">
+                      <span className="inline-block bg-secondary text-primary border border-primary/10 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-4">
+                        🤝 Co-Liderazgo Activo
+                      </span>
+                      <h3 className="text-base font-bold text-slate-800 mb-2 font-kenao">
+                        Modo Co-Líder Activo
+                      </h3>
+                      <p className="text-xs text-slate-650 leading-relaxed mb-4">
+                        Actualmente estás participando activamente en el Co-Liderazgo de la Célula de <strong>{coLedCell.leader}</strong>. Tu panel completo refleja su información.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => handleLeaveCoLeadership(coLedCell.id)}
+                        className="w-full py-2.5 bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
+                      >
+                        Dejar Co-Liderazgo
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Search and Invite panel if owner leader is not currently co-leading someone else's cell */}
+                  {!isCoLeaderActive && cellProfile !== null && (
+                    <div className="space-y-6">
+                      {/* Case A: We have a registered Co-Leader */}
+                      {cellProfile.coLeaderId ? (
+                        <div className="bg-slate-50 border border-slate-200 rounded-3xl p-6 shadow-sm">
+                          <span className="inline-block bg-emerald-100 text-emerald-800 border border-emerald-250 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-4">
+                            👥 Tu Co-Líder Activo
+                          </span>
+                          <h3 className="text-base font-bold text-slate-800 mb-1 font-kenao">
+                            {cellProfile.coLeaderName}
+                          </h3>
+                          <p className="text-[11px] text-slate-500 mb-4">
+                            ({cellProfile.coLeaderEmail})
+                          </p>
+                          <p className="text-xs text-slate-500 leading-relaxed mb-4">
+                            Este usuario está co-liderando tu célula. Ambos comparten acceso a asistencia, estadísticas, anuncios y materiales de encuentro de forma sincronizada.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={handleRemoveCoLeader}
+                            className="w-full py-2.5 bg-rose-50 border border-rose-105 text-rose-700 hover:bg-rose-100 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
+                          >
+                            Remover Co-Líder
+                          </button>
+                        </div>
+                      ) : cellProfile.coLeaderInviteeId ? (
+                        /* Case B: Invitation Pending */
+                        <div className="bg-amber-50/70 border border-amber-205 rounded-3xl p-6 shadow-sm">
+                          <span className="inline-block bg-amber-100 text-amber-800 border border-amber-250 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-4">
+                            ⏳ Invitación Pendiente
+                          </span>
+                          <h3 className="text-base font-bold text-slate-800 mb-1 font-kenao">
+                            {cellProfile.coLeaderInviteeName}
+                          </h3>
+                          <p className="text-[11px] text-slate-500 mb-4">
+                            ({cellProfile.coLeaderInviteeEmail})
+                          </p>
+                          <p className="text-xs text-slate-500 leading-relaxed mb-4">
+                            Invitación enviada. El destinatario debe ingresar a su subpágina de "Mi Célula" para aceptar formalmente el co-liderazgo.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={handleRemoveCoLeader}
+                            className="w-full py-2.5 bg-amber-50 border border-amber-250 text-amber-805 hover:bg-amber-100 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
+                          >
+                            Cancelar Invitación
+                          </button>
+                        </div>
+                      ) : (
+                        /* Case C: Free to Invite */
+                        <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm">
+                          <span className="inline-block bg-primary/5 text-primary border border-primary/10 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-4">
+                            🤝 Co-Liderazgo
+                          </span>
+                          <h3 className="text-lg font-kenao font-bold text-primary mb-2 flex items-center gap-2">
+                            <Share2 className="w-5 h-5 text-secondary shrink-0" /> Invitar Co-Líder
+                          </h3>
+                          <p className="text-xs text-slate-500 leading-relaxed mb-6">
+                            Invita a otro usuario "Líder" de la iglesia (por ejemplo, tu cónyuge o co-ayudante) para co-liderar tu célula. Comparte visualización y reporte excepto cambiar el perfil de la célula.
+                          </p>
+
+                          {selectedLeaderToInvite ? (
+                            <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl mb-4 text-left relative animate-fade-in">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedLeaderToInvite(null)}
+                                className="absolute top-3 right-3 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                                title="Cancelar selección de líder"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                              <h4 className="text-[10px] font-bold text-slate-500 uppercase mb-1">
+                                Seleccionado para Co-Liderar
+                              </h4>
+                              <p className="text-xs font-bold text-primary">
+                                {selectedLeaderToInvite.displayName}
+                              </p>
+                              <p className="text-[10px] text-slate-500 mb-4">
+                                {selectedLeaderToInvite.email}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={handleInviteCoLeader}
+                                disabled={isInvitingLeader}
+                                className="w-full py-2.5 bg-primary hover:bg-secondary hover:text-primary text-white font-bold rounded-xl transition-all text-xs shadow-sm cursor-pointer flex items-center justify-center gap-1.5"
+                              >
+                                {isInvitingLeader ? "Enviando..." : "Invitar a Co-Liderar"}
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="space-y-4">
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  value={searchLeaderTerm}
+                                  onChange={(e) => setSearchLeaderTerm(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleSearchLeaders();
+                                    }
+                                  }}
+                                  placeholder="Introduce nombre o correo..."
+                                  className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-xs text-slate-700"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={handleSearchLeaders}
+                                  disabled={searchingLeaders}
+                                  className="px-3.5 py-2.5 bg-primary hover:bg-secondary text-white hover:text-primary font-bold rounded-xl transition-all text-xs cursor-pointer"
+                                >
+                                  {searchingLeaders ? "..." : "Buscar"}
+                                </button>
+                              </div>
+
+                              {foundLeaders.length > 0 && (
+                                <div className="max-h-52 overflow-y-auto border border-slate-105 rounded-xl divide-y divide-slate-100 bg-white shadow-inner p-1">
+                                  {foundLeaders.map((ldr) => (
+                                    <button
+                                      key={ldr.uid}
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedLeaderToInvite(ldr);
+                                        setFoundLeaders([]);
+                                      }}
+                                      className="w-full text-left px-3 py-2.5 hover:bg-slate-50 rounded-lg transition-colors flex flex-col cursor-pointer"
+                                    >
+                                      <span className="text-xs font-bold text-slate-800">
+                                        {ldr.displayName || "Líder"}
+                                      </span>
+                                      <span className="text-[10px] text-slate-500">
+                                        {ldr.email}
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {!isCoLeaderActive && cellProfile === null && (
+                    <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm text-center">
+                      <span className="inline-block bg-primary/5 text-primary border border-primary/10 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-4">
+                        🤝 Co-Liderazgo
+                      </span>
+                      <p className="text-xs text-slate-505 leading-relaxed">
+                        Guarde la información de su célula para poder habilitar las invitaciones de Co-Liderazgo.
+                      </p>
+                    </div>
+                  )}
+
                   <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm flex flex-col justify-between">
                     <div>
                       <span className="inline-block bg-primary/5 text-primary border border-primary/10 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-4">
