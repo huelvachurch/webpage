@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Shield, User as UserIcon, Mail, Calendar, Search, MoreVertical, CheckCircle, AlertCircle, Users, UserCheck, MessageSquare, GraduationCap } from 'lucide-react';
-import { collection, updateDoc, doc, onSnapshot, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import { collection, updateDoc, doc, onSnapshot, query, orderBy, serverTimestamp, getDocs, where, deleteDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { useAuth } from '../../AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -11,7 +11,7 @@ interface UserProfile {
   email: string;
   displayName: string;
   photoURL: string;
-  roles: ('admin' | 'comunicador' | 'profesor' | 'alumno' | 'lider')[];
+  roles: ('admin' | 'comunicador' | 'profesor' | 'alumno' | 'lider' | 'supervisor')[];
   status: 'pending' | 'active' | 'blocked';
   createdAt: any;
   requestedAlumnoRole?: boolean;
@@ -25,20 +25,20 @@ export default function AdminUsuarios() {
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  const isAdmin = myRoles.includes('admin');
+  const isSuperAdmin = myRoles.includes('superadmin');
 
   // Redirect if not authorized (Super Admin only)
   useEffect(() => {
     if (isAuthReady && !loading) {
-      if (!user || !isAdmin) {
+      if (!user || !isSuperAdmin) {
         navigate('/');
       }
     }
-  }, [user, isAdmin, loading, isAuthReady, navigate]);
+  }, [user, isSuperAdmin, loading, isAuthReady, navigate]);
 
   // Fetch users
   useEffect(() => {
-    if (isAuthReady && user && isAdmin) {
+    if (isAuthReady && user && isSuperAdmin) {
       const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const usersData = snapshot.docs.map(doc => ({
@@ -50,11 +50,11 @@ export default function AdminUsuarios() {
       });
       return () => unsubscribe();
     }
-  }, [isAuthReady, user, isAdmin]);
+  }, [isAuthReady, user, isSuperAdmin]);
 
   // Local drafts for accumulated changes (so we don't spam emails on single button presses)
   interface UserDraft {
-    roles?: ('admin' | 'comunicador' | 'profesor' | 'alumno' | 'lider')[];
+    roles?: ('admin' | 'comunicador' | 'profesor' | 'alumno' | 'lider' | 'supervisor')[];
     status?: 'pending' | 'active' | 'blocked';
   }
   const [drafts, setDrafts] = useState<Record<string, UserDraft>>({});
@@ -119,6 +119,8 @@ export default function AdminUsuarios() {
     try {
       const finalRoles = draft.roles !== undefined ? draft.roles : (u.roles || []);
       const finalStatus = draft.status !== undefined ? draft.status : u.status;
+      const hadLiderRole = (u.roles || []).includes('lider');
+      const hasLiderRole = finalRoles.includes('lider');
 
       const userRef = doc(db, 'users', u.uid);
       const updates: any = {
@@ -130,6 +132,66 @@ export default function AdminUsuarios() {
         updates.requestedAlumnoRole = false;
       }
       await updateDoc(userRef, updates);
+
+      // --- NEW LIDER ROLE REMOVAL LOGIC ---
+      if (hadLiderRole && !hasLiderRole) {
+        // 1. Check if they were a Co-Leader in any cell and remove them
+        const coLeaderQuery = query(collection(db, 'celulas'), where('coLeaderId', '==', u.uid));
+        const coLeaderDocs = await getDocs(coLeaderQuery);
+        for (const cellDoc of coLeaderDocs.docs) {
+          await updateDoc(doc(db, 'celulas', cellDoc.id), {
+            coLeaderId: null,
+            coLeaderName: null,
+            coLeaderEmail: null,
+            coLeaderInvitationStatus: null
+          });
+        }
+        
+        // 2. Check if they had pending invitations as Co-Leader and remove them
+        const inviteeQuery = query(collection(db, 'celulas'), where('coLeaderInviteeId', '==', u.uid));
+        const inviteeDocs = await getDocs(inviteeQuery);
+        for (const cellDoc of inviteeDocs.docs) {
+          await updateDoc(doc(db, 'celulas', cellDoc.id), {
+            coLeaderInviteeId: null,
+            coLeaderInviteeName: null,
+            coLeaderInviteeEmail: null,
+            coLeaderInvitationStatus: null
+          });
+        }
+
+        // 3. Check if they were the Main Leader of any cell
+        const leaderQuery = query(collection(db, 'celulas'), where('leaderId', '==', u.uid));
+        const leaderDocs = await getDocs(leaderQuery);
+        for (const cellDoc of leaderDocs.docs) {
+          const cellData = cellDoc.data();
+          if (cellData.coLeaderId) {
+            // Promote Co-Leader to Main Leader
+            await updateDoc(doc(db, 'celulas', cellDoc.id), {
+              leaderId: cellData.coLeaderId,
+              leaderName: cellData.coLeaderName,
+              coLeaderId: null,
+              coLeaderName: null,
+              coLeaderEmail: null,
+              coLeaderInvitationStatus: null
+            });
+          } else {
+            // No Co-Leader. Delete the cell.
+            const cellId = cellDoc.id;
+            await deleteDoc(doc(db, 'celulas', cellId));
+            
+            // Also nullify celulaId for members of this vanished cell
+            const usersEnCelulaQuery = query(collection(db, 'users'), where('celulaId', '==', cellId));
+            const usersEnCelulaDocs = await getDocs(usersEnCelulaQuery);
+            for (const userDoc of usersEnCelulaDocs.docs) {
+              await updateDoc(doc(db, 'users', userDoc.id), {
+                celulaId: null,
+                celulaStatus: null
+              });
+            }
+          }
+        }
+      }
+      // --- END LIDER ROLE REMOVAL LOGIC ---
 
       // Send a single combined email notification through the endpoint
       await fetch("/api/admin/notify-role-change", {
@@ -181,6 +243,7 @@ export default function AdminUsuarios() {
       case 'profesor': return 'bg-purple-100 text-purple-600 border-purple-200';
       case 'alumno': return 'bg-emerald-100 text-emerald-600 border-emerald-200';
       case 'lider': return 'bg-amber-100 text-amber-600 border-amber-200';
+      case 'supervisor': return 'bg-orange-100 text-orange-600 border-orange-200';
       default: return 'bg-slate-100 text-slate-600 border-slate-200';
     }
   };
@@ -206,14 +269,14 @@ export default function AdminUsuarios() {
 
   if (loading || !isAuthReady) return <div className="pt-32 text-center">Cargando...</div>;
 
-  const availableRoles: UserProfile['roles'][number][] = ['admin', 'comunicador', 'profesor', 'alumno', 'lider'];
+  const availableRoles: UserProfile['roles'][number][] = ['admin', 'comunicador', 'profesor', 'alumno', 'lider', 'supervisor'];
 
   return (
-    <div className="pt-32 pb-24 bg-slate-50 min-h-screen">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
+    <div className="">
+      <div className="">
+        <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div>
-            <h1 className="text-4xl font-kenao text-primary mb-2">Administración de Usuarios</h1>
+            <h2 className="text-3xl font-kenao text-primary mb-2">Usuarios</h2>
             <p className="text-primary/60">Gestiona los miembros, acepta solicitudes y asigna roles independientes</p>
           </div>
           <div className="flex items-center gap-3 bg-amber-50 border border-amber-100 p-4 rounded-2xl">
@@ -300,6 +363,7 @@ export default function AdminUsuarios() {
             <option value="profesor">Profesores</option>
             <option value="alumno">Alumnos</option>
             <option value="lider">Líderes</option>
+            <option value="supervisor">Supervisores</option>
           </select>
           <select 
             className="px-6 py-3 rounded-xl border border-slate-100 text-primary/60 outline-none focus:ring-2 focus:ring-secondary appearance-none bg-white"

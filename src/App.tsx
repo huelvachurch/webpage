@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import Home from './pages/Home';
@@ -12,6 +12,7 @@ import Dar from './pages/Dar';
 import Contacto from './pages/Contacto';
 import Login from './pages/Login';
 import AdminComunicaciones from './pages/admin/AdminComunicaciones';
+import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminUsuarios from './pages/admin/AdminUsuarios';
 import AdminCursos from './pages/admin/AdminCursos';
 import AdminNewsletter from './pages/admin/AdminNewsletter';
@@ -19,7 +20,10 @@ import AdminSettings from './pages/admin/AdminSettings';
 import Cursos from './pages/Cursos';
 import MisCursos from './pages/MisCursos';
 import MisDatos from './pages/MisDatos';
+import MiCelula from './pages/MiCelula';
 import Lideres from './pages/Lideres';
+import Supervision from './pages/Supervision';
+import Presentacion from './pages/Presentacion';
 import Legal from './pages/Legal';
 import AsistenciaCompartida from './pages/AsistenciaCompartida';
 import CursoDetalle from './pages/CursoDetalle';
@@ -102,12 +106,35 @@ function WelcomePopup() {
   );
 }
 
+function GlobalIframeAuth() {
+  const { user } = useAuth();
+  
+  useEffect(() => {
+    if (user?.uid) {
+      const iframes = document.querySelectorAll('iframe');
+      iframes.forEach(iframe => {
+        if (iframe.src && iframe.src.includes('estudios.huelvachurch.com')) {
+          if (iframe.contentWindow) {
+            iframe.contentWindow.postMessage({
+              type: 'AUTH_STATE',
+              uid: user.uid
+            }, 'https://estudios.huelvachurch.com');
+          }
+        }
+      });
+    }
+  }, [user]);
+  
+  return null;
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
         <Router>
           <ScrollToTop />
+          <GlobalIframeAuth />
           <div className="min-h-screen flex flex-col overflow-x-hidden">
             <Navbar />
             <main className="flex-grow">
@@ -124,14 +151,20 @@ export default function App() {
                 <Route path="/cursos/:id" element={<CursoDetalle />} />
                 <Route path="/mis-cursos" element={<MisCursos />} />
                 <Route path="/mis-datos" element={<MisDatos />} />
+                <Route path="/mi-celula" element={<MiCelula />} />
                 <Route path="/lideres" element={<Lideres />} />
+                <Route path="/supervision" element={<Supervision />} />
+                <Route path="/presentacion" element={<Presentacion />} />
                 <Route path="/asistencia-compartida" element={<AsistenciaCompartida />} />
                 <Route path="/legal" element={<Legal />} />
                 
                 {/* Admin Routes */}
                 <Route path="/admin/comunicaciones" element={<AdminComunicaciones />} />
-                <Route path="/admin/usuarios" element={<AdminUsuarios />} />
-                <Route path="/admin/celulas" element={<AdminCelulas />} />
+                <Route path="/admin/administracion" element={<AdminDashboard />}>
+                  <Route path="usuarios" element={<AdminUsuarios />} />
+                  <Route path="celulas" element={<AdminCelulas />} />
+                  <Route index element={<Navigate to="usuarios" replace />} />
+                </Route>
                 <Route path="/admin/cursos" element={<AdminCursos />} />
                 <Route path="/admin/newsletter" element={<AdminNewsletter />} />
                 <Route path="/admin/ajustes" element={<AdminSettings />} />

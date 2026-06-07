@@ -225,8 +225,12 @@ export default function Home() {
               <p className="text-primary/80 text-lg mb-6 leading-relaxed">
                 {t('home.welcomeDesc1')}
               </p>
+              <p 
+                className="text-primary/80 text-lg mb-6 leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: t('home.welcomeDesc2') }}
+              ></p>
               <p className="text-primary/80 text-lg mb-8 leading-relaxed">
-                {t('home.welcomeDesc2')}
+                {t('home.welcomeDesc3')}
               </p>
               <div className="flex items-center space-x-4">
                 <div className="w-12 h-12 bg-secondary/10 rounded-full flex items-center justify-center text-secondary">
@@ -467,7 +471,7 @@ export default function Home() {
                   {t('home.cellsDesc')}
                 </p>
                 <a 
-                  href="https://www.huelvachurch.es/celulas" 
+                  href="https://www.huelvachurch.com/celulas" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="inline-flex items-center bg-secondary text-primary px-8 py-4 rounded-xl font-bold hover:bg-[#c2a30b] transition-all transform hover:-translate-y-1 shadow-lg shadow-secondary/20"

@@ -68,9 +68,12 @@ export default function AdminNewsletter() {
 
   // Form State - Newsletter Builder
   const [campaignType, setCampaignType] = useState<'semanal' | 'especial'>('semanal');
+  const [greetingText, setGreetingText] = useState('¡Hola familia! Qué gozo encontrarnos una vez más. Queremos animarte a sumarte con alegría a nuestra Celebración Principal del Fin de Semana.');
   const [sermonImageUrl, setSermonImageUrl] = useState('');
+  const [sermonContext, setSermonContext] = useState('');
   const [sermonDescription, setSermonDescription] = useState('Te invitamos a nuestra reunión de este domingo. ¡Ven con expectativa de adorar y recibir una palabra fresca de parte de Dios!');
-  const [isSantaCena, setIsSantaCena] = useState(false);
+  const [isCenaBanner, setIsCenaBanner] = useState(false);
+  const [cenaDescription, setCenaDescription] = useState('Este domingo nos uniremos como familia espiritual para participar juntos en la mesa del Señor.');
   const [selectedPostIds, setSelectedPostIds] = useState<string[]>([]);
   
   // Custom Special Newsletter Fields
@@ -82,6 +85,9 @@ export default function AdminNewsletter() {
   // Saving states and action indicators
   const [isSaving, setIsSaving] = useState(false);
   const [isActionCampaignId, setIsActionCampaignId] = useState<string | null>(null);
+  const [isGeneratingGreeting, setIsGeneratingGreeting] = useState(false);
+  const [isGeneratingSermon, setIsGeneratingSermon] = useState(false);
+  const [isGeneratingCena, setIsGeneratingCena] = useState(false);
 
   // Future scheduling states
   const [shouldSchedule, setShouldSchedule] = useState(false);
@@ -114,8 +120,8 @@ export default function AdminNewsletter() {
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [apiResponse, setApiResponse] = useState<{ success: boolean; realDelivery: boolean; details: string; messageId?: string } | null>(null);
 
-  const isAdmin = roles.includes('admin');
-  const isComunicador = roles.includes('comunicador') || isAdmin;
+  const isSuperAdmin = roles.includes('superadmin');
+  const isComunicador = roles.includes('comunicador') || isSuperAdmin;
 
   // Security Guard Direct
   useEffect(() => {
@@ -134,7 +140,7 @@ export default function AdminNewsletter() {
     
     // Check if tomorrow is Sunday (0) and date is <= 7 (first Sunday)
     if (tomorrow.getDay() === 0 && tomorrow.getDate() <= 7) {
-      setIsSantaCena(true);
+      setIsCenaBanner(true);
     }
   }, []);
 
@@ -305,6 +311,39 @@ export default function AdminNewsletter() {
     }
   };
 
+  const generateShortText = async (type: 'greeting' | 'sermonDescription' | 'cenaDescription') => {
+    try {
+      if (type === 'greeting') setIsGeneratingGreeting(true);
+      else if (type === 'sermonDescription') setIsGeneratingSermon(true);
+      else setIsGeneratingCena(true);
+
+      const res = await fetch('/api/gemini/generate-short-text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ promptType: type, context: type === 'sermonDescription' ? sermonContext : undefined })
+      });
+
+      if (!res.ok) throw new Error('Error en generación de texto');
+
+      const data = await res.json();
+
+      if (type === 'greeting') {
+         setGreetingText(data.text);
+      } else if (type === 'sermonDescription') {
+         setSermonDescription(data.text);
+      } else {
+         setCenaDescription(data.text);
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert('Error al generar sugerencia: ' + err.message);
+    } finally {
+      if (type === 'greeting') setIsGeneratingGreeting(false);
+      else if (type === 'sermonDescription') setIsGeneratingSermon(false);
+      else setIsGeneratingCena(false);
+    }
+  };
+
   // Autofill test email once user object loads
   useEffect(() => {
     if (user?.email) {
@@ -314,17 +353,20 @@ export default function AdminNewsletter() {
 
   // Generate Email HTML Output on change
   useEffect(() => {
+    let html = '';
     if (campaignType === 'semanal') {
       const activeArticles = posts.filter(p => selectedPostIds.includes(p.id));
-      const html = compileWeeklyEmail({
+      html = compileWeeklyEmail({
+        greetingText,
         sermonImageUrl,
         sermonDescription,
-        isSantaCena,
+        isCenaBanner,
+        cenaDescription,
         articles: activeArticles
       });
       setPreviewHtml(html);
     } else {
-      const html = compileSpecialEmail({
+      html = compileSpecialEmail({
         subject: specialSubject,
         content: specialContent,
         btnText: specialButtonText,
@@ -332,10 +374,10 @@ export default function AdminNewsletter() {
       });
       setPreviewHtml(html);
     }
-  }, [campaignType, sermonImageUrl, sermonDescription, isSantaCena, selectedPostIds, posts, specialSubject, specialContent, specialButtonText, specialButtonUrl]);
+  }, [campaignType, greetingText, sermonImageUrl, sermonDescription, isCenaBanner, cenaDescription, selectedPostIds, posts, specialSubject, specialContent, specialButtonText, specialButtonUrl]);
 
   // HTML Compiler: Weekly Sunday Reminders
-  function compileWeeklyEmail(config: { sermonImageUrl: string; sermonDescription: string; isSantaCena: boolean; articles: Post[] }) {
+  function compileWeeklyEmail(config: { greetingText: string; sermonImageUrl: string; sermonDescription: string; isCenaBanner: boolean; cenaDescription: string; articles: Post[] }) {
     const articlesHtml = config.articles.map(p => `
       <div style="background-color: #ffffff; border-radius: 16px; border: 1px solid #f1f5f9; overflow: hidden; margin-bottom: 24px;">
         ${p.imageUrl ? `<img src="${getOptimizedImageUrl(p.imageUrl)}" alt="${p.title}" style="width: 100%; max-height: 200px; object-fit: cover; display: block;" />` : ''}
@@ -348,13 +390,102 @@ export default function AdminNewsletter() {
       </div>
     `).join('');
 
-    const santaCenaAlert = config.isSantaCena ? `
-      <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 16px; padding: 20px; text-align: center; margin-bottom: 28px;">
-        <span style="font-size: 24px;">🍷🍞</span>
-        <h4 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 16px; color: #b45309; margin: 8px 0 4px 0; font-weight: bold;">Celebración de la Santa Cena</h4>
-        <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; color: #78350f; line-height: 1.4; margin: 0;">Este domingo participaremos juntos en la mesa del Señor como familia espiritual. Prepara tu corazón.</p>
+    const cenaAlert = config.isCenaBanner ? `
+      <div style="margin-bottom: 24px;">
+        <table width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color: #1e293b; background-image: url('${window.location.origin}/images/Banner%20Cena.png'); background-size: cover; background-position: center; border-radius: 16px; overflow: hidden;">
+          <tr>
+            <td height="100" style="height: 100px;"></td>
+          </tr>
+          <tr>
+            <td style="padding: 20px; background-color: rgba(0,0,0,0.5); background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%); text-align: left;">
+              <h3 style="margin: 0 0 4px 0; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 18px; font-weight: bold; color: #ffffff; text-shadow: 1px 1px 3px rgba(0,0,0,0.8);">Cena del Señor</h3>
+              <p style="margin: 0; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #f8fafc; line-height: 1.4; text-shadow: 1px 1px 3px rgba(0,0,0,0.8);">${config.cenaDescription}</p>
+            </td>
+          </tr>
+        </table>
       </div>
     ` : '';
+
+    const celulasBannerHTML = `
+      <div style="margin-bottom: 24px;">
+        <a href="https://huelvachurch.com/celulas" target="_blank" style="text-decoration: none; display: block;">
+          <table width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color: #1e293b; background-image: url('${window.location.origin}/images/Banner%20Celulas.png'); background-size: cover; background-position: center; border-radius: 16px; overflow: hidden;">
+            <tr>
+              <td height="100" style="height: 100px;"></td>
+            </tr>
+            <tr>
+              <td style="padding: 20px; background-color: rgba(0,0,0,0.5); background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%);">
+                <table width="100%" border="0" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="text-align: left; vertical-align: bottom;">
+                      <h3 style="margin: 0 0 4px 0; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 18px; font-weight: bold; color: #ffffff; text-shadow: 1px 1px 3px rgba(0,0,0,0.8);">Células</h3>
+                      <p style="margin: 0; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #f8fafc; line-height: 1.4; text-shadow: 1px 1px 3px rgba(0,0,0,0.8);">Conéctate con una familia de fe cerca de ti.</p>
+                    </td>
+                    <td style="text-align: right; vertical-align: bottom; width: 120px;">
+                      <span style="display: inline-block; background-color: #dfb23f; color: #ffffff; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; font-weight: bold; padding: 8px 16px; border-radius: 8px; text-transform: uppercase;">Conectar</span>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </a>
+      </div>
+    `;
+
+    const oracionBannerHTML = `
+      <div style="margin-bottom: 24px;">
+        <a href="https://meet.google.com/qhu-fktd-ejh" target="_blank" style="text-decoration: none; display: block;">
+          <table width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color: #1e293b; background-image: url('${window.location.origin}/images/Banner%20Oracion.png'); background-size: cover; background-position: center; border-radius: 16px; overflow: hidden;">
+            <tr>
+              <td height="100" style="height: 100px;"></td>
+            </tr>
+            <tr>
+              <td style="padding: 20px; background-color: rgba(0,0,0,0.5); background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%);">
+                <table width="100%" border="0" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="text-align: left; vertical-align: bottom;">
+                      <h3 style="margin: 0 0 4px 0; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 18px; font-weight: bold; color: #ffffff; text-shadow: 1px 1px 3px rgba(0,0,0,0.8);">Noches de Oración</h3>
+                      <p style="margin: 0; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #f8fafc; line-height: 1.4; text-shadow: 1px 1px 3px rgba(0,0,0,0.8);">Únete de lunes a jueves a las 23:00h vía Google Meet.</p>
+                    </td>
+                    <td style="text-align: right; vertical-align: bottom; width: 120px;">
+                      <span style="display: inline-block; background-color: #dfb23f; color: #ffffff; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; font-weight: bold; padding: 8px 16px; border-radius: 8px; text-transform: uppercase;">Unirse</span>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </a>
+      </div>
+    `;
+
+    const radioBannerHTML = `
+      <div style="margin-bottom: 24px;">
+        <a href="https://www.radiohuelvachurch.com/" target="_blank" style="text-decoration: none; display: block;">
+          <table width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color: #1e293b; background-image: url('${window.location.origin}/images/Banner%20Radio.png'); background-size: cover; background-position: center; border-radius: 16px; overflow: hidden;">
+            <tr>
+              <td height="100" style="height: 100px;"></td>
+            </tr>
+            <tr>
+              <td style="padding: 20px; background-color: rgba(0,0,0,0.5); background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%);">
+                <table width="100%" border="0" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="text-align: left; vertical-align: bottom;">
+                      <h3 style="margin: 0 0 4px 0; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 18px; font-weight: bold; color: #ffffff; text-shadow: 1px 1px 3px rgba(0,0,0,0.8);">Radio Online</h3>
+                      <p style="margin: 0; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #f8fafc; line-height: 1.4; text-shadow: 1px 1px 3px rgba(0,0,0,0.8);">Sintoniza y descarga la App en Android.</p>
+                    </td>
+                    <td style="text-align: right; vertical-align: bottom; width: 120px;">
+                      <span style="display: inline-block; background-color: #dfb23f; color: #ffffff; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; font-weight: bold; padding: 8px 16px; border-radius: 8px; text-transform: uppercase;">Escuchar</span>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </a>
+      </div>
+    `;
 
     return `
       <!DOCTYPE html>
@@ -383,7 +514,7 @@ export default function AdminNewsletter() {
                 <tr>
                   <td style="padding: 32px 32px 0 32px;">
                     <h2 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 20px; color: #162a45; margin-top: 0; margin-bottom: 12px; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px;">Te Esperamos Este Domingo</h2>
-                    <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 15px; color: #475569; line-height: 1.6; margin: 0 0 24px 0;">¡Hola familia! Qué gozo encontrarnos una vez más. Queremos animarte a sumarte con alegría a nuestra Celebración Principal del Fin de Semana.</p>
+                    <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 15px; color: #475569; line-height: 1.6; margin: 0 0 24px 0;">${config.greetingText}</p>
                     
                     <!-- Reunion Card -->
                     <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden; margin-bottom: 28px;">
@@ -395,8 +526,8 @@ export default function AdminNewsletter() {
                       </div>
                     </div>
                     
-                    <!-- Santa Cena alert -->
-                    ${santaCenaAlert}
+                    <!-- Cena del Senor alert -->
+                    ${cenaAlert}
                     
                     <!-- Featured Articles Section -->
                     ${config.articles.length > 0 ? `
@@ -410,42 +541,9 @@ export default function AdminNewsletter() {
                 <tr>
                   <td style="padding: 0 32px 32px 32px;">
                     <h2 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 18px; color: #162a45; margin-top: 16px; margin-bottom: 16px; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; text-align: center;">Nuestra Vida como Iglesia</h2>
-                    
-                    <table border="0" cellpadding="0" cellspacing="0" width="100%">
-                      <tr>
-                        <td align="center">
-                          <!--[if mso]>
-                          <table border="0" cellpadding="0" cellspacing="0" width="100%"><tr><td width="33%" valign="top"><![endif]-->
-                          <div style="display:inline-block; width:100%; max-width:180px; vertical-align:top; margin-bottom:16px;">
-                            <div style="background-color:#f8fafc; border:1px solid #edf2f7; padding:16px; border-radius:16px; margin:0 4px; position:relative;">
-                              <span style="font-size:24px; display:block; margin-bottom:8px;">🏠</span>
-                              <h4 style="font-family:'Helvetica Neue', Arial, sans-serif; font-size:13px; color:#162a45; margin:0 0 4px 0; font-weight:bold;">Células de Hogar</h4>
-                              <p style="font-family:'Helvetica Neue', Arial, sans-serif; font-size:11px; color:#64748b; margin:0 0 12px 0; line-height:1.4;">Conéctate con una familia de fe cerca de ti en Huelva.</p>
-                              <a href="https://huelvachurch.com/celulas" target="_blank" style="text-decoration:none; display:inline-block; background-color:#dfb23f; color:#ffffff; font-family:'Helvetica Neue', Arial, sans-serif; font-size:11px; font-weight:bold; padding:6px 12px; border-radius:6px;">Ver Células</a>
-                            </div>
-                          </div>
-                          <!--[if mso]></td><td width="33%" valign="top"><![endif]-->
-                          <div style="display:inline-block; width:100%; max-width:180px; vertical-align:top; margin-bottom:16px;">
-                            <div style="background-color:#f8fafc; border:1px solid #edf2f7; padding:16px; border-radius:16px; margin:0 4px; position:relative;">
-                              <span style="font-size:24px; display:block; margin-bottom:8px;">🙏</span>
-                              <h4 style="font-family:'Helvetica Neue', Arial, sans-serif; font-size:13px; color:#162a45; margin:0 0 4px 0; font-weight:bold;">Noches de Oración</h4>
-                              <p style="font-family:'Helvetica Neue', Arial, sans-serif; font-size:11px; color:#64748b; margin:0 0 12px 0; line-height:1.4;">Únete de lunes a jueves a las 23:00h vía Google Meet.</p>
-                              <a href="https://meet.google.com/huelva" target="_blank" style="text-decoration:none; display:inline-block; background-color:#dfb23f; color:#ffffff; font-family:'Helvetica Neue', Arial, sans-serif; font-size:11px; font-weight:bold; padding:6px 12px; border-radius:6px;">Conectar Meet</a>
-                            </div>
-                          </div>
-                          <!--[if mso]></td><td width="33%" valign="top"><![endif]-->
-                          <div style="display:inline-block; width:100%; max-width:180px; vertical-align:top; margin-bottom:16px;">
-                            <div style="background-color:#f8fafc; border:1px solid #edf2f7; padding:16px; border-radius:16px; margin:0 4px; position:relative;">
-                              <span style="font-size:24px; display:block; margin-bottom:8px;">📻</span>
-                              <h4 style="font-family:'Helvetica Neue', Arial, sans-serif; font-size:13px; color:#162a45; margin:0 0 4px 0; font-weight:bold;">Radio Online</h4>
-                              <p style="font-family:'Helvetica Neue', Arial, sans-serif; font-size:11px; color:#64748b; margin:0 0 12px 0; line-height:1.4;">Sintoniza y descarga la App en tu dispositivo Android.</p>
-                              <a href="https://play.google.com/store/apps/details?id=com.huelvachurch.radio" target="_blank" style="text-decoration:none; display:inline-block; background-color:#dfb23f; color:#ffffff; font-family:'Helvetica Neue', Arial, sans-serif; font-size:11px; font-weight:bold; padding:6px 12px; border-radius:6px;">Escuchar Ahora</a>
-                            </div>
-                          </div>
-                          <!--[if mso]></td></tr></table><![endif]-->
-                        </td>
-                      </tr>
-                    </table>
+                    ${celulasBannerHTML}
+                    ${oracionBannerHTML}
+                    ${radioBannerHTML}
                   </td>
                 </tr>
 
@@ -791,9 +889,11 @@ export default function AdminNewsletter() {
         createdAt: serverTimestamp(),
         sentCount,
         config: campaignType === 'semanal' ? {
+          greetingText,
           sermonImageUrl,
           sermonDescription,
-          isSantaCena,
+          isCenaBanner,
+          cenaDescription,
           selectedPostIds
         } : {
           specialSubject,
@@ -847,9 +947,11 @@ export default function AdminNewsletter() {
         createdAt: serverTimestamp(),
         scheduledAt: status === 'scheduled' ? new Date(scheduledAt) : null,
         config: campaignType === 'semanal' ? {
+          greetingText,
           sermonImageUrl,
           sermonDescription,
-          isSantaCena,
+          isCenaBanner,
+          cenaDescription,
           selectedPostIds
         } : {
           specialSubject,
@@ -973,7 +1075,7 @@ export default function AdminNewsletter() {
         {/* Header Title */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6">
           <div>
-            <h1 className="text-4xl font-kenao text-primary mb-2">Boletín e Informativos (Newsletter)</h1>
+            <h1 className="text-4xl font-kenao text-primary mb-2">Newsletter</h1>
             <p className="text-primary/60">Gestiona tus suscriptores, diseña correos semanales o comunicados especiales y envíalos con formato profesional.</p>
           </div>
         </div>
@@ -1044,6 +1146,31 @@ export default function AdminNewsletter() {
                 {campaignType === 'semanal' ? (
                   <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
                     <h3 className="text-lg font-kenao text-primary border-b border-slate-100 pb-3">Detalles de Próxima Reunión</h3>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="text-xs font-bold text-primary/60 block">Saludo Inicial</label>
+                        <button
+                          type="button"
+                          onClick={() => generateShortText('greeting')}
+                          disabled={isGeneratingGreeting}
+                          className="text-xs font-bold bg-secondary/10 text-secondary hover:bg-secondary hover:text-primary px-3 py-1 rounded-lg transition-colors flex items-center space-x-1"
+                        >
+                          {isGeneratingGreeting ? (
+                             <span className="w-3 h-3 border-2 border-secondary border-t-transparent rounded-full animate-spin"></span>
+                          ) : (
+                             <span>✨ Generar con IA</span>
+                          )}
+                        </button>
+                      </div>
+                      <textarea 
+                        rows={3}
+                        className="w-full px-4 py-3 text-sm rounded-xl border border-slate-200 focus:ring-2 focus:ring-secondary outline-none transition-all leading-relaxed"
+                        placeholder="Saludo para iniciar el boletín..."
+                        value={greetingText}
+                        onChange={(e) => setGreetingText(e.target.value)}
+                      />
+                    </div>
                     
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-primary/60 block">Imagen Carátula de la Prédica (URL)</label>
@@ -1057,9 +1184,30 @@ export default function AdminNewsletter() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-xs font-bold text-primary/60 block">Mensaje de Invitación / Resumen</label>
+                      <div className="flex justify-between items-center">
+                        <label className="text-xs font-bold text-primary/60 block">Mensaje de Invitación a la Celebración</label>
+                        <button
+                          type="button"
+                          onClick={() => generateShortText('sermonDescription')}
+                          disabled={isGeneratingSermon}
+                          className="text-xs font-bold bg-secondary/10 text-secondary hover:bg-secondary hover:text-primary px-3 py-1 rounded-lg transition-colors flex items-center space-x-1"
+                        >
+                          {isGeneratingSermon ? (
+                             <span className="w-3 h-3 border-2 border-secondary border-t-transparent rounded-full animate-spin"></span>
+                          ) : (
+                             <span>✨ Generar con IA</span>
+                          )}
+                        </button>
+                      </div>
+                      <input 
+                        type="text"
+                        className="w-full px-4 py-2 text-xs rounded-xl border border-slate-200 focus:ring-2 focus:ring-secondary outline-none transition-all mb-2"
+                        placeholder="Contexto (Opcional): ej. Predica Juan, Serie 'Fe', Cierre de campamento..."
+                        value={sermonContext}
+                        onChange={(e) => setSermonContext(e.target.value)}
+                      />
                       <textarea 
-                        rows={4}
+                        rows={3}
                         className="w-full px-4 py-3 text-sm rounded-xl border border-slate-200 focus:ring-2 focus:ring-secondary outline-none transition-all leading-relaxed"
                         placeholder="Mensaje o título de la serie bíblica para animar a la congregación..."
                         value={sermonDescription}
@@ -1067,17 +1215,46 @@ export default function AdminNewsletter() {
                       />
                     </div>
 
-                    <div className="flex items-center gap-3 bg-amber-50/50 p-4 rounded-2xl border border-amber-100">
-                      <input 
-                        type="checkbox"
-                        id="form-cena"
-                        className="w-5 h-5 rounded border-slate-300 text-secondary focus:ring-secondary cursor-pointer"
-                        checked={isSantaCena}
-                        onChange={(e) => setIsSantaCena(e.target.checked)}
-                      />
-                      <label htmlFor="form-cena" className="text-xs font-bold text-amber-900 cursor-pointer">
-                        ¿Celebración de la Santa Cena este Domingo? (Añade un banner recordatorio oportuno)
-                      </label>
+                    <div className="flex flex-col gap-3 bg-amber-50/50 p-4 rounded-2xl border border-amber-100">
+                      <div className="flex items-center gap-3">
+                        <input 
+                          type="checkbox"
+                          id="form-cena"
+                          className="w-5 h-5 rounded border-slate-300 text-secondary focus:ring-secondary cursor-pointer"
+                          checked={isCenaBanner}
+                          onChange={(e) => setIsCenaBanner(e.target.checked)}
+                        />
+                        <label htmlFor="form-cena" className="text-xs font-bold text-amber-900 cursor-pointer">
+                          ¿Cena del Señor este Domingo?
+                        </label>
+                      </div>
+                      
+                      {isCenaBanner && (
+                        <div className="pl-8 pt-2 space-y-2">
+                          <div className="flex justify-between items-center tracking-tight">
+                            <label className="text-[11px] font-bold text-amber-900/60 block">Descripción Cena del Señor</label>
+                            <button
+                              type="button"
+                              onClick={() => generateShortText('cenaDescription')}
+                              disabled={isGeneratingCena}
+                              className="text-[10px] font-bold bg-amber-200/50 text-amber-800 hover:bg-amber-300 px-2 py-1 rounded transition-colors flex items-center space-x-1"
+                            >
+                              {isGeneratingCena ? (
+                                 <span className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></span>
+                              ) : (
+                                 <span>✨ Generar</span>
+                              )}
+                            </button>
+                          </div>
+                          <textarea 
+                            rows={2}
+                            className="w-full px-3 py-2 text-xs rounded-xl border border-amber-200 focus:ring-2 focus:ring-amber-400 outline-none transition-all leading-relaxed bg-white/80"
+                            placeholder="Descripción sobre la Cena del Señor..."
+                            value={cenaDescription}
+                            onChange={(e) => setCenaDescription(e.target.value)}
+                          />
+                        </div>
+                      )}
                     </div>
 
                     {/* Featured Posts Selector */}
@@ -1279,15 +1456,6 @@ export default function AdminNewsletter() {
                         {(isSaving || isBroadcasting) && <Loader2 className="w-4 h-4 animate-spin" />}
                         {shouldSchedule ? 'Programar Envío' : `Enviar Ahora (${subscribers.filter(s => s.active).length})`}
                       </button>
-                    </div>
-                  </div>
-                  
-                  {/* Sandbox Info Alert */}
-                  <div className="p-4 rounded-2xl bg-amber-50 text-amber-800 text-[11px] leading-relaxed border border-amber-100 flex items-start gap-2.5">
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
-                    <div>
-                      <strong>Aviso para Administradores</strong> <br />
-                      Si la configuración SMTP no está declarada en el archivo de entorno (`.env`), el sistema simulará el envío masivo renderizando todo adecuadamente por el canal local. Si deseas vincular la cuenta real de vuestro correo electrónico, rellena el archivo con vuestros datos de servidor de salida.
                     </div>
                   </div>
                 </div>
@@ -1512,9 +1680,11 @@ export default function AdminNewsletter() {
                                         onClick={() => {
                                           setCampaignType(camp.type);
                                           if (camp.type === 'semanal') {
+                                            setGreetingText(camp.config?.greetingText || '¡Hola familia! Qué gozo encontrarnos una vez más. Queremos animarte a sumarte con alegría a nuestra Celebración Principal del Fin de Semana.');
                                             setSermonImageUrl(camp.config?.sermonImageUrl || '');
                                             setSermonDescription(camp.config?.sermonDescription || '');
-                                            setIsSantaCena(camp.config?.isSantaCena || false);
+                                            setIsCenaBanner(camp.config?.isCenaBanner || camp.config?.isSantaCena || false);
+                                            setCenaDescription(camp.config?.cenaDescription || 'Este domingo nos uniremos como familia espiritual para participar juntos en la mesa del Señor.');
                                             setSelectedPostIds(camp.config?.selectedPostIds || []);
                                           } else {
                                             setSpecialSubject(camp.config?.specialSubject || '');

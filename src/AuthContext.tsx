@@ -5,7 +5,7 @@ import { auth, db, handleFirestoreError, OperationType, handleRedirectResult } f
 
 interface AuthContextType {
   user: User | null;
-  roles: ('admin' | 'comunicador' | 'profesor' | 'alumno' | 'lider')[];
+  roles: ('superadmin' | 'admin' | 'comunicador' | 'profesor' | 'alumno' | 'lider' | 'supervisor')[];
   status: 'pending' | 'active' | 'blocked' | null;
   loading: boolean;
   isAuthReady: boolean;
@@ -44,7 +44,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      if (!currentUser) {
+      if (currentUser) {
+        document.cookie = `hc_user_uid=${currentUser.uid}; domain=.huelvachurch.com; path=/; max-age=2592000; SameSite=None; Secure`;
+      } else {
+        document.cookie = `hc_user_uid=; domain=.huelvachurch.com; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=None; Secure`;
         setRoles([]);
         setStatus(null);
         setShowWelcomePopup(false);
@@ -68,13 +71,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const dbStatus = data.status as AuthContextType['status'];
           const dbShowWelcome = !!data.showWelcomePopup;
           
-          // If it's super admin but DB says otherwise (e.g. old record), force admin
-          setRoles(isSuperAdmin ? ['admin'] : dbRoles);
+          // If it's super admin but DB says otherwise (e.g. old record), force admin and superadmin
+          setRoles(isSuperAdmin ? Array.from(new Set(['superadmin', 'admin', ...dbRoles])) : dbRoles);
           setStatus(isSuperAdmin ? 'active' : dbStatus);
           setShowWelcomePopup(dbShowWelcome);
         } else {
           // If document doesn't exist yet, check if it's the super admin email
-          setRoles(isSuperAdmin ? ['admin'] : []);
+          setRoles(isSuperAdmin ? ['superadmin', 'admin'] : []);
           setStatus(isSuperAdmin ? 'active' : 'active');
           setShowWelcomePopup(false);
         }

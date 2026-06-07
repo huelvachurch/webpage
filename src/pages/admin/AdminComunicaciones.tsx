@@ -70,8 +70,8 @@ export default function AdminComunicaciones() {
 
   const intentRef = React.useRef<'published' | 'draft'>('published');
 
-  const isAdmin = roles.includes('admin');
-  const isComunicador = roles.includes('comunicador') || isAdmin;
+  const isSuperAdmin = roles.includes('superadmin');
+  const isComunicador = roles.includes('comunicador') || isSuperAdmin;
 
   // Redirect if not authorized
   useEffect(() => {

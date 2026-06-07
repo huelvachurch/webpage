@@ -12,8 +12,10 @@ export default function Login() {
 
   useEffect(() => {
     if (isAuthReady && !loading && user) {
-      if (roles.includes('admin')) {
-        navigate('/admin/usuarios');
+      if (roles.includes('superadmin')) {
+        navigate('/admin/administracion');
+      } else if (roles.includes('admin')) {
+        navigate('/admin/ajustes');
       } else if (roles.includes('comunicador')) {
         navigate('/admin/comunicaciones');
       } else if (roles.includes('profesor')) {

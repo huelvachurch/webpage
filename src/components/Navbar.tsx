@@ -28,7 +28,7 @@ export default function Navbar() {
     setIsLangMenuOpen(false);
   }, [location]);
 
-  const navLinks = [
+  const baseNavLinks = [
     { name: t('nav.about'), path: '/nosotros' },
     { name: t('nav.activities'), path: '/actividades' },
     { name: t('nav.courses'), path: '/cursos' },
@@ -36,12 +36,19 @@ export default function Navbar() {
     { name: t('nav.contact'), path: '/contacto' },
   ];
 
+  const navLinks = baseNavLinks.filter(link => {
+    if (link.path === '/cursos' && !user) return false;
+    return true;
+  });
+
   const isHomePage = location.pathname === '/';
-  const isAdmin = roles.includes('admin');
-  const isComunicador = roles.includes('comunicador') || isAdmin;
-  const isProfesor = roles.includes('profesor') || isAdmin;
-  const isLider = roles.includes('lider') || isAdmin;
-  const isStudent = roles.includes('alumno') || isProfesor || isAdmin;
+  const isSuperAdmin = roles.includes('superadmin');
+  const isAdmin = roles.includes('admin') || isSuperAdmin;
+  const isComunicador = roles.includes('comunicador') || isSuperAdmin;
+  const isProfesor = roles.includes('profesor') || isSuperAdmin;
+  const isSupervisor = roles.includes('supervisor');
+  const isLider = roles.includes('lider') || isSuperAdmin;
+  const isStudent = roles.includes('alumno') || isProfesor || isSuperAdmin;
 
   const changeLanguage = (lng: string) => {
     i18n.changeLanguage(lng);
@@ -143,6 +150,16 @@ export default function Navbar() {
                           <div className="px-4 py-2 border-b border-slate-50 mb-1 text-xs text-primary/50 font-medium font-gordita truncate">
                             {user.displayName || user.email}
                           </div>
+                           {isSupervisor && (
+                             <Link 
+                               onClick={() => setIsUserMenuOpen(false)}
+                               to="/supervision" 
+                               className="flex items-center gap-3 px-4 py-2.5 text-left text-sm rounded-lg bg-orange-50 hover:bg-orange-100/70 text-orange-900 font-bold transition-colors mb-1"
+                             >
+                               <Shield className="w-5 h-5 text-orange-500 shrink-0" />
+                               Supervisión
+                             </Link>
+                           )}
                            {isLider && (
                             <Link 
                               onClick={() => setIsUserMenuOpen(false)}
@@ -150,7 +167,7 @@ export default function Navbar() {
                               className="flex items-center gap-3 px-4 py-2.5 text-left text-sm rounded-lg bg-amber-50 hover:bg-amber-100/70 text-amber-900 font-bold transition-colors mb-1"
                             >
                               <Shield className="w-5 h-5 text-amber-500 animate-pulse shrink-0" />
-                              {t('nav.leaders')}
+                              Liderazgo
                             </Link>
                           )}
 
@@ -160,7 +177,16 @@ export default function Navbar() {
                             className="flex items-center gap-3 px-4 py-2.5 text-left text-sm rounded-lg hover:bg-slate-50 text-primary font-medium transition-colors"
                           >
                             <UserIcon className="w-5 h-5 text-primary/60" />
-                            Mis Datos
+                            Perfil
+                          </Link>
+
+                          <Link 
+                            onClick={() => setIsUserMenuOpen(false)}
+                            to="/mi-celula" 
+                            className="flex items-center gap-3 px-4 py-2.5 text-left text-sm rounded-lg hover:bg-slate-50 text-primary font-medium transition-colors"
+                          >
+                            <Users className="w-5 h-5 text-primary/60" />
+                            Mi Célula
                           </Link>
 
                           <Link 
@@ -179,17 +205,6 @@ export default function Navbar() {
                             >
                               <Layout className="w-5 h-5 text-primary/60" />
                               {t('nav.adminCourses')}
-                            </Link>
-                          )}
-
-                          {isAdmin && (
-                            <Link 
-                              onClick={() => setIsUserMenuOpen(false)}
-                              to="/admin/celulas" 
-                              className="flex items-center gap-3 px-4 py-2.5 text-left text-sm rounded-lg hover:bg-slate-50 text-primary font-medium transition-colors"
-                            >
-                              <Users className="w-5 h-5 text-primary/60" />
-                              {t('nav.adminCells')}
                             </Link>
                           )}
 
@@ -215,25 +230,26 @@ export default function Navbar() {
                             </>
                           )}
 
+                          {isSuperAdmin && (
+                            <Link 
+                              onClick={() => setIsUserMenuOpen(false)}
+                              to="/admin/administracion" 
+                              className="flex items-center gap-3 px-4 py-2.5 text-left text-sm rounded-lg hover:bg-slate-50 text-primary font-medium transition-colors"
+                            >
+                              <Shield className="w-5 h-5 text-primary/60" />
+                              {t('nav.adminDashboard')}
+                            </Link>
+                          )}
+
                           {isAdmin && (
-                            <>
-                              <Link 
-                                onClick={() => setIsUserMenuOpen(false)}
-                                to="/admin/usuarios" 
-                                className="flex items-center gap-3 px-4 py-2.5 text-left text-sm rounded-lg hover:bg-slate-50 text-primary font-medium transition-colors"
-                              >
-                                <Shield className="w-5 h-5 text-primary/60" />
-                                {t('nav.adminUsers')}
-                              </Link>
-                              <Link 
-                                onClick={() => setIsUserMenuOpen(false)}
-                                to="/admin/ajustes" 
-                                className="flex items-center gap-3 px-4 py-2.5 text-left text-sm rounded-lg hover:bg-slate-50 text-primary font-medium transition-colors"
-                              >
-                                <Settings className="w-5 h-5 text-primary/60" />
-                                Ajustes
-                              </Link>
-                            </>
+                            <Link 
+                              onClick={() => setIsUserMenuOpen(false)}
+                              to="/admin/ajustes" 
+                              className="flex items-center gap-3 px-4 py-2.5 text-left text-sm rounded-lg hover:bg-slate-50 text-primary font-medium transition-colors"
+                            >
+                              <Settings className="w-5 h-5 text-primary/60" />
+                              Ajustes
+                            </Link>
                           )}
 
                           <div className="h-px bg-slate-50 my-1"></div>
@@ -324,15 +340,25 @@ export default function Navbar() {
               
               {user ? (
                 <div className="space-y-4 flex flex-col items-center w-full">
+                  {isSupervisor && (
+                    <Link to="/supervision" onClick={() => setIsOpen(false)} className="flex items-center gap-3 text-orange-600 hover:text-orange-700 bg-orange-50 px-4 py-2 rounded-xl font-bold uppercase text-sm tracking-widest transition-colors">
+                      <Shield className="w-5 h-5 shrink-0" />
+                      Supervisión
+                    </Link>
+                  )}
                   {isLider && (
-                    <Link to="/lideres" className="flex items-center gap-3 text-amber-600 hover:text-amber-700 bg-amber-50 px-4 py-2 rounded-xl font-bold uppercase text-sm tracking-widest transition-colors">
+                    <Link to="/lideres" onClick={() => setIsOpen(false)} className="flex items-center gap-3 text-amber-600 hover:text-amber-700 bg-amber-50 px-4 py-2 rounded-xl font-bold uppercase text-sm tracking-widest transition-colors">
                       <Shield className="w-5 h-5 shrink-0 animate-pulse" />
-                      {t('nav.leaders')}
+                      Liderazgo
                     </Link>
                   )}
                   <Link to="/mis-datos" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
                     <UserIcon className="w-5 h-5 shrink-0" />
-                    Mis Datos
+                    Perfil
+                  </Link>
+                  <Link to="/mi-celula" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
+                    <Users className="w-5 h-5 shrink-0" />
+                    Mi Célula
                   </Link>
                   {isStudent && (
                     <Link to="/mis-cursos" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
@@ -344,12 +370,6 @@ export default function Navbar() {
                     <Link to="/admin/cursos" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
                       <Layout className="w-5 h-5 shrink-0" />
                       {t('nav.adminCourses')}
-                    </Link>
-                  )}
-                  {isAdmin && (
-                    <Link to="/admin/celulas" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
-                      <Users className="w-5 h-5 shrink-0" />
-                      {t('nav.adminCells')}
                     </Link>
                   )}
                   {isComunicador && (
@@ -364,17 +384,17 @@ export default function Navbar() {
                       </Link>
                     </>
                   )}
+                  {isSuperAdmin && (
+                    <Link to="/admin/administracion" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
+                      <Shield className="w-5 h-5 shrink-0" />
+                      {t('nav.adminDashboard')}
+                    </Link>
+                  )}
                   {isAdmin && (
-                    <>
-                      <Link to="/admin/usuarios" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
-                        <Shield className="w-5 h-5 shrink-0" />
-                        {t('nav.adminUsers')}
-                      </Link>
-                      <Link to="/admin/ajustes" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
-                        <Settings className="w-5 h-5 shrink-0" />
-                        Ajustes
-                      </Link>
-                    </>
+                    <Link to="/admin/ajustes" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
+                      <Settings className="w-5 h-5 shrink-0" />
+                      Ajustes
+                    </Link>
                   )}
                   <button 
                     onClick={() => logout()}

@@ -123,7 +123,7 @@ async function startServer() {
         return res.status(400).json({ error: "Missing prompt" });
       }
 
-      const instruction = `Eres un redactor de contenido experto para la sección de blog del sitio web de la Iglesia Cristiana Evangélica "Huelva Church". Tu rol es redactar publicaciones orientadas a nuestra comunidad cristiana. El tono debe ser motivador, alegre, fiel y entusiasta, usando versículos bíblicos enfocados en la edificación y la fe. Evita temas controversiales. Integra 1 a 2 versículos bíblicos clave.
+      const instruction = `Eres un redactor de contenido experto para la sección de blog del sitio web de la Iglesia Cristiana Evangélica "Huelva Church". Tu rol es redactar publicaciones orientadas a nuestra comunidad cristiana. El tono debe ser motivador, alegre, fiel y entusiasta, usando versículos bíblicos enfocados en la edificación y la fe. Evita temas controversiales. Integra 1 a 2 versículos bíblicos clave. IMPORTANTE: Redacta siempre en primera persona del plural (nosotros, nuestro), hablando como iglesia o equipo pastoral, nunca como un individuo en singular (yo).
 
 Genera el contenido para 3 idiomas: Español (ES), Inglés (EN) y Portugués (PT). Devuelve el resultado en formato JSON con la siguiente estructura exacta:
 {
@@ -168,7 +168,7 @@ Notas sobre los campos:
       }
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.1-flash-lite',
         contents,
         config: {
           responseMimeType: "application/json"
@@ -197,7 +197,7 @@ Notas sobre los campos:
         return res.status(400).json({ error: "Missing prompt" });
       }
 
-      const instruction = `Eres un redactor de contenido experto para comunicados de la Iglesia Cristiana Evangélica "Huelva Church". Tu rol es redactar un comunicado especial para ser enviado por correo electrónico a la congregación. El tono debe ser cálido, claro, pastoral y al mismo tiempo directo y fácil de leer.
+      const instruction = `Eres un redactor de contenido experto para comunicados de la Iglesia Cristiana Evangélica "Huelva Church". Tu rol es redactar un comunicado especial para ser enviado por correo electrónico a la congregación. El tono debe ser cálido, claro, pastoral y al mismo tiempo directo y fácil de leer. IMPORTANTE: Redacta siempre en primera persona del plural (nosotros, nuestro), hablando como iglesia o equipo pastoral, nunca como un individuo en singular (yo).
 
 Instrucciones:
 ${hasPostContext ? '- Usa el contexto provisto para redactar el evento/noticia, animando a la iglesia a participar.' : '- Redacta un correo completo basado exclusivamente en el texto provisto. Desarrolla la idea con un lenguaje cordial y familiar.'}
@@ -216,7 +216,7 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
       contents.push(`Aquí están las instrucciones o el evento del que hacer el comunicado:\n${prompt}`);
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.1-flash-lite',
         contents,
         config: {
           responseMimeType: "application/json"
@@ -228,6 +228,39 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
 
     } catch (error: any) {
       console.error("Gemini Newsletter Generation Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Generate short text with AI endpoint
+  app.post("/api/gemini/generate-short-text", async (req, res) => {
+    try {
+      if (!ai) {
+        return res.status(500).json({ error: "Gemini API integration missing." });
+      }
+
+      const { promptType, context } = req.body;
+      let instruction = "";
+      
+      if (promptType === 'greeting') {
+         instruction = "Eres el equipo pastoral de la iglesia 'Huelva Church'. Redacta UN solo párrafo (no más de 4 o 5 líneas) como un saludo muy cálido, amoroso y alegre para iniciar el boletín semanal de la iglesia. Transmite gozo por la celebración de hoy y anima a observar todas las secciones de este boletín para estar al tanto de lo nuevo de esta semana. Motiva indirectamente a permanecer conectados mediante nuestras actividades semanales (células o grupos pequeños, noches de oración, radio Huelva Church, y redes sociales). Varía las palabras para que suene muy natural, inspirador y cercano. IMPORTANTE: Redacta siempre en primera persona del plural (nosotros, nuestro), hablando como iglesia o equipo pastoral, nunca como un individuo en singular (yo). No uses comillas al principio o al final.";
+      } else if (promptType === 'sermonDescription') {
+         let contextText = context ? ` Contexto a tener en cuenta: ${context}.` : '';
+         instruction = `Eres el equipo pastoral de la iglesia 'Huelva Church'. Redacta UN solo párrafo corto (2-3 líneas) invitando y animando con entusiasmo a la congregación a venir a la reunión general familiar de este domingo para adorar al Señor y recibir una palabra fresca de parte de Dios. Varía el mensaje, que no suene repetitivo.${contextText} IMPORTANTE: Redacta siempre en primera persona del plural (nosotros, nuestro), nunca como un individuo en singular (yo). No uses comillas al principio o al final.`;
+      } else if (promptType === 'cenaDescription') {
+         instruction = "Eres el equipo pastoral de la iglesia 'Huelva Church'. Redacta una descripción muy breve (máximo 2 oraciones cortas) invitando a la iglesia a participar a la mesa de la Cena del Señor en la reunión de este domingo. IMPORTANTE: Redacta siempre en primera persona del plural (nosotros, nuestro). No uses comillas al principio o al final.";
+      } else {
+         return res.status(400).json({ error: "Invalid prompt type" });
+      }
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-flash-lite',
+        contents: instruction,
+      });
+
+      res.json({ text: (response.text || "").trim() });
+    } catch (error: any) {
+      console.error("Gemini Generation Error:", error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -253,7 +286,7 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
       `;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.1-flash-lite',
         contents: prompt,
         config: {
           responseMimeType: "application/json",

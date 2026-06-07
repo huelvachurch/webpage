@@ -22,7 +22,10 @@ import {
   ExternalLink,
   Share2,
   X,
-  Pencil
+  Pencil,
+  ChevronDown,
+  UserCheck,
+  Check
 } from 'lucide-react';
 import { 
   collection, 
@@ -36,9 +39,11 @@ import {
   serverTimestamp,
   setDoc,
   getDoc,
-  getDocs
+  getDocs,
+  updateDoc,
+  deleteField
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { db, studiesDb, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -74,11 +79,12 @@ interface MeetingReport {
 
 interface LeaderAnnouncement {
   id?: string;
-  content: string;
-  authorId: string;
-  authorName: string;
+  supervisorId: string;
+  supervisorName: string;
+  title: string;
+  message: string;
   createdAt: any;
-  expirationDate?: string;
+  expiry?: string;
 }
 
 interface CellStudy {
@@ -97,11 +103,10 @@ export default function Lideres() {
   const navigate = useNavigate();
 
   // Access check
-  const isAdmin = roles.includes('admin');
-  const isLider = roles.includes('lider') || isAdmin;
+  const isLider = roles.includes('lider');
 
   // Tabs state
-  const [activeTab, setActiveTab] = useState<'form' | 'stats' | 'announcements' | 'studies' | 'cell' | 'attendees'>('cell');
+  const [activeTab, setActiveTab] = useState<'form' | 'stats' | 'announcements' | 'supervision' | 'cell' | 'attendees'>('cell');
 
   // My Cell states
   const [cellProfile, setCellProfile] = useState<any>(null);
@@ -126,6 +131,12 @@ export default function Lideres() {
   const [pendingInvitation, setPendingInvitation] = useState<any | null>(null);
   const [isCoLedLoading, setIsCoLedLoading] = useState(true);
 
+  // Supervisor states
+  const [supervisoresList, setSupervisoresList] = useState<any[]>([]);
+  const [mySupervisorId, setMySupervisorId] = useState<string | null>(null);
+  const [savedSupervisorId, setSavedSupervisorId] = useState<string | null>(null);
+  const [isSavingSupervisor, setIsSavingSupervisor] = useState(false);
+
   // States for inviting others
   const [searchLeaderTerm, setSearchLeaderTerm] = useState('');
   const [foundLeaders, setFoundLeaders] = useState<any[]>([]);
@@ -149,6 +160,8 @@ export default function Lideres() {
   const [newNotBaptizedName, setNewNotBaptizedName] = useState('');
   const [newNonBelieverName, setNewNonBelieverName] = useState('');
   const [cellMembers, setCellMembers] = useState<any[]>([]);
+  const [pendingMembers, setPendingMembers] = useState<any[]>([]);
+  const [linkSelections, setLinkSelections] = useState<Record<string, string>>({});
 
   // Synchronize counts and lists from active cell members
   useEffect(() => {
@@ -177,17 +190,10 @@ export default function Lideres() {
   const [announcements, setAnnouncements] = useState<LeaderAnnouncement[]>([]);
   const [studies, setStudies] = useState<CellStudy[]>([]);
   
-  // Announcements administrator creation section
-  const [newAnnouncement, setNewAnnouncement] = useState('');
-  const [isPublishingAnnouncement, setIsPublishingAnnouncement] = useState(false);
-  const [announcementExpirationDate, setAnnouncementExpirationDate] = useState(() => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  });
-
+  // Leader To Cell Notifications
+  const [cellNotifications, setCellNotifications] = useState<any[]>([]);
+  const [newCellNotification, setNewCellNotification] = useState({ title: '', message: '', expiry: '' });
+  
   // Studies creation states
   const [studyTitle, setStudyTitle] = useState('');
   const [studyLink, setStudyLink] = useState('');
@@ -204,13 +210,17 @@ export default function Lideres() {
   const [attendeeSearch, setAttendeeSearch] = useState('');
   const [attendeeFilterCategory, setAttendeeFilterCategory] = useState<string>('all');
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+  const [systemUsers, setSystemUsers] = useState<any[]>([]);
   const [editForm, setEditForm] = useState({
     name: '',
     category: 'bautizado' as 'bautizado' | 'no_bautizado' | 'no_creyente',
     categories: [] as string[],
     birthDate: '',
-    birthYearOptional: false
+    birthYearOptional: false,
+    linkedUserId: ''
   });
+  const [newMemberCategories, setNewMemberCategories] = useState<string[]>(['bautizado']);
+  const [pendingUserCategories, setPendingUserCategories] = useState<Record<string, string[]>>({});
 
   // Library filters
   const [libraryMonth, setLibraryMonth] = useState(new Date().getMonth());
@@ -247,6 +257,11 @@ export default function Lideres() {
   const monthsToRender = availableMonthsForSelectedYear.length > 0 ? availableMonthsForSelectedYear : [new Date().getMonth()];
   const currentLibraryMonth = monthsToRender.includes(libraryMonth) ? libraryMonth : monthsToRender[0];
 
+  // Discontinuous members colapsable state
+  const [showDiscontinuosBaptized, setShowDiscontinuosBaptized] = useState(false);
+  const [showDiscontinuosNotBaptized, setShowDiscontinuosNotBaptized] = useState(false);
+  const [showDiscontinuosNonBelievers, setShowDiscontinuosNonBelievers] = useState(false);
+
   // Report editing states
   const [editingReportId, setEditingReportId] = useState<string | null>(null);
 
@@ -265,15 +280,21 @@ export default function Lideres() {
     
     setCellMembers(prev => prev.map(m => {
       const nameLower = m.name.toLowerCase().trim();
-      let isActive = false;
-      if (m.category === 'bautizado') {
-        isActive = bBaptizedNames.includes(nameLower);
-      } else if (m.category === 'no_bautizado') {
-        isActive = bNotBaptizedNames.includes(nameLower);
-      } else if (m.category === 'no_creyente') {
-        isActive = nBelieverNames.includes(nameLower);
+      let activeCategory: 'bautizado' | 'no_bautizado' | 'no_creyente' | null = null;
+      if (bBaptizedNames.includes(nameLower)) {
+        activeCategory = 'bautizado';
+      } else if (bNotBaptizedNames.includes(nameLower)) {
+        activeCategory = 'no_bautizado';
+      } else if (nBelieverNames.includes(nameLower)) {
+        activeCategory = 'no_creyente';
+      } else if (report.believersNames) {
+        // Fallback for older reports that didn't separate baptized vs non-baptized
+        const listAllBelievers = report.believersNames.split(',').map(n => n.trim().toLowerCase()).filter(Boolean);
+        if (listAllBelievers.includes(nameLower)) {
+          activeCategory = (m.categories && m.categories[0] as any) || m.category || 'bautizado';
+        }
       }
-      return { ...m, isActive };
+      return { ...m, isActive: !!activeCategory, activeCategory };
     }));
   };
 
@@ -281,7 +302,7 @@ export default function Lideres() {
     setEditingReportId(null);
     setMeetingDate(new Date().toISOString().split('T')[0]);
     setComments('');
-    setCellMembers(prev => prev.map(m => ({ ...m, isActive: false })));
+    setCellMembers(prev => prev.map(m => ({ ...m, isActive: false, activeCategory: null })));
   };
 
   const calculateAttendanceCount = (memberName: string) => {
@@ -364,6 +385,14 @@ export default function Lideres() {
         const dayB = parseInt(partsB.length === 3 ? partsB[2] : partsB[1], 10);
         return dayA - dayB;
       });
+  };
+
+  const getAgeToTurn = (birthDateStr: string) => {
+    if (!birthDateStr) return 0;
+    const parts = birthDateStr.split('-');
+    if (parts.length < 1) return 0;
+    const birthYear = parseInt(parts[0], 10);
+    return new Date().getFullYear() - birthYear;
   };
 
   const getAge = (birthDateStr: string) => {
@@ -652,6 +681,22 @@ export default function Lideres() {
     return () => unsubscribe();
   }, [user, isCoLeaderActive, coLedCell]);
 
+  const handleSaveSupervisor = async (newSupervisorId: string) => {
+    if (!user) return;
+    setIsSavingSupervisor(true);
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        supervisorId: newSupervisorId || null
+      });
+      alert('Supervisor actualizado correctamente.');
+    } catch (error) {
+      console.error(error);
+      alert('Hubo un error al actualizar el supervisor.');
+    } finally {
+      setIsSavingSupervisor(false);
+    }
+  };
+
   const handleSaveCellProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.uid) return;
@@ -740,21 +785,52 @@ export default function Lideres() {
     }
   }, [user, isLider, loading, isAuthReady, navigate]);
 
-  // Load Leader Announcements in real-time
+  // Load notices from supervisor
   useEffect(() => {
-    if (!isLider || !user) return;
+    if (!isLider || !user || !mySupervisorId) {
+      setAnnouncements([]);
+      return;
+    }
 
     const q = query(
-      collection(db, 'leader_announcements'),
-      orderBy('createdAt', 'desc')
+      collection(db, 'supervisor_notifications'),
+      where('supervisorId', '==', mySupervisorId)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: LeaderAnnouncement[] = [];
+      const list: any[] = [];
       snapshot.forEach((doc) => {
-        list.push({ id: doc.id, ...doc.data() } as LeaderAnnouncement);
+        list.push({ id: doc.id, ...doc.data() });
       });
+      // Sort in JS to avoid index requirements
+      list.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setAnnouncements(list);
+    }, (err) => {
+      console.error("Error loading supervisor_notifications:", err);
+    });
+
+    return () => unsubscribe();
+  }, [isLider, user, mySupervisorId]);
+
+  // Load cell_notifications
+  useEffect(() => {
+    if (!isLider || !user) return;
+    
+    // El leaderId debe ser user.uid (luego se puede adaptar a effectiveLeaderId si hay polifacetismo)
+    const q = query(
+      collection(db, 'cell_notifications'),
+      where('leaderId', '==', user.uid)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach(doc => {
+        list.push({ id: doc.id, ...doc.data() });
+      });
+      list.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setCellNotifications(list);
+    }, (err) => {
+      console.error("Error loading cell_notifications", err);
     });
 
     return () => unsubscribe();
@@ -837,6 +913,73 @@ export default function Lideres() {
     return () => unsubscribe();
   }, [isLider, user, effectiveLeaderId]);
 
+  // Load pending cell users
+  useEffect(() => {
+    if (!isLider || !user || !cellProfile?.id) return;
+
+    // Load available users for linking
+    const loadSystemUsers = async () => {
+      try {
+        const snap = await getDocs(collection(db, 'users'));
+        setSystemUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (err) {
+        console.error("Error loading system users:", err);
+      }
+    };
+    loadSystemUsers();
+
+    const q = query(
+      collection(db, 'users'),
+      where('celulaId', '==', cellProfile.id)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach((doc) => {
+        const u = { id: doc.id, ...doc.data() } as any;
+        if (u.celulaStatus === 'pending') {
+          list.push(u);
+        }
+      });
+      setPendingMembers(list);
+    }, (error) => {
+      console.error("Error loading pending cell users:", error);
+    });
+
+    return () => unsubscribe();
+  }, [isLider, user, cellProfile]);
+
+  // Load supervisors and mySupervisorId
+  useEffect(() => {
+    if (!isLider || !user) return;
+    
+    // Load current user's supervisor
+    const userDocRef = doc(db, 'users', user.uid);
+    const unsubUser = onSnapshot(userDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const udata = docSnap.data();
+        setMySupervisorId(udata.supervisorId || null);
+        setSavedSupervisorId(udata.supervisorId || null);
+      }
+    }, (err) => {
+      console.error("Error loading user supervisor data:", err);
+    });
+
+    // Load available supervisors
+    const qSup = query(collection(db, 'users'), where('roles', 'array-contains', 'supervisor'));
+    getDocs(qSup).then(snap => {
+      const sList: any[] = [];
+      snap.forEach(d => {
+        sList.push({ id: d.id, ...d.data() });
+      });
+      setSupervisoresList(sList);
+    }).catch(err => {
+      console.error("Error loading supervisors:", err);
+    });
+
+    return () => unsubUser();
+  }, [isLider, user]);
+
   // Helper to toggle active status of a loaded tag under a specific category
   const toggleMemberActive = (memberId: string, category: 'bautizado' | 'no_bautizado' | 'no_creyente') => {
     setCellMembers(prev => prev.map(m => {
@@ -859,11 +1002,83 @@ export default function Lideres() {
     }
     
     try {
-      await deleteDoc(doc(db, 'cell_members', memberId));
-      setCellMembers(prev => prev.filter(m => m.id !== memberId));
+      const member = cellMembers.find(m => m.id === memberId);
+      
+      if (member && member.userId) {
+        // Desvincular al usuario
+        const userRef = doc(db, 'users', member.userId);
+        await setDoc(userRef, {
+          celulaId: null,
+          celulaStatus: null
+        }, { merge: true });
+
+        // Update the member doc to remove the userId, meaning they are now just an offline assistant
+        const memberRef = doc(db, 'cell_members', memberId);
+        await setDoc(memberRef, { userId: null }, { merge: true });
+
+        setCellMembers(prev => prev.map(m => m.id === memberId ? { ...m, userId: null } : m));
+        alert("El usuario de app ha sido dado de baja de tu célula. El asistente se mantiene en lista para conservar las estadísticas.");
+      } else {
+        // Si no es un usuario vinculado, borrarlo por completo
+        await deleteDoc(doc(db, 'cell_members', memberId));
+        setCellMembers(prev => prev.filter(m => m.id !== memberId));
+      }
     } catch (err) {
       console.error("Error deleting member:", err);
-      alert("Error al eliminar el asistente.");
+      alert("Error al procesar la baja.");
+    }
+  };
+
+  const handleAcceptPending = async (pendingUser: any, categories: string[], linkToMemberId: string) => {
+    try {
+      if (categories.length === 0) {
+        alert("Por favor, seleccione al menos un estado.");
+        return;
+      }
+
+      // 1. Update user document
+      const userRef = doc(db, 'users', pendingUser.id);
+      await setDoc(userRef, {
+        celulaStatus: 'approved'
+      }, { merge: true });
+
+      // 2. Add them to cell_members or link them
+      if (linkToMemberId !== 'new') {
+        const docRef = doc(db, 'cell_members', linkToMemberId);
+        await setDoc(docRef, { userId: pendingUser.id }, { merge: true });
+      } else {
+        const trimmedName = (pendingUser.displayName || pendingUser.email).split('@')[0].trim();
+        await addDoc(collection(db, 'cell_members'), {
+          leaderId: effectiveLeaderId,
+          userId: pendingUser.id,
+          name: trimmedName,
+          category: categories[0] as 'bautizado' | 'no_bautizado' | 'no_creyente', // Fallback
+          categories: categories,
+          consecutiveAbsences: 0,
+          updatedAt: new Date().toISOString()
+        });
+      }
+
+      alert("Usuario aceptado" + (linkToMemberId !== 'new' ? " y vinculado correctamente." : " e ingresado como nuevo asistente."));
+    } catch (err) {
+      console.error("Error accepting pending user:", err);
+      alert("Error al aceptar al usuario.");
+    }
+  };
+
+  const handleRejectPending = async (pendingUserId: string) => {
+    if (!window.confirm("¿Estás seguro de rechazar esta petición? El usuario tendrá que elegir otra célula.")) return;
+    try {
+      const userRef = doc(db, 'users', pendingUserId);
+      await updateDoc(userRef, {
+        celulaId: deleteField(),
+        celulaStatus: deleteField()
+      });
+      alert("La petición ha sido desestimada con éxito.");
+    } catch (err) {
+      console.error("Error rejecting pending user:", err);
+      alert("Error al desestimar la petición.");
+      handleFirestoreError(err, OperationType.UPDATE, `users/${pendingUserId}`);
     }
   };
 
@@ -1031,62 +1246,40 @@ export default function Lideres() {
     }
   };
 
-  // Submit announcement (Admins only)
-  const handlePublishAnnouncement = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !isAdmin) return;
-    if (!newAnnouncement.trim()) return;
-
-    setIsPublishingAnnouncement(true);
-    try {
-      const announcementData: Omit<LeaderAnnouncement, 'id'> = {
-        content: newAnnouncement.trim(),
-        authorId: user.uid,
-        authorName: user.displayName || 'Pastor / Administrador',
-        createdAt: serverTimestamp(),
-        expirationDate: announcementExpirationDate
-      };
-
-      await addDoc(collection(db, 'leader_announcements'), announcementData);
-      setNewAnnouncement('');
-      
-      // Reset expiration date to today
-      const today = new Date();
-      const year = today.getFullYear();
-      const month = String(today.getMonth() + 1).padStart(2, '0');
-      const day = String(today.getDate()).padStart(2, '0');
-      setAnnouncementExpirationDate(`${year}-${month}-${day}`);
-    } catch (err) {
-      console.error("Error publishing announcement:", err);
-    } finally {
-      setIsPublishingAnnouncement(false);
-    }
-  };
-
-  // Delete Announcement state
-  const [confirmingDeleteAnnouncementId, setConfirmingDeleteAnnouncementId] = useState<string | null>(null);
-
-  // Delete Announcement
-  const handleDeleteAnnouncementDirect = async (id: string | undefined) => {
-    if (!id || !isAdmin) return;
-    try {
-      await deleteDoc(doc(db, 'leader_announcements', id));
-    } catch (err) {
-      console.error("Error deleting announcement:", err);
-    }
-  };
+  // Submit announcement removed
 
   // Delete Meeting Report State
   const [confirmingDeleteReportId, setConfirmingDeleteReportId] = useState<string | null>(null);
 
-  // Delete Meeting Report (Admins only)
-  const handleDeleteReport = async (id: string | undefined) => {
-    if (!id || !isAdmin) return;
+  // Delete view removed
 
+  // Leader to Cell Notifications
+  const handlePublishCellNotification = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !newCellNotification.message.trim()) return;
     try {
-      await deleteDoc(doc(db, 'meeting_reports', id));
+      await addDoc(collection(db, 'cell_notifications'), {
+        leaderId: user.uid,
+        leaderName: user.displayName || 'Tu Líder',
+        title: newCellNotification.title.trim(),
+        message: newCellNotification.message.trim(),
+        expiry: newCellNotification.expiry,
+        createdAt: new Date().toISOString()
+      });
+      setNewCellNotification({ title: '', message: '', expiry: '' });
+      alert('Notificación enviada a los asistentes de tu célula.');
     } catch (err) {
-      console.error("Error deleting report:", err);
+      console.error(err);
+      alert('Error enviando notificación.');
+    }
+  };
+
+  const handleDeleteCellNotification = async (id: string) => {
+    if (!window.confirm("¿Borrar esta notificación?")) return;
+    try {
+      await deleteDoc(doc(db, 'cell_notifications', id));
+    } catch (err) {
+      console.error("Error deleting cell notification", err);
     }
   };
 
@@ -1138,8 +1331,8 @@ export default function Lideres() {
   // Delete Cell Study Handler
   const handleDeleteStudy = async (id: string | undefined, authorId: string) => {
     if (!id) return;
-    if (user?.uid !== authorId && !isAdmin) {
-      alert('Solo el creador del enlace o un administrador pueden eliminar este estudio.');
+    if (user?.uid !== authorId) {
+      alert('Solo el creador del enlace puede eliminar este estudio.');
       return;
     }
 
@@ -1226,11 +1419,9 @@ export default function Lideres() {
     return `${year}-${month}-${day}`;
   })();
 
-  const displayedAnnouncements = isAdmin 
-    ? announcements 
-    : announcements.filter(ann => !ann.expirationDate || ann.expirationDate >= todayStr);
+  const displayedAnnouncements = announcements.filter(ann => !ann.expiry || ann.expiry >= todayStr);
 
-  const activeAnnouncementsForBadge = announcements.filter(ann => !ann.expirationDate || ann.expirationDate >= todayStr);
+  const activeAnnouncementsForBadge = announcements.filter(ann => !ann.expiry || ann.expiry >= todayStr);
 
   return (
     <div className="pt-32 pb-24 bg-slate-50 min-h-screen font-sans">
@@ -1247,7 +1438,7 @@ export default function Lideres() {
               ¡Hola, {user?.displayName || 'Líder'}!
             </h1>
             <p className="text-slate-300 md:text-lg leading-relaxed">
-              Bienvenido a tu panel de control de células de Huelva Church. Aquí puedes enviar los informes semanales de reunión, inspeccionar el progreso de las estadísticas y leer avisos oficiales del liderazgo general.
+              Bienvenido a tu panel de control de células de Huelva Church. Aquí puedes enviar los informes semanales de reunión, inspeccionar el progreso de las estadísticas y leer notificaciones oficiales del liderazgo general.
             </p>
           </div>
         </div>
@@ -1263,7 +1454,7 @@ export default function Lideres() {
             }`}
           >
             <Shield className="w-4 h-4 shrink-0" />
-            Mi Célula
+            Configuración
           </button>
 
           <button
@@ -1276,18 +1467,6 @@ export default function Lideres() {
           >
             <Users className="w-4 h-4 shrink-0" />
             Asistentes
-          </button>
-
-          <button
-            onClick={() => { window.scrollTo(0, 0); setActiveTab('studies'); }}
-            className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase ${
-              activeTab === 'studies' 
-                ? 'bg-amber-100 text-amber-950 border border-amber-200' 
-                : 'text-slate-500 hover:text-primary hover:bg-slate-50'
-            }`}
-          >
-            <BookOpen className="w-4 h-4 shrink-0" />
-            Estudios
           </button>
 
           <button
@@ -1323,7 +1502,7 @@ export default function Lideres() {
             }`}
           >
             <Bell className="w-4 h-4 shrink-0" />
-            Avisos
+            Notificaciones
             {activeAnnouncementsForBadge.length > 0 && (
               <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
             )}
@@ -1357,29 +1536,151 @@ export default function Lideres() {
                     </span>
                   </div>
 
+                  {/* Peticiones Pendientes */}
+                  {pendingMembers.length > 0 && (
+                    <div className="bg-amber-50 p-6 rounded-2xl border border-amber-200 shadow-sm space-y-4 text-left">
+                      <h3 className="text-sm uppercase tracking-wider font-extrabold text-amber-800 flex items-center gap-2">
+                         <Bell className="w-4 h-4" />
+                         Peticiones de acceso ({pendingMembers.length})
+                      </h3>
+                      <div className="space-y-3 mt-4">
+                        {pendingMembers.map(pendingUser => {
+                          // Find auto-match for initial state if not in linkSelections
+                          const trimmedName = (pendingUser.displayName || pendingUser.email || '').split('@')[0].trim().toLowerCase();
+                          const autoMatch = cellMembers.find(m => (!m.userId || m.userId === pendingUser.id) && m.name.toLowerCase() === trimmedName);
+                          const currentSelection = linkSelections[pendingUser.id] !== undefined ? linkSelections[pendingUser.id] : (autoMatch ? autoMatch.id : 'new');
+
+                          return (
+                            <div key={pendingUser.id} className="flex flex-col gap-4 bg-white p-4 rounded-xl border border-amber-100 shadow-sm transition-all hover:border-amber-300">
+                               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                 <div>
+                                   <p className="font-bold text-slate-800 flex items-center gap-2">
+                                     <User className="w-4 h-4 text-slate-400" />
+                                     {pendingUser.displayName || pendingUser.email}
+                                   </p>
+                                   <p className="text-xs text-slate-500 mt-1">Desea formar parte de la célula.</p>
+                                 </div>
+                                 <div className="flex flex-col w-full sm:w-auto gap-2">
+                                   <label className="text-[10px] uppercase font-bold text-slate-500">Vincular a:</label>
+                                   <select
+                                     className="w-full sm:w-auto text-xs px-2 py-1.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/50"
+                                     value={currentSelection}
+                                     onChange={(e) => setLinkSelections(prev => ({ ...prev, [pendingUser.id]: e.target.value }))}
+                                   >
+                                     <option value="new">-- Crear como nuevo --</option>
+                                     {cellMembers.filter(m => !m.userId || m.userId === pendingUser.id).map(m => (
+                                       <option key={m.id} value={m.id}>
+                                         {m.name}
+                                       </option>
+                                     ))}
+                                   </select>
+                                 </div>
+                               </div>
+
+                               <div className="flex items-center flex-wrap sm:flex-nowrap justify-end border-t border-slate-50 pt-3 mt-3">
+                                 {currentSelection === 'new' ? (
+                                   <div className="w-full flex-col flex gap-3">
+                                     <div>
+                                       <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-2">Estado:</p>
+                                       <div className="flex flex-wrap gap-2">
+                                         {['bautizado', 'no_bautizado', 'no_creyente'].map((catCode) => {
+                                           const currentCats = pendingUserCategories[pendingUser.id] || ['bautizado'];
+                                           const isSelected = currentCats.includes(catCode);
+                                           return (
+                                             <button
+                                               key={catCode}
+                                               type="button"
+                                               onClick={() => {
+                                                 const newCats = isSelected
+                                                   ? currentCats.filter(c => c !== catCode)
+                                                   : [...currentCats, catCode];
+                                                 setPendingUserCategories({ ...pendingUserCategories, [pendingUser.id]: newCats });
+                                               }}
+                                               className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all border cursor-pointer select-none ${
+                                                 isSelected
+                                                   ? catCode === 'bautizado'
+                                                     ? 'bg-amber-100 text-[#A18105] border-amber-300'
+                                                     : catCode === 'no_bautizado'
+                                                       ? 'bg-blue-100 text-primary border-blue-300'
+                                                       : 'bg-slate-200 text-slate-600 border-slate-300'
+                                                   : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                                               }`}
+                                             >
+                                               {catCode === 'bautizado' && 'Creyente Bautizado'}
+                                               {catCode === 'no_bautizado' && 'Creyente No Bautizado'}
+                                               {catCode === 'no_creyente' && 'No Creyente'}
+                                             </button>
+                                           );
+                                         })}
+                                       </div>
+                                     </div>
+                                     <div className="flex justify-end gap-2">
+                                       <button 
+                                         type="button"
+                                         onClick={() => handleRejectPending(pendingUser.id)}
+                                         className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg transition-colors border border-slate-200 cursor-pointer"
+                                       >
+                                         Desestimar
+                                       </button>
+                                       <button 
+                                         type="button"
+                                         onClick={() => {
+                                           const currentCats = pendingUserCategories[pendingUser.id] || ['bautizado'];
+                                           handleAcceptPending(pendingUser, currentCats, 'new');
+                                         }}
+                                         className="px-4 py-2 bg-secondary hover:bg-secondary/90 text-primary text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                                       >
+                                         Aceptar
+                                       </button>
+                                     </div>
+                                   </div>
+                                 ) : (
+                                   <div className="w-full flex justify-end gap-2 items-center">
+                                     <button 
+                                       type="button"
+                                       onClick={() => handleRejectPending(pendingUser.id)}
+                                       className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg transition-colors border border-slate-200 cursor-pointer"
+                                     >
+                                       Desestimar
+                                     </button>
+                                     <button 
+                                       type="button"
+                                       onClick={() => {
+                                          const member = cellMembers.find(m => m.id === currentSelection);
+                                          const memberCats = member?.categories || (member?.category ? [member.category] : ['bautizado']);
+                                          handleAcceptPending(pendingUser, memberCats, currentSelection);
+                                       }}
+                                       className="px-4 py-2 bg-secondary hover:bg-secondary/90 text-primary text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                                     >
+                                       Aceptar
+                                     </button>
+                                   </div>
+                                 )}
+                               </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Add New Attendee Form Card */}
                   <div className="bg-white p-6 rounded-2xl border border-slate-200/60 shadow-sm space-y-4 text-left">
                     <h3 className="text-sm uppercase tracking-wider font-extrabold text-slate-600 flex items-center gap-2">
                        <Plus className="w-4 h-4 text-secondary" />
-                       Añadir Nuevo Asistente a la Célula
+                       Añadir Nuevo Asistente
                     </h3>
                     <form onSubmit={async (e) => {
                       e.preventDefault();
                       const formEl = e.currentTarget;
                       const nameInput = (formEl.elements.namedItem('new_member_name') as HTMLInputElement).value.trim();
-                      const hasBautizado = (formEl.elements.namedItem('cat_bautizado') as HTMLInputElement).checked;
-                      const hasNoBautizado = (formEl.elements.namedItem('cat_no_bautizado') as HTMLInputElement).checked;
-                      const hasNoCreyente = (formEl.elements.namedItem('cat_no_creyente') as HTMLInputElement).checked;
                       const dateInput = (formEl.elements.namedItem('new_member_birthdate') as HTMLInputElement).value;
                       const sizeYearCheckbox = (formEl.elements.namedItem('new_member_year_optional') as HTMLInputElement).checked;
 
-                      const selectedCategories: string[] = [];
-                      if (hasBautizado) selectedCategories.push('bautizado');
-                      if (hasNoBautizado) selectedCategories.push('no_bautizado');
-                      if (hasNoCreyente) selectedCategories.push('no_creyente');
+                      const selectedCategories: string[] = [...newMemberCategories];
 
                       if (selectedCategories.length === 0) {
-                        alert('Por favor, seleccione al menos una categoría.');
+                        alert('Por favor, seleccione al menos un estado.');
                         return;
                       }
 
@@ -1397,10 +1698,7 @@ export default function Lideres() {
                         };
                         await addDoc(collection(db, 'cell_members'), newMemberDoc);
                         formEl.reset();
-                        // Reset checkboxes manually since formEl.reset() might reset to defaultChecked
-                        (formEl.elements.namedItem('cat_bautizado') as HTMLInputElement).checked = true;
-                        (formEl.elements.namedItem('cat_no_bautizado') as HTMLInputElement).checked = false;
-                        (formEl.elements.namedItem('cat_no_creyente') as HTMLInputElement).checked = false;
+                        setNewMemberCategories(['bautizado']);
                         alert(`¡${nameInput} ha sido añadido con éxito!`);
                       } catch (err) {
                         console.error("Error creating member:", err);
@@ -1425,7 +1723,7 @@ export default function Lideres() {
                         {/* Campo 2: Nacimiento con Año Opcional */}
                         <div className="flex flex-col sm:flex-row sm:items-end gap-3">
                           <div className="flex-1">
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5">Nacimiento (Opcional)</label>
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5">Nacimiento</label>
                             <input
                               name="new_member_birthdate"
                               type="date"
@@ -1439,7 +1737,7 @@ export default function Lideres() {
                                 type="checkbox"
                                 className="rounded text-primary focus:ring-secondary focus:ring-offset-0 border-slate-300 w-3.5 h-3.5"
                               />
-                              <span>Año Opcional</span>
+                              <span>Sin Año</span>
                             </label>
                           </div>
                         </div>
@@ -1450,39 +1748,37 @@ export default function Lideres() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end pt-2 border-t border-slate-100/50">
                         {/* Campo 3: Categorías */}
                         <div>
-                          <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5">Categorías de Asistente</label>
-                          <div className="flex flex-wrap gap-x-4 gap-y-2 py-1 select-none">
-                            <label className="inline-flex items-center gap-1.5 text-xs text-slate-650 font-semibold cursor-pointer">
-                              <input
-                                type="checkbox"
-                                name="cat_bautizado"
-                                defaultChecked
-                                className="rounded text-primary border-slate-300 w-3.5 h-3.5 focus:ring-0"
-                              />
-                              <span className="flex items-center gap-1.5 font-bold text-[11px] text-[#A18105]">
-                                <span className="w-1.5 h-1.5 rounded-full bg-secondary" /> Bautizado
-                              </span>
-                            </label>
-                            <label className="inline-flex items-center gap-1.5 text-xs text-slate-650 font-semibold cursor-pointer">
-                              <input
-                                type="checkbox"
-                                name="cat_no_bautizado"
-                                className="rounded text-primary border-slate-300 w-3.5 h-3.5 focus:ring-0"
-                              />
-                              <span className="flex items-center gap-1.5 font-bold text-[11px] text-primary">
-                                <span className="w-1.5 h-1.5 rounded-full bg-primary" /> No Bautizado
-                              </span>
-                            </label>
-                            <label className="inline-flex items-center gap-1.5 text-xs text-slate-650 font-semibold cursor-pointer">
-                              <input
-                                type="checkbox"
-                                name="cat_no_creyente"
-                                className="rounded text-primary border-slate-300 w-3.5 h-3.5 focus:ring-0"
-                              />
-                              <span className="flex items-center gap-1.5 font-bold text-[11px] text-slate-500">
-                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" /> No Creyente
-                              </span>
-                            </label>
+                          <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5">Estados:</label>
+                          <div className="flex flex-wrap gap-2 py-1 select-none">
+                            {['bautizado', 'no_bautizado', 'no_creyente'].map((catCode) => {
+                              const isSelected = newMemberCategories.includes(catCode);
+                              return (
+                                <button
+                                  key={catCode}
+                                  type="button"
+                                  onClick={() => {
+                                    setNewMemberCategories(prev => 
+                                      prev.includes(catCode) 
+                                        ? prev.filter(c => c !== catCode) 
+                                        : [...prev, catCode]
+                                    );
+                                  }}
+                                  className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all border cursor-pointer select-none ${
+                                    isSelected
+                                      ? catCode === 'bautizado'
+                                        ? 'bg-amber-100 text-[#A18105] border-amber-300'
+                                        : catCode === 'no_bautizado'
+                                          ? 'bg-blue-100 text-primary border-blue-300'
+                                          : 'bg-slate-200 text-slate-600 border-slate-300'
+                                      : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                                  }`}
+                                >
+                                  {catCode === 'bautizado' && 'Creyente Bautizado'}
+                                  {catCode === 'no_bautizado' && 'Creyente No Bautizado'}
+                                  {catCode === 'no_creyente' && 'No Creyente'}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
 
@@ -1490,9 +1786,9 @@ export default function Lideres() {
                         <div className="flex justify-end">
                           <button
                             type="submit"
-                            className="w-full md:w-auto px-6 py-2.5 bg-secondary hover:bg-secondary/95 text-primary text-xs font-extrabold rounded-xl transition-all shadow-sm uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer select-none"
+                            className="w-full md:w-auto px-4 py-2 bg-secondary hover:bg-secondary/90 text-primary text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
                           >
-                            <Plus className="w-4 h-4 shrink-0" /> Registrar
+                            Registrar
                           </button>
                         </div>
                       </div>
@@ -1569,7 +1865,7 @@ export default function Lideres() {
                                   <form onSubmit={(ev) => {
                                     ev.preventDefault();
                                     if (editForm.categories.length === 0) {
-                                      alert("Por favor, seleccione al menos una categoría.");
+                                      alert("Por favor, seleccione al menos un estado.");
                                       return;
                                     }
                                     handleUpdateMember(member.id, {
@@ -1577,86 +1873,109 @@ export default function Lideres() {
                                       category: editForm.categories[0] as any, // fallback
                                       categories: editForm.categories,
                                       birthDate: editForm.birthDate,
-                                      birthYearOptional: editForm.birthYearOptional
+                                      birthYearOptional: editForm.birthYearOptional,
+                                      userId: editForm.linkedUserId || null
                                     });
-                                  }} className="flex-1 grid grid-cols-1 sm:grid-cols-4 gap-4 items-end text-left">
-                                    <div className="sm:col-span-1">
-                                      <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Nombre</label>
-                                      <input
-                                        type="text"
-                                        required
-                                        value={editForm.name}
-                                        onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                                        className="px-3 py-1.5 w-full bg-white rounded-xl border border-slate-200 outline-none text-xs text-primary font-semibold"
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Categorías</label>
-                                      <div className="flex flex-wrap gap-1.5 py-1">
-                                        {['bautizado', 'no_bautizado', 'no_creyente'].map((catCode) => {
-                                          const isSelected = editForm.categories.includes(catCode);
-                                          return (
-                                            <button
-                                              key={catCode}
-                                              type="button"
-                                              onClick={() => {
-                                                const newCats = isSelected
-                                                  ? editForm.categories.filter(c => c !== catCode)
-                                                  : [...editForm.categories, catCode];
-                                                setEditForm({ ...editForm, categories: newCats });
-                                              }}
-                                              className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all border cursor-pointer select-none ${
-                                                isSelected
-                                                  ? catCode === 'bautizado'
-                                                    ? 'bg-secondary text-primary border-secondary'
-                                                    : catCode === 'no_bautizado'
-                                                      ? 'bg-primary text-white border-primary'
-                                                      : 'bg-slate-500 text-white border-slate-500'
-                                                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                                              }`}
-                                            >
-                                              {catCode === 'bautizado' && 'Bautizado'}
-                                              {catCode === 'no_bautizado' && 'No Bautizado'}
-                                              {catCode === 'no_creyente' && 'No Creyente'}
-                                            </button>
-                                          );
-                                        })}
-                                      </div>
-                                    </div>
-                                    <div>
-                                      <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Nacimiento</label>
-                                      <input
-                                        type="date"
-                                        value={editForm.birthDate}
-                                        onChange={(e) => setEditForm({ ...editForm, birthDate: e.target.value })}
-                                        className="px-3 py-1.5 w-full bg-white rounded-xl border border-slate-200 outline-none text-xs text-primary font-semibold"
-                                      />
-                                    </div>
-                                    <div className="flex items-center justify-between gap-2 mt-2 sm:mt-0">
-                                      <label className="inline-flex items-center gap-1 text-xs text-slate-600 cursor-pointer">
+                                  }} className="flex-1 flex flex-col gap-5 text-left bg-white p-4 rounded-xl border border-slate-100 shadow-sm w-full">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                      <div>
+                                        <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Nombre</label>
                                         <input
-                                          type="checkbox"
-                                          checked={editForm.birthYearOptional}
-                                          onChange={(e) => setEditForm({ ...editForm, birthYearOptional: e.target.checked })}
-                                          className="rounded text-primary border-slate-300 w-3.5 h-3.5"
+                                          type="text"
+                                          required
+                                          value={editForm.name}
+                                          onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                                          className="px-3 py-2 w-full bg-slate-50 rounded-lg border border-slate-200 outline-none text-xs text-primary font-semibold focus:bg-white focus:border-secondary"
                                         />
-                                        <span className="text-[10px] font-bold">Sin Año</span>
-                                      </label>
-                                      <div className="flex gap-1.5 shrink-0">
-                                        <button
-                                          type="submit"
-                                          className="px-2.5 py-1.5 bg-secondary text-primary hover:bg-secondary/90 text-[11px] font-bold rounded-lg transition-all cursor-pointer"
-                                        >
-                                          Guardar
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => setEditingMemberId(null)}
-                                          className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 text-[11px] font-bold rounded-lg transition-all cursor-pointer"
-                                        >
-                                          X
-                                        </button>
                                       </div>
+                                      <div>
+                                        <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Vinculación</label>
+                                        <select
+                                          value={editForm.linkedUserId || ''}
+                                          onChange={(e) => setEditForm({ ...editForm, linkedUserId: e.target.value })}
+                                          className="px-3 py-2 w-full bg-slate-50 rounded-lg border border-slate-200 outline-none text-xs text-primary font-semibold focus:bg-white focus:border-secondary"
+                                        >
+                                          <option value="">-- Sin Vincular --</option>
+                                          {systemUsers.map(u => (
+                                            <option key={u.id} value={u.id}>
+                                              {u.displayName || u.email}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                      <div>
+                                        <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Estados</label>
+                                        <div className="flex flex-wrap gap-2 py-1">
+                                          {['bautizado', 'no_bautizado', 'no_creyente'].map((catCode) => {
+                                            const isSelected = editForm.categories.includes(catCode);
+                                            return (
+                                              <button
+                                                key={catCode}
+                                                type="button"
+                                                onClick={() => {
+                                                  const newCats = isSelected
+                                                    ? editForm.categories.filter(c => c !== catCode)
+                                                    : [...editForm.categories, catCode];
+                                                  setEditForm({ ...editForm, categories: newCats });
+                                                }}
+                                                className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all border cursor-pointer select-none ${
+                                                  isSelected
+                                                    ? catCode === 'bautizado'
+                                                      ? 'bg-amber-100 text-[#A18105] border-amber-300'
+                                                      : catCode === 'no_bautizado'
+                                                        ? 'bg-blue-100 text-primary border-blue-300'
+                                                        : 'bg-slate-200 text-slate-600 border-slate-300'
+                                                    : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                                                }`}
+                                              >
+                                                {catCode === 'bautizado' && 'Creyente Bautizado'}
+                                                {catCode === 'no_bautizado' && 'Creyente No Bautizado'}
+                                                {catCode === 'no_creyente' && 'No Creyente'}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                      <div className="flex flex-col sm:flex-row gap-3">
+                                        <div className="w-full">
+                                          <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Nacimiento</label>
+                                          <input
+                                            type="date"
+                                            value={editForm.birthDate}
+                                            onChange={(e) => setEditForm({ ...editForm, birthDate: e.target.value })}
+                                            className="px-3 py-2 w-full bg-slate-50 rounded-lg border border-slate-200 outline-none text-xs text-primary font-semibold focus:bg-white focus:border-secondary"
+                                          />
+                                        </div>
+                                        <div className="flex items-center pt-5 h-10 select-none">
+                                          <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 font-semibold cursor-pointer whitespace-nowrap">
+                                            <input
+                                              type="checkbox"
+                                              checked={editForm.birthYearOptional}
+                                              onChange={(e) => setEditForm({ ...editForm, birthYearOptional: e.target.checked })}
+                                              className="rounded text-primary focus:ring-secondary focus:ring-offset-0 border-slate-300 w-3.5 h-3.5"
+                                            />
+                                            <span>Sin Año</span>
+                                          </label>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="flex justify-end gap-2 mt-2 pt-4 border-t border-slate-100">
+                                      <button
+                                        type="button"
+                                        onClick={() => setEditingMemberId(null)}
+                                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg transition-colors border border-slate-200 cursor-pointer"
+                                      >
+                                        Cancelar
+                                      </button>
+                                      <button
+                                        type="submit"
+                                        className="px-4 py-2 bg-secondary hover:bg-secondary/90 text-primary text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                                      >
+                                        Guardar
+                                      </button>
                                     </div>
                                   </form>
                                 ) : (
@@ -1815,7 +2134,7 @@ export default function Lideres() {
                                 {formatBirthdateDayOnly(m.birthDate)}
                               </span>
                               {!m.birthYearOptional && (
-                                <p className="text-[9px] text-slate-400 mt-0.5">¡Cumple {getAge(m.birthDate)}!</p>
+                                <p className="text-[9px] text-slate-400 mt-0.5">¡Cumple {getAgeToTurn(m.birthDate)}!</p>
                               )}
                             </div>
                           </div>
@@ -1853,7 +2172,7 @@ export default function Lideres() {
                                 {formatBirthdateDayOnly(m.birthDate)}
                               </span>
                               {!m.birthYearOptional && (
-                                <p className="text-[9px] text-slate-400 mt-0.5">¡Cumple {getAge(m.birthDate)}!</p>
+                                <p className="text-[9px] text-slate-400 mt-0.5">¡Cumple {getAgeToTurn(m.birthDate)}!</p>
                               )}
                             </div>
                           </div>
@@ -1884,7 +2203,7 @@ export default function Lideres() {
                   <form onSubmit={handleFormSubmit} className="space-y-6">
                     <div>
                       <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">Fecha de la Reunión</label>
-                      <div className="relative max-w-md">
+                      <div className="relative w-full">
                         <Calendar className="absolute left-4 top-3.5 w-5 h-5 text-slate-400" />
                         <input
                           id="meetingDateInput"
@@ -1910,34 +2229,79 @@ export default function Lideres() {
                       </div>
 
                       {/* List of Tags */}
-                      <div className="flex flex-wrap gap-2 py-1 min-h-[40px]">
+                      <div className="flex flex-col gap-3 py-1">
                         {cellMembers.filter(m => (m.categories || [m.category || 'bautizado']).includes('bautizado')).length === 0 ? (
                           <p className="text-xs text-slate-400 italic">No hay etiquetas en esta categoría aún. Añada una escribiendo abajo.</p>
                         ) : (
-                          cellMembers
-                            .filter(m => (m.categories || [m.category || 'bautizado']).includes('bautizado'))
-                            .map(member => {
-                              const isBtnActive = member.activeCategory === 'bautizado';
-                              return (
+                          <>
+                            {/* Regular Tags */}
+                            <div className="flex flex-wrap gap-2 min-h-[40px]">
+                              {cellMembers
+                                .filter(m => (m.categories || [m.category || 'bautizado']).includes('bautizado') && (m.consecutiveAbsences || 0) < 6)
+                                .map(member => {
+                                  const isBtnActive = member.activeCategory === 'bautizado';
+                                  return (
+                                    <button
+                                      key={member.id}
+                                      type="button"
+                                      onClick={() => toggleMemberActive(member.id, 'bautizado')}
+                                      className={`px-4 py-1.5 rounded-full text-xs font-semibold select-none transition-all flex items-center gap-1.5 cursor-pointer ${
+                                        isBtnActive
+                                          ? 'bg-secondary text-primary border border-secondary/20 shadow-sm font-bold animate-none'
+                                          : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
+                                      }`}
+                                    >
+                                      <span>{member.name}</span>
+                                      {member.consecutiveAbsences > 0 && (
+                                        <span className={`text-[9px] px-1 rounded-md ${isBtnActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600 font-bold'}`}>
+                                          -{member.consecutiveAbsences}
+                                        </span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                            </div>
+
+                            {/* Discontinuos collapsible section */}
+                            {cellMembers.filter(m => (m.categories || [m.category || 'bautizado']).includes('bautizado') && (m.consecutiveAbsences || 0) >= 6).length > 0 && (
+                              <div className="mt-1 pt-2 border-t border-slate-100">
                                 <button
-                                  key={member.id}
                                   type="button"
-                                  onClick={() => toggleMemberActive(member.id, 'bautizado')}
-                                  className={`px-4 py-1.5 rounded-full text-xs font-semibold select-none transition-all flex items-center gap-1.5 cursor-pointer ${
-                                    isBtnActive
-                                      ? 'bg-secondary text-primary border border-secondary/20 shadow-sm font-bold animate-none'
-                                      : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
-                                  }`}
+                                  onClick={() => setShowDiscontinuosBaptized(!showDiscontinuosBaptized)}
+                                  className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-wider select-none cursor-pointer"
                                 >
-                                  <span>{member.name}</span>
-                                  {member.consecutiveAbsences > 0 && (
-                                    <span className={`text-[9px] px-1 rounded-md ${isBtnActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600 font-bold'}`}>
-                                      -{member.consecutiveAbsences}
-                                    </span>
-                                  )}
+                                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showDiscontinuosBaptized ? 'rotate-180' : ''}`} />
+                                  <span>Discontinuos ({cellMembers.filter(m => (m.categories || [m.category || 'bautizado']).includes('bautizado') && (m.consecutiveAbsences || 0) >= 6).length})</span>
                                 </button>
-                              );
-                            })
+                                {showDiscontinuosBaptized && (
+                                  <div className="flex flex-wrap gap-2 mt-2 pt-1">
+                                    {cellMembers
+                                      .filter(m => (m.categories || [m.category || 'bautizado']).includes('bautizado') && (m.consecutiveAbsences || 0) >= 6)
+                                      .map(member => {
+                                        const isBtnActive = member.activeCategory === 'bautizado';
+                                        return (
+                                          <button
+                                            key={member.id}
+                                            type="button"
+                                            onClick={() => toggleMemberActive(member.id, 'bautizado')}
+                                            className={`px-4 py-1.5 rounded-full text-xs font-semibold select-none transition-all flex items-center gap-1.5 cursor-pointer ${
+                                              isBtnActive
+                                                ? 'bg-secondary text-primary border border-secondary/20 shadow-sm font-bold animate-none'
+                                                : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100 opacity-80'
+                                            }`}
+                                          >
+                                            <span>{member.name}</span>
+                                            <span className={`text-[9px] px-1 rounded-md ${isBtnActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600 font-bold'}`}>
+                                              -{member.consecutiveAbsences}
+                                            </span>
+                                          </button>
+                                        );
+                                      })}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
 
@@ -1979,34 +2343,79 @@ export default function Lideres() {
                       </div>
 
                       {/* List of Tags */}
-                      <div className="flex flex-wrap gap-2 py-1 min-h-[40px]">
+                      <div className="flex flex-col gap-3 py-1">
                         {cellMembers.filter(m => (m.categories || [m.category || 'no_bautizado']).includes('no_bautizado')).length === 0 ? (
                           <p className="text-xs text-slate-400 italic">No hay etiquetas en esta categoría aún. Añada una escribiendo abajo.</p>
                         ) : (
-                          cellMembers
-                            .filter(m => (m.categories || [m.category || 'no_bautizado']).includes('no_bautizado'))
-                            .map(member => {
-                              const isBtnActive = member.activeCategory === 'no_bautizado';
-                              return (
+                          <>
+                            {/* Regular Tags */}
+                            <div className="flex flex-wrap gap-2 min-h-[40px]">
+                              {cellMembers
+                                .filter(m => (m.categories || [m.category || 'no_bautizado']).includes('no_bautizado') && (m.consecutiveAbsences || 0) < 6)
+                                .map(member => {
+                                  const isBtnActive = member.activeCategory === 'no_bautizado';
+                                  return (
+                                    <button
+                                      key={member.id}
+                                      type="button"
+                                      onClick={() => toggleMemberActive(member.id, 'no_bautizado')}
+                                      className={`px-4 py-1.5 rounded-full text-xs font-semibold select-none transition-all flex items-center gap-1.5 cursor-pointer ${
+                                        isBtnActive
+                                          ? 'bg-primary text-white border border-primary/20 shadow-sm animate-none'
+                                          : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
+                                      }`}
+                                    >
+                                      <span>{member.name}</span>
+                                      {member.consecutiveAbsences > 0 && (
+                                        <span className={`text-[9px] px-1 rounded-md ${isBtnActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600 font-bold'}`}>
+                                          -{member.consecutiveAbsences}
+                                        </span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                            </div>
+
+                            {/* Discontinuos collapsible section */}
+                            {cellMembers.filter(m => (m.categories || [m.category || 'no_bautizado']).includes('no_bautizado') && (m.consecutiveAbsences || 0) >= 6).length > 0 && (
+                              <div className="mt-1 pt-2 border-t border-slate-100">
                                 <button
-                                  key={member.id}
                                   type="button"
-                                  onClick={() => toggleMemberActive(member.id, 'no_bautizado')}
-                                  className={`px-4 py-1.5 rounded-full text-xs font-semibold select-none transition-all flex items-center gap-1.5 cursor-pointer ${
-                                    isBtnActive
-                                      ? 'bg-primary text-white border border-primary/20 shadow-sm animate-none'
-                                      : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
-                                  }`}
+                                  onClick={() => setShowDiscontinuosNotBaptized(!showDiscontinuosNotBaptized)}
+                                  className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-wider select-none cursor-pointer"
                                 >
-                                  <span>{member.name}</span>
-                                  {member.consecutiveAbsences > 0 && (
-                                    <span className={`text-[9px] px-1 rounded-md ${isBtnActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600 font-bold'}`}>
-                                      -{member.consecutiveAbsences}
-                                    </span>
-                                  )}
+                                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showDiscontinuosNotBaptized ? 'rotate-180' : ''}`} />
+                                  <span>Discontinuos ({cellMembers.filter(m => (m.categories || [m.category || 'no_bautizado']).includes('no_bautizado') && (m.consecutiveAbsences || 0) >= 6).length})</span>
                                 </button>
-                              );
-                            })
+                                {showDiscontinuosNotBaptized && (
+                                  <div className="flex flex-wrap gap-2 mt-2 pt-1">
+                                    {cellMembers
+                                      .filter(m => (m.categories || [m.category || 'no_bautizado']).includes('no_bautizado') && (m.consecutiveAbsences || 0) >= 6)
+                                      .map(member => {
+                                        const isBtnActive = member.activeCategory === 'no_bautizado';
+                                        return (
+                                          <button
+                                            key={member.id}
+                                            type="button"
+                                            onClick={() => toggleMemberActive(member.id, 'no_bautizado')}
+                                            className={`px-4 py-1.5 rounded-full text-xs font-semibold select-none transition-all flex items-center gap-1.5 cursor-pointer ${
+                                              isBtnActive
+                                                ? 'bg-primary text-white border border-primary/20 shadow-sm animate-none'
+                                                : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100 opacity-80'
+                                            }`}
+                                          >
+                                            <span>{member.name}</span>
+                                            <span className={`text-[9px] px-1 rounded-md ${isBtnActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600 font-bold'}`}>
+                                              -{member.consecutiveAbsences}
+                                            </span>
+                                          </button>
+                                        );
+                                      })}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
 
@@ -2048,34 +2457,79 @@ export default function Lideres() {
                       </div>
 
                       {/* List of Tags */}
-                      <div className="flex flex-wrap gap-2 py-1 min-h-[40px]">
+                      <div className="flex flex-col gap-3 py-1">
                         {cellMembers.filter(m => (m.categories || [m.category || 'no_creyente']).includes('no_creyente')).length === 0 ? (
                           <p className="text-xs text-slate-400 italic">No hay etiquetas en esta categoría aún. Añada una escribiendo abajo.</p>
                         ) : (
-                          cellMembers
-                            .filter(m => (m.categories || [m.category || 'no_creyente']).includes('no_creyente'))
-                            .map(member => {
-                              const isBtnActive = member.activeCategory === 'no_creyente';
-                              return (
+                          <>
+                            {/* Regular Tags */}
+                            <div className="flex flex-wrap gap-2 min-h-[40px]">
+                              {cellMembers
+                                .filter(m => (m.categories || [m.category || 'no_creyente']).includes('no_creyente') && (m.consecutiveAbsences || 0) < 6)
+                                .map(member => {
+                                  const isBtnActive = member.activeCategory === 'no_creyente';
+                                  return (
+                                    <button
+                                      key={member.id}
+                                      type="button"
+                                      onClick={() => toggleMemberActive(member.id, 'no_creyente')}
+                                      className={`px-4 py-1.5 rounded-full text-xs font-semibold select-none transition-all flex items-center gap-1.5 cursor-pointer ${
+                                        isBtnActive
+                                          ? 'bg-slate-500 text-white border border-slate-500/20 shadow-sm font-bold animate-none'
+                                          : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
+                                      }`}
+                                    >
+                                      <span>{member.name}</span>
+                                      {member.consecutiveAbsences > 0 && (
+                                        <span className={`text-[9px] px-1 rounded-md ${isBtnActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600 font-bold'}`}>
+                                          -{member.consecutiveAbsences}
+                                        </span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                            </div>
+
+                            {/* Discontinuos collapsible section */}
+                            {cellMembers.filter(m => (m.categories || [m.category || 'no_creyente']).includes('no_creyente') && (m.consecutiveAbsences || 0) >= 6).length > 0 && (
+                              <div className="mt-1 pt-2 border-t border-slate-100">
                                 <button
-                                  key={member.id}
                                   type="button"
-                                  onClick={() => toggleMemberActive(member.id, 'no_creyente')}
-                                  className={`px-4 py-1.5 rounded-full text-xs font-semibold select-none transition-all flex items-center gap-1.5 cursor-pointer ${
-                                    isBtnActive
-                                      ? 'bg-slate-500 text-white border border-slate-500/20 shadow-sm font-bold animate-none'
-                                      : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
-                                  }`}
+                                  onClick={() => setShowDiscontinuosNonBelievers(!showDiscontinuosNonBelievers)}
+                                  className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-wider select-none cursor-pointer"
                                 >
-                                  <span>{member.name}</span>
-                                  {member.consecutiveAbsences > 0 && (
-                                    <span className={`text-[9px] px-1 rounded-md ${isBtnActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600 font-bold'}`}>
-                                      -{member.consecutiveAbsences}
-                                    </span>
-                                  )}
+                                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showDiscontinuosNonBelievers ? 'rotate-180' : ''}`} />
+                                  <span>Discontinuos ({cellMembers.filter(m => (m.categories || [m.category || 'no_creyente']).includes('no_creyente') && (m.consecutiveAbsences || 0) >= 6).length})</span>
                                 </button>
-                              );
-                            })
+                                {showDiscontinuosNonBelievers && (
+                                  <div className="flex flex-wrap gap-2 mt-2 pt-1">
+                                    {cellMembers
+                                      .filter(m => (m.categories || [m.category || 'no_creyente']).includes('no_creyente') && (m.consecutiveAbsences || 0) >= 6)
+                                      .map(member => {
+                                        const isBtnActive = member.activeCategory === 'no_creyente';
+                                        return (
+                                          <button
+                                            key={member.id}
+                                            type="button"
+                                            onClick={() => toggleMemberActive(member.id, 'no_creyente')}
+                                            className={`px-4 py-1.5 rounded-full text-xs font-semibold select-none transition-all flex items-center gap-1.5 cursor-pointer ${
+                                              isBtnActive
+                                                ? 'bg-slate-500 text-white border border-slate-500/20 shadow-sm font-bold animate-none'
+                                                : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100 opacity-80'
+                                            }`}
+                                          >
+                                            <span>{member.name}</span>
+                                            <span className={`text-[9px] px-1 rounded-md ${isBtnActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600 font-bold'}`}>
+                                              -{member.consecutiveAbsences}
+                                            </span>
+                                          </button>
+                                        );
+                                      })}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
 
@@ -2304,26 +2758,7 @@ export default function Lideres() {
                 exit={{ opacity: 0, y: -15 }}
                 className="space-y-8"
               >
-                {/* Admin configuration panel for filtering leader statistics */}
-                {isAdmin && reports.length > 0 && (
-                  <div className="bg-white p-6 rounded-3xl border border-slate-100 flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm">
-                    <div>
-                      <h3 className="text-lg font-kenao text-primary">Consolidado General de Células</h3>
-                      <p className="text-xs text-slate-400">Como Administrador, puedes filtrar las estadísticas por cada líder de grupo:</p>
-                    </div>
-
-                    <select
-                      value={selectedLeaderFilter}
-                      onChange={(e) => setSelectedLeaderFilter(e.target.value)}
-                      className="px-4 py-2 bg-slate-50 rounded-xl border border-slate-200 outline-none text-sm text-primary font-bold focus:ring-2 focus:ring-secondary min-w-[200px]"
-                    >
-                      <option value="all">Todos los líderes</option>
-                      {activeLeadersList.map(name => (
-                        <option key={name} value={name}>{name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+                {/* Admin configuration panel removed */}
 
                 {reports.length === 0 ? (
                   <div className="bg-white p-12 text-center rounded-[2rem] border border-slate-100 text-slate-400 font-bold shadow-sm">
@@ -2484,34 +2919,6 @@ export default function Lideres() {
                                           {isExpanded ? 'Ocultar' : 'Ver más'}
                                         </button>
                                         
-                                        {isAdmin && (
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              if (confirmingDeleteReportId === report.id) {
-                                                handleDeleteReport(report.id);
-                                                setConfirmingDeleteReportId(null);
-                                              } else {
-                                                setConfirmingDeleteReportId(report.id || null);
-                                                setTimeout(() => {
-                                                  setConfirmingDeleteReportId(prev => prev === report.id ? null : prev);
-                                                }, 4000);
-                                              }
-                                            }}
-                                            className={`p-1 rounded-lg transition-all cursor-pointer flex items-center justify-center ${
-                                              confirmingDeleteReportId === report.id
-                                                ? 'bg-red-600 border-red-700 text-white animate-pulse'
-                                                : 'text-slate-400 hover:text-red-600 hover:bg-red-50'
-                                            }`}
-                                            title={confirmingDeleteReportId === report.id ? 'Clic de nuevo para confirmar' : 'Eliminar reporte de base de datos'}
-                                          >
-                                            {confirmingDeleteReportId === report.id ? (
-                                              <span className="text-[10px] font-bold px-1 text-white">¿Confirmar?</span>
-                                            ) : (
-                                              <Trash2 className="w-4 h-4" />
-                                            )}
-                                          </button>
-                                        )}
                                       </div>
                                     </td>
                                   </tr>
@@ -2562,108 +2969,50 @@ export default function Lideres() {
               </motion.div>
             )}
 
-            {/* TAB 3: TABLON DE AVISOS */}
+            {/* TAB 3: TABLON DE NOTIFICACIONES */}
             {activeTab === 'announcements' && (
               <motion.div
                 key="announcements-view"
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}
-                className="grid grid-cols-1 lg:grid-cols-3 gap-8"
+                className="grid grid-cols-1 xl:grid-cols-2 gap-8"
               >
-                {/* Send and publish area - Visible for Admins */}
-                <div className="lg:col-span-1 space-y-6">
-                  {isAdmin ? (
-                    <div className="bg-white rounded-[2rem] border border-slate-100 p-6 md:p-8 shadow-sm">
-                      <div className="mb-6">
-                        <h2 className="text-xl font-kenao text-primary flex items-center gap-2">
-                          <Send className="w-5 h-5 text-secondary" /> Difundir Mensaje
-                        </h2>
-                        <p className="text-xs text-slate-400 mt-1">Escribe anuncios, convocatorias u orientaciones importantes para la red de líderes.</p>
-                      </div>
-
-                      <form onSubmit={handlePublishAnnouncement} className="space-y-4">
-                        <div>
-                          <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">Mensaje del Aviso</label>
-                          <textarea
-                            required
-                            rows={5}
-                            placeholder="Ej: Recuerden que esta semana es la Semana del Amigo de células, esforcémonos por invitar..."
-                            value={newAnnouncement}
-                            onChange={(e) => setNewAnnouncement(e.target.value)}
-                            className="p-4 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all text-sm font-medium"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">Fecha de Vencimiento *</label>
-                          <input
-                            type="date"
-                            required
-                            value={announcementExpirationDate}
-                            onChange={(e) => setAnnouncementExpirationDate(e.target.value)}
-                            className="p-4 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all text-sm font-medium"
-                          />
-                          <p className="text-[10px] text-slate-400 mt-1">El aviso se ocultará automáticamente para los líderes después de esta fecha.</p>
-                        </div>
-
-                        <button
-                          type="submit"
-                          disabled={isPublishingAnnouncement || !newAnnouncement.trim()}
-                          className="w-full py-3.5 bg-primary text-white font-bold rounded-xl hover:bg-secondary hover:text-primary transition-all uppercase tracking-wide text-xs shadow-md disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2"
-                        >
-                          Emitir Aviso Oficial
-                        </button>
-                      </form>
-                    </div>
-                  ) : (
-                    <div className="bg-gradient-to-br from-amber-50 to-orange-50/50 rounded-[2rem] border border-amber-100 p-8 shadow-sm text-center">
-                      <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center text-amber-600 mx-auto mb-4">
-                        <Bell className="w-6 h-6 animate-bounce" />
-                      </div>
-                      <h3 className="text-sm font-bold text-amber-950 uppercase tracking-wider mb-2">Canal de Avisos</h3>
-                      <p className="text-xs text-amber-900/70 font-medium leading-relaxed">
-                        Aquí verás los recordatorios de adiestramientos, eventos clave, plazos y mensajes de ánimo emitidos por tus coordinadores o pastores directamente de manera centralizada.
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Announcements bulletin log list */}
-                <div className="lg:col-span-2 space-y-6">
+                {/* Notificaciones recibidas de Supervisión */}
+                <div className="space-y-6">
                   <div className="border-b border-slate-100 pb-4">
                     <h2 className="text-2xl font-kenao text-primary flex items-center gap-2">
-                      <Bell className="w-6 h-6 text-secondary" /> Tablón Informativo Semanal
+                      <Bell className="w-6 h-6 text-secondary" /> Notificaciones Generales
                     </h2>
-                    <p className="text-xs text-slate-400 mt-1">Sigue el hilo de los recordatorios actuales del liderazgo general.</p>
+                    <p className="text-xs text-slate-400 mt-1">Recordatorios y anuncios emitidos por tu Supervisor o Pastores.</p>
                   </div>
 
                   {displayedAnnouncements.length === 0 ? (
                     <div className="bg-white p-12 text-center rounded-[2rem] border border-slate-100 text-slate-400 font-bold shadow-sm">
-                      No hay ningún aviso registrado actualmente para la red de líderes. ¡Que tengas una gran semana de bendición!
+                      No hay notificaciones registradas actualmente por parte de tu supervisor.
                     </div>
                   ) : (
                     <div className="space-y-4">
                       {displayedAnnouncements.map((ann) => {
-                        const isExpired = ann.expirationDate && ann.expirationDate < todayStr;
+                        const isExpired = ann.expiry && ann.expiry < todayStr;
                         return (
                           <div 
                             key={ann.id}
-                            className={`bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative group hover:shadow-md transition-shadow ${isExpired ? 'opacity-60 border-dashed bg-slate-50/50' : ''}`}
+                            className={`bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative hover:shadow-md transition-shadow ${isExpired ? 'opacity-60 border-dashed bg-slate-50/50' : ''}`}
                           >
                             <div className="flex items-center justify-between mb-3">
                               <div className="flex items-center gap-2.5">
                                 <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-primary/75 text-xs font-bold font-kenao">
-                                  {ann.authorName.slice(0, 2).toUpperCase()}
+                                  {ann.supervisorName ? ann.supervisorName.slice(0, 2).toUpperCase() : 'SP'}
                                 </div>
                                 <div>
                                   <h4 className="text-xs font-bold text-primary flex items-center gap-2">
-                                    {ann.authorName}
+                                    {ann.supervisorName}
                                     {isExpired && (
                                       <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-[9px] font-mono uppercase tracking-wider font-bold">Vencido</span>
                                     )}
-                                    {ann.expirationDate && !isExpired && (
-                                      <span className="px-2 py-0.5 bg-emerald-50 text-emerald-800 rounded-full text-[9px] font-mono uppercase tracking-wider font-bold">Expira: {ann.expirationDate.split('-').reverse().join('/')}</span>
+                                    {ann.expiry && !isExpired && (
+                                      <span className="px-2 py-0.5 bg-emerald-50 text-emerald-800 rounded-full text-[9px] font-mono uppercase tracking-wider font-bold">Expira: {ann.expiry.split('-').reverse().join('/')}</span>
                                     )}
                                   </h4>
                                   <span className="text-[10px] text-slate-400">
@@ -2671,43 +3020,11 @@ export default function Lideres() {
                                   </span>
                                 </div>
                               </div>
-
-                              {isAdmin && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (confirmingDeleteAnnouncementId === ann.id) {
-                                      handleDeleteAnnouncementDirect(ann.id);
-                                      setConfirmingDeleteAnnouncementId(null);
-                                    } else {
-                                      setConfirmingDeleteAnnouncementId(ann.id || null);
-                                      setTimeout(() => {
-                                        setConfirmingDeleteAnnouncementId(prev => prev === ann.id ? null : prev);
-                                      }, 3000);
-                                    }
-                                  }}
-                                  className={`p-2 rounded-xl border transition-all absolute top-4 right-4 cursor-pointer text-xs font-bold leading-none flex items-center gap-1.5 ${
-                                    confirmingDeleteAnnouncementId === ann.id
-                                      ? 'bg-red-600 border-red-700 text-white animate-pulse'
-                                      : 'bg-white border-slate-200 text-slate-400 hover:text-red-650 hover:bg-red-50'
-                                  }`}
-                                  title={confirmingDeleteAnnouncementId === ann.id ? "Haz clic de nuevo para confirmar" : "Eliminar este aviso"}
-                                >
-                                  {confirmingDeleteAnnouncementId === ann.id ? (
-                                    <>
-                                      <Trash2 className="w-3.5 h-3.5 shrink-0 animate-bounce" />
-                                      <span>¿Confirmar?</span>
-                                    </>
-                                  ) : (
-                                    <Trash2 className="w-4 h-4 shrink-0" />
-                                  )}
-                                </button>
-                              )}
                             </div>
                             
-                            <p className="text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-line bg-slate-50/50 p-4 rounded-2xl border border-slate-100/50 mt-2">
-                              {ann.content}
+                            <h4 className="font-bold text-amber-900 mt-3 mb-1">{ann.title}</h4>
+                            <p className="text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-line bg-slate-50/50 p-4 rounded-2xl border border-slate-100/50">
+                              {ann.message}
                             </p>
                           </div>
                         );
@@ -2716,237 +3033,87 @@ export default function Lideres() {
                   )}
                 </div>
 
-              </motion.div>
-            )}
+                {/* Notificaciones emitidas hacia la Célula */}
+                <div className="space-y-6">
+                  <div className="border-b border-slate-100 pb-4">
+                    <h2 className="text-2xl font-kenao text-primary flex items-center gap-2">
+                      <Send className="w-6 h-6 text-amber-500" /> Difundir a tu Célula
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-1">Crea notificaciones que verán los asistentes de tu grupo.</p>
+                  </div>
 
-            {/* TAB 4: BIBLIOTECA DE ESTUDIOS */}
-            {activeTab === 'studies' && (
-              <motion.div
-                key="studies-view"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                className="grid grid-cols-1 lg:grid-cols-3 gap-8"
-              >
-                {/* Save study link form (Admin + Leader only) */}
-                {isAdmin && (
-                  <div className="lg:col-span-1 space-y-6">
-                    <div className="bg-white rounded-[2rem] border border-slate-100 p-6 md:p-8 shadow-sm">
-                      <div className="mb-6">
-                        <h2 className="text-xl font-kenao text-primary flex items-center gap-2">
-                          <Plus className="w-5 h-5 text-secondary" /> Compartir Estudio
-                        </h2>
-                        <p className="text-xs text-slate-400 mt-1">Sube el enlace de la guía o estudio bíblico para que otros líderes puedan utilizarlo.</p>
+                  <div className="bg-amber-50 p-6 rounded-[2rem] border border-amber-100 shadow-sm relative">
+                    <form onSubmit={handlePublishCellNotification} className="space-y-4">
+                      <div>
+                        <label className="block text-xs uppercase font-bold text-amber-900/50 mb-2">Título de la Notificación</label>
+                        <input
+                          type="text"
+                          required
+                          value={newCellNotification.title}
+                          onChange={e => setNewCellNotification({...newCellNotification, title: e.target.value})}
+                          className="w-full px-4 py-3 bg-white border border-amber-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-sm"
+                          placeholder="Ej. Reunión Especial este viernes..."
+                        />
                       </div>
-
-                      <form onSubmit={handleAddStudySubmit} className="space-y-4">
-                        <div>
-                          <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">Título del Estudio</label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="Ej: Estudio sobre el Amor al Prójimo - Sem. 4"
-                            value={studyTitle}
-                            onChange={(e) => setStudyTitle(e.target.value)}
-                            className="p-4 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all text-sm font-medium"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">Enlace / URL</label>
-                          <div className="relative">
-                            <Link className="absolute left-4 top-3.5 w-4 h-4 text-slate-400" />
-                            <input
-                              type="text"
-                              required
-                              placeholder="Ej: drive.google.com/... o huelvachurch.com/estudio"
-                              value={studyLink}
-                              onChange={(e) => setStudyLink(e.target.value)}
-                              className="pl-11 pr-4 py-3.5 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all text-sm font-medium"
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">Categoría</label>
-                          <select
-                            value={studyCategory}
-                            onChange={(e) => setStudyCategory(e.target.value)}
-                            className="p-4 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all text-sm font-medium"
-                          >
-                            <option value="Estudio General">Estudio General</option>
-                            <option value="Evangelismo">Evangelismo</option>
-                            <option value="Oración & Discipulado">Oración & Discipulado</option>
-                            <option value="Familia & Relaciones">Familia & Relaciones</option>
-                            <option value="Fe & Teología">Fe & Teología</option>
-                            <option value="Otros">Otros</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs uppercase tracking-wider font-bold text-slate-400 mb-2">Descripción Corta (Opcional)</label>
-                          <textarea
-                            rows={3}
-                            placeholder="Introduce un breve resumen o instrucciones del estudio..."
-                            value={studyDescription}
-                            onChange={(e) => setStudyDescription(e.target.value)}
-                            className="p-4 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all text-sm font-medium animate-none"
-                          />
-                        </div>
-
-                        <button
-                          type="submit"
-                          disabled={isSubmittingStudy || !studyTitle.trim() || !studyLink.trim()}
-                          className="w-full py-4 bg-primary text-white font-bold rounded-xl hover:bg-secondary hover:text-primary transition-all uppercase tracking-wide text-xs shadow-md disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                        >
-                          {isSubmittingStudy ? 'Añadiendo estudio...' : 'Agregar Estudio'}
-                        </button>
-                      </form>
-                    </div>
-                  </div>
-                )}
-
-                {/* Library logs content list */}
-                <div className={`${isAdmin ? 'lg:col-span-2' : 'lg:col-span-3'} space-y-6`}>
-                  <div className="border-b border-slate-100 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                      <h2 className="text-2xl font-kenao text-primary flex items-center gap-2">
-                        <BookOpen className="w-6 h-6 text-secondary" /> Biblioteca de Estudios
-                      </h2>
-                      <p className="text-xs text-slate-400 mt-1">Recursos y guías de estudios bíblicos disponibles para la red de líderes.</p>
-                    </div>
-                    <span className="shrink-0 bg-primary/10 text-primary font-mono text-xs font-bold px-3 py-1 rounded-full border border-primary/25">
-                      {studies.length === 1 ? '1 recurso' : `${studies.length} recursos`}
-                    </span>
+                      <div>
+                        <label className="block text-xs uppercase font-bold text-amber-900/50 mb-2">Mensaje</label>
+                        <textarea
+                          required
+                          rows={3}
+                          value={newCellNotification.message}
+                          onChange={e => setNewCellNotification({...newCellNotification, message: e.target.value})}
+                          className="w-full px-4 py-3 bg-white border border-amber-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-sm"
+                          placeholder="Escribe el mensaje..."
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs uppercase font-bold text-amber-900/50 mb-2">Fecha de Vencimiento (Filtro)</label>
+                        <input
+                          type="date"
+                          value={newCellNotification.expiry}
+                          onChange={e => setNewCellNotification({...newCellNotification, expiry: e.target.value})}
+                          className="w-full px-4 py-3 bg-white border border-amber-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-sm"
+                        />
+                      </div>
+                      <button type="submit" className="w-full py-4 bg-amber-500 text-white rounded-xl font-bold shadow-sm hover:bg-amber-600 transition-all flex justify-center items-center gap-2">
+                        <Send className="w-5 h-5"/> Publicar a mis asistentes
+                      </button>
+                    </form>
                   </div>
 
-                  {studies.length === 0 ? (
-                    <div className="bg-white p-12 text-center rounded-[2rem] border border-slate-100 text-slate-400 font-bold shadow-sm">
-                      📖 No hay estudios añadidos en la biblioteca todavía. {isAdmin ? '¡Añade el primer enlace a la izquierda!' : 'Espera a que un administrador añada estudios para verlos aquí.'}
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {studies.map((study) => {
-                        // Category helper inline
-                        let catColor = "bg-amber-100 text-amber-900 border-amber-200";
-                        if (study.category === "Evangelismo") {
-                          catColor = "bg-rose-100 text-rose-800 border-rose-200";
-                        } else if (study.category === "Oración & Discipulado") {
-                          catColor = "bg-emerald-100 text-emerald-800 border-emerald-200";
-                        } else if (study.category === "Familia & Relaciones") {
-                          catColor = "bg-indigo-100 text-indigo-800 border-indigo-200";
-                        } else if (study.category === "Fe & Teología") {
-                          catColor = "bg-purple-100 text-purple-800 border-purple-200";
-                        } else if (study.category === "Otros") {
-                          catColor = "bg-slate-100 text-slate-700 border-slate-200";
-                        }
-
-                        return (
-                          <div
-                            key={study.id}
-                            className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
-                          >
+                  {cellNotifications.length > 0 && (
+                    <div className="space-y-4 mt-6">
+                      <h3 className="text-sm font-bold text-slate-700 uppercase tracking-widest pl-2">Tus publicaciones recientes</h3>
+                      {cellNotifications.map((ann) => (
+                        <div key={ann.id} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm relative group">
+                          <div className="flex items-start justify-between">
                             <div>
-                              <div className="flex items-center justify-between gap-2 mb-3">
-                                <span className={`text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded-full border ${catColor}`}>
-                                  {study.category || 'Estudio General'}
+                              <h4 className="font-bold text-primary mb-1 text-sm">{ann.title}</h4>
+                              <p className="text-xs text-slate-500 whitespace-pre-line leading-relaxed mb-2">{ann.message}</p>
+                              {ann.expiry && (
+                                <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full text-[9px] font-mono uppercase tracking-wider font-bold">
+                                  Vence: {ann.expiry.split('-').reverse().join('/')}
                                 </span>
-                                
-                                {(isAdmin || user?.uid === study.authorId) && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (confirmingDeleteStudyId === study.id) {
-                                        handleDeleteStudy(study.id, study.authorId);
-                                        setConfirmingDeleteStudyId(null);
-                                      } else {
-                                        setConfirmingDeleteStudyId(study.id || null);
-                                        setTimeout(() => {
-                                          setConfirmingDeleteStudyId(prev => prev === study.id ? null : prev);
-                                        }, 4000);
-                                      }
-                                    }}
-                                    className={`p-1.5 rounded-lg transition-all cursor-pointer flex items-center justify-center ${
-                                      confirmingDeleteStudyId === study.id
-                                        ? 'bg-red-600 border-red-700 text-white animate-pulse'
-                                        : 'text-slate-400 hover:text-red-600 hover:bg-red-50'
-                                    }`}
-                                    title={confirmingDeleteStudyId === study.id ? 'Clic de nuevo para confirmar' : 'Eliminar este estudio'}
-                                  >
-                                    {confirmingDeleteStudyId === study.id ? (
-                                      <span className="text-[10px] font-bold px-1 text-white">¿Confirmar?</span>
-                                    ) : (
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    )}
-                                  </button>
-                                )}
-                              </div>
-
-                              <h3 className="text-base font-bold text-primary mb-2 line-clamp-2 md:h-12 flex items-start">
-                                {study.title}
-                              </h3>
-
-                              <p className="text-xs text-slate-500 mb-4 line-clamp-3 leading-relaxed md:h-12 text-left">
-                                {study.description || 'Sin descripción detallada.'}
-                              </p>
+                              )}
                             </div>
-
-                            <div className="border-t border-slate-50 pt-4 mt-2">
-                              {/* Metadata of sender */}
-                              <div className="flex items-center gap-2 mb-4">
-                                <div className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold flex items-center justify-center shrink-0 uppercase font-kenao">
-                                  {study.authorName ? study.authorName.slice(0, 2) : 'LC'}
-                                </div>
-                                <div className="min-w-0 text-left">
-                                  <p className="text-[10px] font-semibold text-slate-700 truncate">Por {study.authorName}</p>
-                                  <span className="text-[8px] text-slate-400">
-                                    {study.createdAt ? new Date(study.createdAt.toDate ? study.createdAt.toDate() : study.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric', year: 'numeric' }) : 'Reciente'}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Sharing Action Toolbar */}
-                              <div className="grid grid-cols-2 gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => handleCopyLink(study.id!, study.link)}
-                                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                                    copiedId === study.id
-                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                      : 'bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100'
-                                  }`}
-                                >
-                                  {copiedId === study.id ? (
-                                    <>
-                                      <CheckCircle className="w-3.5 h-3.5 animate-pulse" />
-                                      ¡Copiado!
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Copy className="w-3.5 h-3.5" />
-                                      Copiar Link
-                                    </>
-                                  )}
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleShareToWhatsApp(study)}
-                                  className="py-2 px-3 bg-emerald-600 text-white font-bold rounded-xl text-xs hover:bg-emerald-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm hover:shadow"
-                                >
-                                  <Share2 className="w-3.5 h-3.5" />
-                                  WhatsApp
-                                </button>
-                              </div>
-                            </div>
+                            <button 
+                              onClick={() => handleDeleteCellNotification(ann.id)}
+                              className="w-8 h-8 rounded-full bg-red-50 text-red-500 flex items-center justify-center shrink-0 hover:bg-red-500 hover:text-white transition-colors"
+                              title="Eliminar notificación"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
-                        );
-                      })}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
+
               </motion.div>
             )}
+
+
 
             {activeTab === 'cell' && (
               <motion.div
@@ -2964,12 +3131,6 @@ export default function Lideres() {
                       <p className="text-sm text-slate-500">
                         Configure el punto de encuentro de su célula. Estos datos aparecerán de forma automática en la página de Ubicaciones pública de Huelva Church.
                       </p>
-                    </div>
-                    <div>
-                      <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                        <Shield className="w-3.5 h-3.5" />
-                        Líder Autorizado
-                      </span>
                     </div>
                   </div>
 
@@ -3259,6 +3420,65 @@ export default function Lideres() {
 
                 {/* Sidebar containing download map and Co-Leadership tools */}
                 <div className="lg:col-span-1 space-y-6 text-left animate-fade-in">
+                  
+                  {/* Supervisor Profile Configurator Card */}
+                  <div className="bg-white rounded-[2rem] border border-slate-100 p-6 shadow-sm">
+                    <span className="inline-block bg-primary/5 text-primary border border-primary/10 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-3">
+                      👁️ Supervisión
+                    </span>
+                    <h3 className="text-lg font-kenao font-bold text-primary mb-2 flex items-center gap-2">
+                      {savedSupervisorId ? 'Mi Supervisor' : 'Asignar Supervisor'}
+                    </h3>
+                    
+                    {savedSupervisorId ? (() => {
+                      const supData = supervisoresList.find(s => s.id === savedSupervisorId);
+                      return (
+                        <div className="mt-4 bg-orange-50/50 p-4 rounded-2xl border border-orange-100 text-center">
+                          {supData ? (
+                            <>
+                              <div className="w-12 h-12 bg-orange-200 rounded-full flex items-center justify-center text-orange-700 text-xl font-kenao mx-auto mb-2">
+                                {supData.photoURL ? (
+                                  <img src={supData.photoURL} alt={supData.displayName} className="w-full h-full object-cover rounded-full" />
+                                ) : (
+                                  supData.displayName?.substring(0, 2).toUpperCase() || 'S'
+                                )}
+                              </div>
+                              <h3 className="text-sm font-bold text-primary mb-1">{supData.displayName || 'Supervisor'}</h3>
+                              <p className="text-[10px] text-slate-500 mb-3">{supData.email}</p>
+                              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-full text-[9px] font-bold uppercase tracking-wider">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Supervisor Activo
+                              </div>
+                            </>
+                          ) : (
+                            <p className="text-[10px] text-slate-500">Cargando...</p>
+                          )}
+                        </div>
+                      );
+                    })() : (
+                      <div className="mt-4 space-y-3">
+                        <select
+                          value={mySupervisorId || ''}
+                          onChange={(e) => setMySupervisorId(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white text-xs"
+                        >
+                          <option value="">-- No tengo / Seleccionar --</option>
+                          {supervisoresList.map(s => (
+                            <option key={s.id} value={s.id}>
+                              {s.displayName || s.email}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => handleSaveSupervisor(mySupervisorId || '')}
+                          disabled={isSavingSupervisor || !mySupervisorId}
+                          className="w-full py-2 bg-primary text-white rounded-xl text-xs font-bold hover:bg-secondary hover:text-primary transition-all disabled:opacity-50"
+                        >
+                          {isSavingSupervisor ? 'Guardando...' : 'Guardar Supervisor'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Co-Leader Invite Alerts for Pending and Active Co-Leadership */}
                   {pendingInvitation !== null && (
                     <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-250 rounded-3xl p-6 shadow-sm">
@@ -3350,7 +3570,7 @@ export default function Lideres() {
                             ({cellProfile.coLeaderInviteeEmail})
                           </p>
                           <p className="text-xs text-slate-500 leading-relaxed mb-4">
-                            Invitación enviada. El destinatario debe ingresar a su subpágina de "Mi Célula" para aceptar formalmente el co-liderazgo.
+                            Invitación enviada. El destinatario debe ingresar a su subpágina de "Configuración" para aceptar formalmente el co-liderazgo.
                           </p>
                           <button
                             type="button"

@@ -3,6 +3,8 @@ import { motion } from 'motion/react';
 import { Plus, Edit2, Trash2, MapPin, Map, Check, X } from 'lucide-react';
 import { collection, addDoc, query, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
+import { useAuth } from '../../AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 export interface Celula {
   id: string;
@@ -17,14 +19,28 @@ export interface Celula {
 }
 
 export default function AdminCelulas() {
+  const { user, roles, loading, isAuthReady } = useAuth();
+  const navigate = useNavigate();
   const [celulas, setCelulas] = useState<Celula[]>([]);
   const [isEditing, setIsEditing] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Celula>>({});
   const [isAdding, setIsAdding] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
+  const isSuperAdmin = roles.includes('superadmin');
+
+  // Redirect if not authorized
+  useEffect(() => {
+    if (isAuthReady && !loading) {
+      if (!user || !isSuperAdmin) {
+        navigate('/');
+      }
+    }
+  }, [user, isSuperAdmin, loading, isAuthReady, navigate]);
+
   // Load from Firestore
   useEffect(() => {
+    if (!isSuperAdmin) return;
     const q = query(collection(db, 'celulas'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Celula[] = [];
@@ -121,12 +137,12 @@ export default function AdminCelulas() {
   };
 
   return (
-    <div className="pt-32 pb-24 bg-slate-50 min-h-screen">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col md:flex-row md:items-center justify-between mb-12 gap-6">
+    <div className="">
+      <div className="">
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-6">
           <div>
-            <h1 className="text-5xl font-kenao text-primary mb-4 font-bold">Gestión de Células</h1>
-            <p className="text-lg text-primary/70">Administra las ubicaciones y datos de las células en tiempo real.</p>
+            <h2 className="text-3xl font-kenao text-primary mb-2 font-bold">Células</h2>
+            <p className="text-primary/70">Administra las ubicaciones y datos de las células en tiempo real.</p>
           </div>
           <button
             onClick={handleAdd}

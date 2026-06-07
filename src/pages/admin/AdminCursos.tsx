@@ -129,7 +129,7 @@ export default function AdminCursos() {
   });
 
   const isAdmin = roles.includes('admin');
-  const isProfesor = roles.includes('profesor') || isAdmin;
+  const isProfesor = roles.includes('profesor') || roles.includes('superadmin');
 
   // Redirect if not authorized
   useEffect(() => {
@@ -143,7 +143,8 @@ export default function AdminCursos() {
   // Fetch courses list
   useEffect(() => {
     if (isAuthReady && user && isProfesor) {
-      const q = isAdmin 
+      const isSuperAdmin = roles.includes('superadmin');
+      const q = isSuperAdmin 
         ? query(collection(db, 'courses'), orderBy('createdAt', 'desc'))
         : query(collection(db, 'courses'), where('instructorId', '==', user.uid), orderBy('createdAt', 'desc'));
       
@@ -158,7 +159,7 @@ export default function AdminCursos() {
       });
       return () => unsubscribe();
     }
-  }, [isAuthReady, user, isProfesor, isAdmin]);
+  }, [isAuthReady, user, isProfesor, roles]);
 
   // Fetch enrollments database
   useEffect(() => {

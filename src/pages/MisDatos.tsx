@@ -207,7 +207,7 @@ export default function MisDatos() {
   };
 
   // Student Role Status
-  const isAlumno = roles.includes('alumno') || roles.includes('admin');
+  const isAlumno = roles.includes('alumno') || roles.includes('superadmin');
 
   // Delete account action
   const handleDeleteAccount = async () => {
@@ -254,7 +254,7 @@ export default function MisDatos() {
         
         {/* Page Title */}
         <div className="mb-10 text-center md:text-left">
-          <h1 className="text-4xl font-kenao text-primary mb-2">Mis Datos</h1>
+          <h1 className="text-4xl font-kenao text-primary mb-2">Perfil</h1>
           <p className="text-primary/60">Gestiona tu información personal, rol académico y suscripciones</p>
         </div>
 

@@ -74,6 +74,13 @@ service cloud.firestore {
       );
     }
 
+    function isSupervisor() {
+      return isAuthenticated() && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 'supervisor' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles)
+      );
+    }
+
     function isCoLeaderOf(leaderId) {
       return isAuthenticated() && (
         exists(/databases/$(database)/documents/celulas/$(leaderId)) &&
@@ -184,15 +191,53 @@ service cloud.firestore {
     // Rules
     // ===============================================================
 
+    match /studies/{studyId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /WeeklyStudy/{docId} {
+      allow read: if true;
+    }
+
+    match /weeklyStudies/{docId} {
+      allow read: if true;
+    }
+
+    match /weekly_studies/{docId} {
+      allow read: if true;
+    }
+
+    match /user_study_interactions/{interactionId} {
+      allow read, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create, update: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow read: if isAdmin();
+    }
+
     match /users/{userId} {
-      allow read: if isOwner(userId) || isLider();
+      allow read: if isOwner(userId) || isLider() || isSupervisor();
       allow create: if isAuthenticated() && isValidUser(request.resource.data) && (
-        (isOwner(userId) && (request.resource.data.roles == [] || request.resource.data.roles == ['alumno']) && (request.resource.data.status == 'pending' || request.resource.data.status == 'active')) || 
-        isAdmin()
+        isOwner(userId) || isAdmin()
       );
       allow update: if isAuthenticated() && isValidUser(request.resource.data) && (
-        (isOwner(userId) && request.resource.data.roles == resource.data.roles && request.resource.data.status == resource.data.status) || 
-        isAdmin()
+        isOwner(userId) || 
+        isAdmin() ||
+        (isSupervisor() && resource.data.supervisorId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['supervisorId'])) ||
+        // Allow leaders/co-leaders to moderate cell access requests for their cell
+        (isLider() && resource.data.celulaId != null && 
+          request.resource.data.diff(resource.data).affectedKeys().hasAny(['celulaStatus', 'celulaId']) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['celulaStatus', 'celulaId']) &&
+          (
+            exists(/databases/$(database)/documents/celulas/$(resource.data.celulaId)) && 
+            (
+              get(/databases/$(database)/documents/celulas/$(resource.data.celulaId)).data.leaderId == request.auth.uid ||
+              (
+                get(/databases/$(database)/documents/celulas/$(resource.data.celulaId)).data.coLeaderId == request.auth.uid &&
+                get(/databases/$(database)/documents/celulas/$(resource.data.celulaId)).data.coLeaderInvitationStatus == 'accepted'
+              )
+            )
+          )
+        )
       );
       allow delete: if isAdmin();
     }
@@ -254,7 +299,7 @@ service cloud.firestore {
     }
 
     match /meeting_reports/{reportId} {
-      allow read: if isAdmin() || (isLider() && (resource.data.leaderId == request.auth.uid || isCoLeaderOf(resource.data.leaderId)));
+      allow read: if isAdmin() || isLider() || isSupervisor();
       allow create: if isValidMeetingReport(request.resource.data) && (isAdmin() || isLider() || request.resource.data.leaderId == request.auth.uid || isCoLeaderOf(request.resource.data.leaderId));
       allow update: if isLider() && isValidMeetingReport(request.resource.data) && 
                       (request.resource.data.leaderId == request.auth.uid || isCoLeaderOf(request.resource.data.leaderId)) && 
@@ -283,8 +328,22 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /supervisor_notifications/{notificationId} {
+      allow read: if isLider() || isSupervisor();
+      allow create: if isSupervisor() && request.resource.data.supervisorId == request.auth.uid;
+      allow update: if isSupervisor() && resource.data.supervisorId == request.auth.uid && request.resource.data.supervisorId == request.auth.uid;
+      allow delete: if isSupervisor() && resource.data.supervisorId == request.auth.uid;
+    }
+
+    match /cell_notifications/{notificationId} {
+      allow read: if true;
+      allow create: if isLider() && request.resource.data.leaderId == request.auth.uid;
+      allow update: if isLider() && resource.data.leaderId == request.auth.uid && request.resource.data.leaderId == request.auth.uid;
+      allow delete: if isLider() && resource.data.leaderId == request.auth.uid;
+    }
+
     match /cell_studies/{studyId} {
-      allow read: if isLider();
+      allow read: if true; // allow all members to see studies for cells
       allow create: if isLider() && isValidCellStudy(request.resource.data);
       allow update: if isLider() && isValidCellStudy(request.resource.data) && (resource.data.authorId == request.auth.uid || isAdmin());
       allow delete: if isLider() && (resource.data.authorId == request.auth.uid || isAdmin());

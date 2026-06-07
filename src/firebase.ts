@@ -7,6 +7,7 @@ import firebaseConfig from '../firebase-applet-config.json';
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const studiesDb = getFirestore(app, "ai-studio-a2eeb6ca-be40-4061-b380-b75b9d9fb2ef");
 export const googleProvider = new GoogleAuthProvider();
 
 // Operation types for error handling
@@ -59,8 +60,14 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  const errStr = JSON.stringify(errInfo);
+  console.error('Firestore Error: ', errStr);
+  
+  // Create a UI event for non-critical displaying instead of throwing,
+  // except we still throw here so the error boundary catches it IF we want it to crash.
+  // Actually, let's NOT throw to avoid full app crashes on list/get failures!
+  // Instead we can just return the error object.
+  return errInfo;
 }
 
 // Auth functions
