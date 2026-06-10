@@ -18,6 +18,7 @@ import {
   TrendingDown,
   Info,
   Link,
+  Link2Off,
   Copy,
   ExternalLink,
   Share2,
@@ -106,7 +107,7 @@ export default function Lideres() {
   const isLider = roles.includes('lider');
 
   // Tabs state
-  const [activeTab, setActiveTab] = useState<'form' | 'stats' | 'announcements' | 'supervision' | 'cell' | 'attendees'>('cell');
+  const [activeTab, setActiveTab] = useState<'form' | 'stats' | 'announcements' | 'supervision' | 'cell' | 'attendees'>('attendees');
 
   // My Cell states
   const [cellProfile, setCellProfile] = useState<any>(null);
@@ -210,6 +211,8 @@ export default function Lideres() {
   const [attendeeSearch, setAttendeeSearch] = useState('');
   const [attendeeFilterCategory, setAttendeeFilterCategory] = useState<string>('all');
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+  const [memberSearchTerm, setMemberSearchTerm] = useState('');
+  const [showMemberSearchResults, setShowMemberSearchResults] = useState(false);
   const [systemUsers, setSystemUsers] = useState<any[]>([]);
   const [editForm, setEditForm] = useState({
     name: '',
@@ -412,17 +415,37 @@ export default function Lideres() {
     return age;
   };
 
-  const handleUpdateMember = async (memberId: string, updatedData: { name: string, category: 'bautizado' | 'no_bautizado' | 'no_creyente', categories?: string[], birthDate?: string, birthYearOptional?: boolean }) => {
+  const handleUpdateMember = async (memberId: string, updatedData: { name: string, category: 'bautizado' | 'no_bautizado' | 'no_creyente', categories?: string[], birthDate?: string, birthYearOptional?: boolean, userId?: string | null }) => {
     try {
       const docRef = doc(db, 'cell_members', memberId);
+      
+      let finalBirthDate = updatedData.birthDate || '';
+      if (updatedData.userId) {
+        const linkedUser = systemUsers.find(u => u.id === updatedData.userId);
+        if (linkedUser && linkedUser.birthDate) {
+          finalBirthDate = linkedUser.birthDate;
+        }
+      }
+
       await setDoc(docRef, {
         name: updatedData.name.trim(),
         category: updatedData.category,
         categories: updatedData.categories || [updatedData.category],
-        birthDate: updatedData.birthDate || '',
+        birthDate: finalBirthDate,
         birthYearOptional: !!updatedData.birthYearOptional,
+        userId: updatedData.userId !== undefined ? updatedData.userId : undefined,
         updatedAt: new Date().toISOString()
       }, { merge: true });
+
+      // Update the linked user's celulaId and status as well
+      if (updatedData.userId) {
+        const userDocRef = doc(db, 'users', updatedData.userId);
+        await setDoc(userDocRef, {
+          celulaId: cellProfile?.id || effectiveLeaderId,
+          celulaStatus: 'approved'
+        }, { merge: true });
+      }
+
       setEditingMemberId(null);
     } catch (err) {
       console.error("Error updating member:", err);
@@ -523,9 +546,9 @@ export default function Lideres() {
     try {
       const cellRef = doc(db, 'celulas', cellProfile.id);
       await setDoc(cellRef, {
-        coLeaderInviteeId: selectedLeaderToInvite.uid,
-        coLeaderInviteeName: selectedLeaderToInvite.displayName || selectedLeaderToInvite.email,
-        coLeaderInviteeEmail: selectedLeaderToInvite.email,
+        coLeaderInviteeId: selectedLeaderToInvite.uid || selectedLeaderToInvite.id,
+        coLeaderInviteeName: selectedLeaderToInvite.displayName || selectedLeaderToInvite.email || '',
+        coLeaderInviteeEmail: selectedLeaderToInvite.email || '',
         coLeaderInvitationStatus: 'pending',
       }, { merge: true });
       setSelectedLeaderToInvite(null);
@@ -993,7 +1016,8 @@ export default function Lideres() {
     }));
   };
 
-  const [confirmingDeleteMemberId, setConfirmingDeleteMemberId] = useState<string | null>(null);
+  const [memberToUnlink, setMemberToUnlink] = useState<any | null>(null);
+  const [releaseInput, setReleaseInput] = useState('');
 
   const handleDeleteMember = async (memberId: string) => {
     if (memberId.startsWith('temp-')) {
@@ -1017,15 +1041,13 @@ export default function Lideres() {
         await setDoc(memberRef, { userId: null }, { merge: true });
 
         setCellMembers(prev => prev.map(m => m.id === memberId ? { ...m, userId: null } : m));
-        alert("El usuario de app ha sido dado de baja de tu célula. El asistente se mantiene en lista para conservar las estadísticas.");
+        alert("El usuario de la app ha sido desvinculado de la célula. Se mantiene como asistente sin vinculación en lista para conservar las estadísticas, y el usuario ahora puede unirse a otra célula.");
       } else {
-        // Si no es un usuario vinculado, borrarlo por completo
-        await deleteDoc(doc(db, 'cell_members', memberId));
-        setCellMembers(prev => prev.filter(m => m.id !== memberId));
+        alert("Este asistente no tiene un usuario de la app vinculado. Para no alterar las estadísticas históricas de asistencia, se mantiene en la lista.");
       }
     } catch (err) {
-      console.error("Error deleting member:", err);
-      alert("Error al procesar la baja.");
+      console.error("Error unlinking member:", err);
+      alert("Error al procesar la desvinculación.");
     }
   };
 
@@ -1045,10 +1067,14 @@ export default function Lideres() {
       // 2. Add them to cell_members or link them
       if (linkToMemberId !== 'new') {
         const docRef = doc(db, 'cell_members', linkToMemberId);
-        await setDoc(docRef, { userId: pendingUser.id }, { merge: true });
+        const updateObj: any = { userId: pendingUser.id };
+        if (pendingUser.birthDate) {
+          updateObj.birthDate = pendingUser.birthDate;
+        }
+        await setDoc(docRef, updateObj, { merge: true });
       } else {
         const trimmedName = (pendingUser.displayName || pendingUser.email).split('@')[0].trim();
-        await addDoc(collection(db, 'cell_members'), {
+        const newMemberDoc: any = {
           leaderId: effectiveLeaderId,
           userId: pendingUser.id,
           name: trimmedName,
@@ -1056,7 +1082,11 @@ export default function Lideres() {
           categories: categories,
           consecutiveAbsences: 0,
           updatedAt: new Date().toISOString()
-        });
+        };
+        if (pendingUser.birthDate) {
+          newMemberDoc.birthDate = pendingUser.birthDate;
+        }
+        await addDoc(collection(db, 'cell_members'), newMemberDoc);
       }
 
       alert("Usuario aceptado" + (linkToMemberId !== 'new' ? " y vinculado correctamente." : " e ingresado como nuevo asistente."));
@@ -1444,19 +1474,7 @@ export default function Lideres() {
         </div>
 
         {/* Tab Selection Navigation Bar */}
-        <div className="flex flex-col lg:grid lg:grid-cols-6 bg-white p-2 rounded-2xl shadow-sm border border-slate-100 w-full mb-10 gap-1">
-          <button
-            onClick={() => { window.scrollTo(0, 0); setActiveTab('cell'); }}
-            className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase ${
-              activeTab === 'cell' 
-                ? 'bg-amber-100 text-amber-950 border border-amber-200' 
-                : 'text-slate-500 hover:text-primary hover:bg-slate-50'
-            }`}
-          >
-            <Shield className="w-4 h-4 shrink-0" />
-            Configuración
-          </button>
-
+        <div className="flex flex-col lg:grid lg:grid-cols-5 bg-white p-2 rounded-2xl shadow-sm border border-slate-100 w-full mb-10 gap-1">
           <button
             onClick={() => { window.scrollTo(0, 0); setActiveTab('attendees'); }}
             className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase ${
@@ -1506,6 +1524,18 @@ export default function Lideres() {
             {activeAnnouncementsForBadge.length > 0 && (
               <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
             )}
+          </button>
+
+          <button
+            onClick={() => { window.scrollTo(0, 0); setActiveTab('cell'); }}
+            className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase ${
+              activeTab === 'cell' 
+                ? 'bg-amber-100 text-amber-950 border border-amber-200' 
+                : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+            }`}
+          >
+            <Shield className="w-4 h-4 shrink-0" />
+            Configuración
           </button>
         </div>
 
@@ -1890,18 +1920,91 @@ export default function Lideres() {
                                       </div>
                                       <div>
                                         <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Vinculación</label>
-                                        <select
-                                          value={editForm.linkedUserId || ''}
-                                          onChange={(e) => setEditForm({ ...editForm, linkedUserId: e.target.value })}
-                                          className="px-3 py-2 w-full bg-slate-50 rounded-lg border border-slate-200 outline-none text-xs text-primary font-semibold focus:bg-white focus:border-secondary"
-                                        >
-                                          <option value="">-- Sin Vincular --</option>
-                                          {systemUsers.map(u => (
-                                            <option key={u.id} value={u.id}>
-                                              {u.displayName || u.email}
-                                            </option>
-                                          ))}
-                                        </select>
+                                        {editForm.linkedUserId ? (
+                                          (() => {
+                                            const u = systemUsers.find(userItem => userItem.id === editForm.linkedUserId);
+                                            return (
+                                              <div className="flex items-center gap-2 px-3 py-2 w-full h-[34px] bg-teal-50 border border-teal-200 rounded-lg text-xs font-semibold text-teal-800 shrink-0 select-none">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-teal-500 shrink-0 animating-pulse" />
+                                                <span className="truncate">
+                                                  {u ? `${u.displayName || u.email} (${u.email || ''})` : 'Usuario Vinculado'}
+                                                </span>
+                                              </div>
+                                            );
+                                          })()
+                                        ) : (
+                                          <div className="relative">
+                                            <div className="flex gap-1 relative">
+                                              <input
+                                                type="text"
+                                                placeholder="Buscar por nombre o correo..."
+                                                value={memberSearchTerm}
+                                                onChange={(e) => {
+                                                  setMemberSearchTerm(e.target.value);
+                                                  setShowMemberSearchResults(true);
+                                                }}
+                                                className="px-3 py-2 flex-grow bg-slate-50 rounded-lg border border-slate-200 outline-none text-xs text-primary font-semibold focus:bg-white focus:border-secondary"
+                                              />
+                                              {memberSearchTerm && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setMemberSearchTerm('');
+                                                    setShowMemberSearchResults(false);
+                                                  }}
+                                                  className="px-2 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg text-slate-500 cursor-pointer text-xs"
+                                                >
+                                                  Clear
+                                                </button>
+                                              )}
+                                            </div>
+
+                                            {showMemberSearchResults && memberSearchTerm.trim().length > 0 && (
+                                              <div className="absolute left-0 right-0 mt-1.5 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg z-50 divide-y divide-slate-100">
+                                                {(() => {
+                                                  const term = memberSearchTerm.toLowerCase().trim();
+                                                  const results = systemUsers.filter(u => {
+                                                    const nameMatch = (u.displayName || '').toLowerCase().includes(term);
+                                                    const emailMatch = (u.email || '').toLowerCase().includes(term);
+                                                    if (!nameMatch && !emailMatch) return false;
+                                                    
+                                                    const isLinkedToOtherCell = u.celulaId && u.celulaId !== cellProfile?.id;
+                                                    return !isLinkedToOtherCell;
+                                                  });
+
+                                                  if (results.length === 0) {
+                                                    return (
+                                                      <div className="p-3 text-center text-xs text-slate-400 italic">
+                                                        No se encontraron usuarios sin vincular a otra célula.
+                                                      </div>
+                                                    );
+                                                  }
+
+                                                  return results.slice(0, 8).map(u => (
+                                                    <button
+                                                      key={u.id}
+                                                      type="button"
+                                                      onClick={() => {
+                                                        setEditForm(prev => ({ ...prev, linkedUserId: u.id }));
+                                                        setMemberSearchTerm('');
+                                                        setShowMemberSearchResults(false);
+                                                      }}
+                                                      className="w-full text-left p-2.5 hover:bg-slate-50 transition-all flex items-center justify-between text-xs text-slate-700 font-medium cursor-pointer"
+                                                    >
+                                                      <div className="truncate pr-2">
+                                                        <div className="font-bold text-slate-800 truncate">{u.displayName || 'Sin Nombre'}</div>
+                                                        <div className="text-[10px] text-slate-400 truncate">{u.email}</div>
+                                                      </div>
+                                                      <div className="text-[10px] bg-secondary/20 hover:bg-secondary/30 text-indigo-950 font-bold px-2 py-1 rounded shrink-0">
+                                                        Vincular
+                                                      </div>
+                                                    </button>
+                                                  ));
+                                                })()}
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
                                       </div>
                                     </div>
                                     
@@ -1994,7 +2097,14 @@ export default function Lideres() {
                                         )}
                                       </div>
                                       <div>
-                                        <h4 className="text-sm font-bold text-slate-800">{member.name}</h4>
+                                        <h4 className="text-sm font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
+                                          {member.name}
+                                          {member.userId && (
+                                            <span className="px-1.5 py-0.5 text-[9px] font-bold text-teal-600 bg-teal-50 border border-teal-200 rounded-md uppercase tracking-wider scale-95 select-none shrink-0">
+                                              vinculado
+                                            </span>
+                                          )}
+                                        </h4>
                                         <div className="text-xs text-slate-400 flex flex-wrap items-center gap-2 mt-1">
                                           <div className="flex flex-wrap gap-1">
                                             {(member.categories || [member.category || 'bautizado']).map((catCode: string) => (
@@ -2041,12 +2151,15 @@ export default function Lideres() {
                                           type="button"
                                           onClick={() => {
                                             setEditingMemberId(member.id);
+                                            setMemberSearchTerm('');
+                                            setShowMemberSearchResults(false);
                                             setEditForm({
                                               name: member.name || '',
                                               category: member.category || 'bautizado',
                                               categories: member.categories || [member.category || 'bautizado'],
                                               birthDate: member.birthDate || '',
-                                              birthYearOptional: !!member.birthYearOptional
+                                              birthYearOptional: !!member.birthYearOptional,
+                                              linkedUserId: member.userId || ''
                                             });
                                           }}
                                           className="p-1.5 text-xs bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-600 transition-colors cursor-pointer flex items-center justify-center"
@@ -2054,43 +2167,18 @@ export default function Lideres() {
                                         >
                                           <Pencil className="w-3.5 h-3.5" />
                                         </button>
-                                        {confirmingDeleteMemberId === member.id ? (
-                                          <div className="flex items-center gap-1.5 animation-fade-in">
-                                            <button
-                                              type="button"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleDeleteMember(member.id);
-                                                setConfirmingDeleteMemberId(null);
-                                              }}
-                                              className="px-2 py-1 bg-red-600 text-white rounded text-[10px] font-bold hover:bg-red-700 transition-colors cursor-pointer select-none"
-                                            >
-                                              Sí, Eliminar
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setConfirmingDeleteMemberId(null);
-                                              }}
-                                              className="px-2 py-1 bg-slate-200 text-slate-700 rounded text-[10px] font-bold hover:bg-slate-300 transition-colors cursor-pointer select-none"
-                                            >
-                                              No
-                                            </button>
-                                          </div>
-                                        ) : (
-                                          <button
-                                            type="button"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setConfirmingDeleteMemberId(member.id);
-                                            }}
-                                            className="p-1.5 text-xs bg-red-50 text-red-650 hover:bg-red-100 border border-red-100 rounded-lg transition-colors cursor-pointer flex items-center justify-center"
-                                            title="Eliminar asistente"
-                                          >
-                                            <Trash2 className="w-3.5 h-3.5 text-red-600" />
-                                          </button>
-                                        )}
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setMemberToUnlink(member);
+                                            setReleaseInput('');
+                                          }}
+                                          className="p-1.5 text-xs bg-red-50 text-red-650 hover:bg-red-100 border border-red-100 rounded-lg transition-colors cursor-pointer flex items-center justify-center animate-none"
+                                          title="Desvincular asistente"
+                                        >
+                                          <Link2Off className="w-3.5 h-3.5 text-red-600" />
+                                        </button>
                                       </div>
                                     </div>
                                   </>
@@ -3759,6 +3847,58 @@ export default function Lideres() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Reusable Popup Modal for Unlinking Asistente */}
+      {memberToUnlink && (
+        <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] border border-slate-200 p-6 max-w-sm w-full shadow-2xl text-center text-slate-800">
+            <div className="w-12 h-12 bg-red-50 text-red-650 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-100">
+              <Link2Off className="w-6 h-6 text-red-600" />
+            </div>
+            <h3 className="text-lg font-bold font-kenao text-primary mb-2">Desvincular Asistente</h3>
+            <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+              Esto desvinculará al usuario <span className="font-bold text-slate-800">{memberToUnlink.name}</span> de esta célula, de modo que podrá unirse a otra en 'Mi Célula'. Las estadísticas de asistencia históricas no se verán alteradas.
+            </p>
+            
+            <div className="p-3 bg-slate-100/50 rounded-xl mb-4 border border-slate-100 text-[11px] text-slate-650">
+              Escribe <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-red-200 font-bold text-red-650">RELEASE</span> en mayúsculas para confirmar.
+            </div>
+            
+            <input
+              type="text"
+              placeholder="Escribe RELEASE aquí..."
+              value={releaseInput}
+              onChange={(e) => setReleaseInput(e.target.value)}
+              className="text-center w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500/25 focus:bg-white text-xs font-mono uppercase tracking-widest font-bold mb-4 text-slate-800"
+            />
+            
+            <div className="flex gap-3 justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setMemberToUnlink(null);
+                  setReleaseInput('');
+                }}
+                className="flex-grow py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer select-none"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={releaseInput !== 'RELEASE'}
+                onClick={() => {
+                  handleDeleteMember(memberToUnlink.id);
+                  setMemberToUnlink(null);
+                  setReleaseInput('');
+                }}
+                className="flex-grow py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition-colors disabled:opacity-40 disabled:hover:bg-red-600 cursor-pointer select-none"
+              >
+                Desvincular
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
