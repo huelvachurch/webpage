@@ -109,6 +109,22 @@ export default function Lideres() {
   // Tabs state
   const [activeTab, setActiveTab] = useState<'form' | 'stats' | 'announcements' | 'supervision' | 'cell' | 'attendees'>('attendees');
 
+  const [readAnnouncements, setReadAnnouncements] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('read_notifs_leaders') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  const toggleReadAnnouncement = (id: string) => {
+    const updated = readAnnouncements.includes(id)
+      ? readAnnouncements.filter(x => x !== id)
+      : [...readAnnouncements, id];
+    setReadAnnouncements(updated);
+    localStorage.setItem('read_notifs_leaders', JSON.stringify(updated));
+  };
+
   // My Cell states
   const [cellProfile, setCellProfile] = useState<any>(null);
   const [isCellLoading, setIsCellLoading] = useState(false);
@@ -3064,38 +3080,39 @@ export default function Lideres() {
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}
-                className="grid grid-cols-1 xl:grid-cols-2 gap-8"
+                className="space-y-12 max-w-4xl mx-auto"
               >
-                {/* Notificaciones recibidas de Supervisión */}
+                {/* 1. NOTIFICACIONES RECIBIDAS */}
                 <div className="space-y-6">
-                  <div className="border-b border-slate-100 pb-4">
+                  <div className="border-b border-slate-100 pb-4 text-left">
                     <h2 className="text-2xl font-kenao text-primary flex items-center gap-2">
-                      <Bell className="w-6 h-6 text-secondary" /> Notificaciones Generales
+                      <Bell className="w-6 h-6 text-secondary" /> Notificaciones
                     </h2>
-                    <p className="text-xs text-slate-400 mt-1">Recordatorios y anuncios emitidos por tu Supervisor o Pastores.</p>
+                    <p className="text-xs text-slate-400 mt-1">Recordatorios y anuncios oficiales de tu Supervisor o Pastores.</p>
                   </div>
 
                   {displayedAnnouncements.length === 0 ? (
                     <div className="bg-white p-12 text-center rounded-[2rem] border border-slate-100 text-slate-400 font-bold shadow-sm">
-                      No hay notificaciones registradas actualmente por parte de tu supervisor.
+                      No tienes notificaciones recibidas actualmente.
                     </div>
                   ) : (
                     <div className="space-y-4">
                       {displayedAnnouncements.map((ann) => {
                         const isExpired = ann.expiry && ann.expiry < todayStr;
+                        const isRead = readAnnouncements.includes(ann.id);
                         return (
                           <div 
                             key={ann.id}
-                            className={`bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative hover:shadow-md transition-shadow ${isExpired ? 'opacity-60 border-dashed bg-slate-50/50' : ''}`}
+                            className={`bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative hover:shadow-md transition-all text-left ${isRead ? 'opacity-60 bg-slate-50/50' : ''}`}
                           >
-                            <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-start justify-between">
                               <div className="flex items-center gap-2.5">
                                 <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-primary/75 text-xs font-bold font-kenao">
                                   {ann.supervisorName ? ann.supervisorName.slice(0, 2).toUpperCase() : 'SP'}
                                 </div>
                                 <div>
-                                  <h4 className="text-xs font-bold text-primary flex items-center gap-2">
-                                    {ann.supervisorName}
+                                  <h4 className="text-xs font-bold text-slate-700 flex flex-wrap items-center gap-2">
+                                    <span>{ann.supervisorName}</span>
                                     {isExpired && (
                                       <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-[9px] font-mono uppercase tracking-wider font-bold">Vencido</span>
                                     )}
@@ -3108,10 +3125,17 @@ export default function Lideres() {
                                   </span>
                                 </div>
                               </div>
+                              <button 
+                                onClick={() => toggleReadAnnouncement(ann.id)}
+                                className={`p-1.5 rounded-full transition-colors ${isRead ? 'bg-secondary/20 text-secondary' : 'bg-slate-100 text-slate-400 hover:bg-secondary/10 hover:text-secondary'}`}
+                                title={isRead ? "Marcar como no leído" : "Marcar como leído"}
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
                             </div>
                             
-                            <h4 className="font-bold text-amber-900 mt-3 mb-1">{ann.title}</h4>
-                            <p className="text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-line bg-slate-50/50 p-4 rounded-2xl border border-slate-100/50">
+                            <h4 className="font-bold text-secondary text-lg mt-4 mb-2">{ann.title}</h4>
+                            <p className="text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-wrap bg-slate-50/50 p-4 rounded-2xl border border-slate-100/50">
                               {ann.message}
                             </p>
                           </div>
@@ -3121,83 +3145,98 @@ export default function Lideres() {
                   )}
                 </div>
 
-                {/* Notificaciones emitidas hacia la Célula */}
+                {/* 2. DIFUNDIR */}
                 <div className="space-y-6">
-                  <div className="border-b border-slate-100 pb-4">
+                  <div className="border-b border-slate-100 pb-4 text-left">
                     <h2 className="text-2xl font-kenao text-primary flex items-center gap-2">
-                      <Send className="w-6 h-6 text-amber-500" /> Difundir a tu Célula
+                      <Send className="w-6 h-6 text-secondary" /> Difundir
                     </h2>
-                    <p className="text-xs text-slate-400 mt-1">Crea notificaciones que verán los asistentes de tu grupo.</p>
+                    <p className="text-xs text-slate-400 mt-1">Crea alertas oficiales que verán los asistentes de tu célula.</p>
                   </div>
 
-                  <div className="bg-amber-50 p-6 rounded-[2rem] border border-amber-100 shadow-sm relative">
+                  <div className="bg-secondary/5 p-6 rounded-[2rem] border border-secondary/20 shadow-sm relative text-left">
                     <form onSubmit={handlePublishCellNotification} className="space-y-4">
                       <div>
-                        <label className="block text-xs uppercase font-bold text-amber-900/50 mb-2">Título de la Notificación</label>
+                        <label className="block text-xs uppercase font-extrabold text-secondary mb-2">Título de la Alerta</label>
                         <input
                           type="text"
                           required
                           value={newCellNotification.title}
                           onChange={e => setNewCellNotification({...newCellNotification, title: e.target.value})}
-                          className="w-full px-4 py-3 bg-white border border-amber-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-sm"
-                          placeholder="Ej. Reunión Especial este viernes..."
+                          className="w-full px-4 py-3 bg-white border border-secondary/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary text-sm font-semibold text-primary"
+                          placeholder="Ej. Recordatorio: Entrega de Reportes"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs uppercase font-bold text-amber-900/50 mb-2">Mensaje</label>
+                        <label className="block text-xs uppercase font-extrabold text-secondary mb-2">Mensaje</label>
                         <textarea
                           required
                           rows={3}
                           value={newCellNotification.message}
                           onChange={e => setNewCellNotification({...newCellNotification, message: e.target.value})}
-                          className="w-full px-4 py-3 bg-white border border-amber-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-sm"
+                          className="w-full px-4 py-3 bg-white border border-secondary/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary text-sm font-semibold text-primary"
                           placeholder="Escribe el mensaje..."
                         />
                       </div>
                       <div>
-                        <label className="block text-xs uppercase font-bold text-amber-900/50 mb-2">Fecha de Vencimiento (Filtro)</label>
+                        <label className="block text-xs uppercase font-extrabold text-secondary mb-2">Fecha de Vencimiento (Filtro)</label>
                         <input
                           type="date"
                           value={newCellNotification.expiry}
                           onChange={e => setNewCellNotification({...newCellNotification, expiry: e.target.value})}
-                          className="w-full px-4 py-3 bg-white border border-amber-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-sm"
+                          className="w-full px-4 py-3 bg-white border border-secondary/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary text-sm font-semibold text-primary"
                         />
                       </div>
-                      <button type="submit" className="w-full py-4 bg-amber-500 text-white rounded-xl font-bold shadow-sm hover:bg-amber-600 transition-all flex justify-center items-center gap-2">
+                      <button type="submit" className="w-full py-4 bg-secondary text-slate-900 rounded-xl font-extrabold shadow-sm hover:bg-secondary/90 transition-all flex justify-center items-center gap-2">
                         <Send className="w-5 h-5"/> Publicar a mis asistentes
                       </button>
                     </form>
                   </div>
+                </div>
 
-                  {cellNotifications.length > 0 && (
-                    <div className="space-y-4 mt-6">
-                      <h3 className="text-sm font-bold text-slate-700 uppercase tracking-widest pl-2">Tus publicaciones recientes</h3>
+                {/* 3. ENVIADOS */}
+                <div className="space-y-6">
+                  <div className="border-b border-slate-100 pb-4 text-left">
+                    <h2 className="text-2xl font-kenao text-primary flex items-center gap-2">
+                      <Send className="w-6 h-6 text-secondary" /> Enviados
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-1">Monitorea y elimina recordatorios que enviaste a tus asistentes.</p>
+                  </div>
+
+                  {cellNotifications.length === 0 ? (
+                    <div className="bg-white p-12 text-center rounded-[2rem] border border-slate-100 text-slate-400 font-bold shadow-sm">
+                      No has difundido ninguna notificación recientemente.
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
                       {cellNotifications.map((ann) => (
-                        <div key={ann.id} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm relative group">
-                          <div className="flex items-start justify-between">
+                        <div key={ann.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative hover:shadow-md transition-all text-left">
+                          <div className="flex items-start justify-between mb-3">
                             <div>
-                              <h4 className="font-bold text-primary mb-1 text-sm">{ann.title}</h4>
-                              <p className="text-xs text-slate-500 whitespace-pre-line leading-relaxed mb-2">{ann.message}</p>
-                              {ann.expiry && (
-                                <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full text-[9px] font-mono uppercase tracking-wider font-bold">
-                                  Vence: {ann.expiry.split('-').reverse().join('/')}
-                                </span>
-                              )}
+                              <h4 className="font-bold text-secondary text-lg">{ann.title}</h4>
+                              <div className="flex items-center gap-2 mt-1.5 text-[10px] font-bold text-slate-400 uppercase">
+                                <Calendar className="w-3.5 h-3.5"/> 
+                                {ann.expiry && (
+                                  <span>Vence: {ann.expiry.split('-').reverse().join('/')}</span>
+                                )}
+                              </div>
                             </div>
                             <button 
                               onClick={() => handleDeleteCellNotification(ann.id)}
-                              className="w-8 h-8 rounded-full bg-red-50 text-red-500 flex items-center justify-center shrink-0 hover:bg-red-500 hover:text-white transition-colors"
+                              className="p-1.5 rounded-full bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-colors animate-none"
                               title="Eliminar notificación"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
+                          <p className="text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-wrap bg-slate-50/50 p-4 rounded-2xl border border-slate-100/50 mt-3">
+                            {ann.message}
+                          </p>
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
-
               </motion.div>
             )}
 

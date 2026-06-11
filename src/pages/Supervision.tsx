@@ -802,14 +802,82 @@ export default function Supervision() {
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -15 }}
-              className="grid grid-cols-1 xl:grid-cols-2 gap-8"
+              className="space-y-12 max-w-4xl mx-auto"
             >
-              
-              {/* Bloque Izquierdo: Notificaciones Difundidas */}
+              {/* 1. NOTIFICACIONES RECIBIDAS */}
               <div className="space-y-6">
                 <div className="border-b border-slate-100 pb-4 text-left">
                   <h2 className="text-2xl font-kenao text-primary flex items-center gap-2">
-                    <Bell className="w-6 h-6 text-secondary" /> Notificaciones Difundidas
+                    <Bell className="w-6 h-6 text-secondary" /> Notificaciones
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-1">Anuncios y avisos recibidos.</p>
+                </div>
+                <div className="bg-white p-12 text-center rounded-[2rem] border border-slate-100 text-slate-400 font-bold shadow-sm">
+                  No tienes notificaciones recibidas actualmente.
+                </div>
+              </div>
+
+              {/* 2. DIFUNDIR */}
+              <div className="space-y-6">
+                <div className="border-b border-slate-100 pb-4 text-left">
+                  <h2 className="text-2xl font-kenao text-primary flex items-center gap-2">
+                    <Send className="w-6 h-6 text-secondary" /> Difundir
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-1">Crea alertas oficiales que verán todos los líderes bajo tu cargo.</p>
+                </div>
+
+                <div className="bg-secondary/5 p-6 rounded-[2rem] border border-secondary/20 shadow-sm relative text-left">
+                  <form onSubmit={handlePostNotice} className="space-y-4">
+                    <div>
+                      <label className="block text-xs uppercase font-extrabold text-secondary mb-2">Título de la Alerta</label>
+                      <input
+                        type="text"
+                        required
+                        value={newNotice.title}
+                        onChange={e => setNewNotice({...newNotice, title: e.target.value})}
+                        className="w-full px-4 py-3 bg-white border border-secondary/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary text-sm font-semibold text-primary"
+                        placeholder="Ej. Recordatorio: Entrega de Reportes"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs uppercase font-extrabold text-secondary mb-2">Mensaje o Comunicado</label>
+                      <textarea
+                        required
+                        rows={4}
+                        value={newNotice.message}
+                        onChange={e => setNewNotice({...newNotice, message: e.target.value})}
+                        className="w-full px-4 py-3 bg-white border border-secondary/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary text-sm font-semibold text-primary leading-relaxed"
+                        placeholder="Escribe el cuerpo del mensaje detalladamente..."
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs uppercase font-extrabold text-secondary mb-2">Fecha Límite de Exposición (Obligatoria)</label>
+                      <input
+                        type="date"
+                        required
+                        value={newNotice.expiry}
+                        onChange={e => setNewNotice({...newNotice, expiry: e.target.value})}
+                        className="w-full px-4 py-3 bg-white border border-secondary/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary text-sm font-semibold text-primary"
+                      />
+                    </div>
+                    
+                    <button 
+                      type="submit" 
+                      className="w-full py-4 bg-secondary text-slate-900 font-extrabold rounded-xl shadow-md hover:bg-secondary/90 transition-all flex justify-center items-center gap-2 cursor-pointer uppercase tracking-wider"
+                    >
+                      <Send className="w-4 h-4"/> Difundir Alerta Oficial
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+              {/* 3. ENVIADOS */}
+              <div className="space-y-6">
+                <div className="border-b border-slate-100 pb-4 text-left">
+                  <h2 className="text-2xl font-kenao text-primary flex items-center gap-2">
+                    <Send className="w-6 h-6 text-secondary" /> Enviados
                   </h2>
                   <p className="text-xs text-slate-400 mt-1">Monitorea y elimina recordatorios que enviaste a tus líderes.</p>
                 </div>
@@ -826,11 +894,11 @@ export default function Supervision() {
                       return (
                         <div 
                           key={n.id} 
-                          className={`bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative hover:shadow-md transition-all ${isExpired ? 'opacity-60 border-dashed bg-slate-50/50' : ''}`}
+                          className={`bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative hover:shadow-md transition-all text-left ${isExpired ? 'opacity-60 border-dashed bg-slate-50/50' : ''}`}
                         >
                           <div className="flex justify-between items-start mb-3">
                             <div>
-                              <h4 className="font-bold text-amber-900 text-lg text-left">{n.title}</h4>
+                              <h4 className="font-bold text-secondary text-lg text-left">{n.title}</h4>
                               <div className="flex items-center gap-2 mt-1.5 text-[10px] font-bold text-slate-400 uppercase">
                                 <Calendar className="w-3.5 h-3.5"/> 
                                 <span>Vence: {new Date(n.expiry).toLocaleDateString()}</span>
@@ -841,10 +909,10 @@ export default function Supervision() {
                             </div>
                             <button 
                               onClick={() => handleDeleteNotice(n.id)} 
-                              className="text-red-400 hover:text-red-650 transition-colors p-1"
+                              className="p-1.5 rounded-full bg-red-50 text-red-400 hover:text-red-650 hover:bg-red-500 hover:text-white transition-colors animate-none shrink-0"
                               title="Eliminar notificación"
                             >
-                              <Trash2 className="w-5 h-5"/>
+                              <Trash2 className="w-4 h-4"/>
                             </button>
                           </div>
                           
@@ -856,62 +924,6 @@ export default function Supervision() {
                     })}
                   </div>
                 )}
-              </div>
-
-              {/* Bloque Derecho: Crear Notificación a Líderes */}
-              <div className="space-y-6">
-                <div className="border-b border-slate-100 pb-4 text-left">
-                  <h2 className="text-2xl font-kenao text-primary flex items-center gap-2">
-                    <Send className="w-6 h-6 text-amber-500 animate-pulse" /> Difundir a tus Líderes
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-1">Crea alertas oficiales que verán todos los líderes bajo tu cargo.</p>
-                </div>
-
-                <div className="bg-amber-50 p-6 rounded-[2rem] border border-amber-250 shadow-sm relative text-left">
-                  <form onSubmit={handlePostNotice} className="space-y-4">
-                    <div>
-                      <label className="block text-xs uppercase font-extrabold text-amber-900/50 mb-2">Título de la Alerta</label>
-                      <input
-                        type="text"
-                        required
-                        value={newNotice.title}
-                        onChange={e => setNewNotice({...newNotice, title: e.target.value})}
-                        className="w-full px-4 py-3 bg-white border border-amber-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-sm font-semibold text-primary"
-                        placeholder="Ej. Recordatorio: Entrega de Reportes"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-xs uppercase font-extrabold text-amber-900/50 mb-2">Mensaje o Comunicado</label>
-                      <textarea
-                        required
-                        rows={4}
-                        value={newNotice.message}
-                        onChange={e => setNewNotice({...newNotice, message: e.target.value})}
-                        className="w-full px-4 py-3 bg-white border border-amber-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-sm leading-relaxed"
-                        placeholder="Escribe el cuerpo del mensaje detalladamente..."
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-xs uppercase font-extrabold text-amber-900/50 mb-2">Fecha Límite de Exposición (Obligatoria)</label>
-                      <input
-                        type="date"
-                        required
-                        value={newNotice.expiry}
-                        onChange={e => setNewNotice({...newNotice, expiry: e.target.value})}
-                        className="w-full px-4 py-3 bg-white border border-amber-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-sm font-semibold text-primary"
-                      />
-                    </div>
-                    
-                    <button 
-                      type="submit" 
-                      className="w-full py-4 bg-secondary text-primary hover:bg-secondary/90 border border-secondary/25 text-sm font-extrabold rounded-xl transition-all flex justify-center items-center gap-2 cursor-pointer shadow-md uppercase tracking-wider"
-                    >
-                      <Send className="w-4 h-4"/> Difundir Alerta Oficial
-                    </button>
-                  </form>
-                </div>
               </div>
 
             </motion.div>

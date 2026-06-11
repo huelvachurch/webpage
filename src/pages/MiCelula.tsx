@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { collection, doc, getDoc, getDocs, setDoc, query, where, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, studiesDb } from '../firebase';
-import { Shield, BookOpen, MessageSquare, MapPin, Map, Clock, AlertCircle, ChevronRight, User as UserIcon, LogOut, Check } from 'lucide-react';
+import { Shield, BookOpen, MessageSquare, MapPin, Map, Clock, AlertCircle, ChevronRight, User as UserIcon, LogOut, Check, Heart, Bell, Calendar } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -39,6 +39,8 @@ interface WeeklyStudy {
   status?: string;
   category?: string;
   link?: string;
+  isScheduled?: boolean;
+  scheduledAt?: string;
 }
 
 interface StudyInteraction {
@@ -71,8 +73,8 @@ export default function MiCelula() {
   const [myCelula, setMyCelula] = useState<Celula | null>(null);
   
   // Tabs
-  type TabType = 'info' | 'estudios' | 'lider';
-  const [activeTab, setActiveTab] = useState<TabType>('info');
+  type TabType = 'notificaciones' | 'estudios' | 'peticiones' | 'info';
+  const [activeTab, setActiveTab] = useState<TabType>('notificaciones');
 
   // Studies
   const [allStudies, setAllStudies] = useState<WeeklyStudy[]>([]);
@@ -80,6 +82,25 @@ export default function MiCelula() {
 
   // Cell Notifications state
   const [cellNotifications, setCellNotifications] = useState<any[]>([]);
+  const [readNotifications, setReadNotifications] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('read_notifs_members') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  const toggleReadNotification = (id: string) => {
+    const updated = readNotifications.includes(id)
+      ? readNotifications.filter(x => x !== id)
+      : [...readNotifications, id];
+    setReadNotifications(updated);
+    localStorage.setItem('read_notifs_members', JSON.stringify(updated));
+  };
+
+  // Petitions state
+  const [studiesPetitions, setStudiesPetitions] = useState<{studyTitle: string, petitions: {user: string, petitions: string[], date: string}[]}[]>([]);
+  const [loadingPetitions, setLoadingPetitions] = useState(false);
 
   useEffect(() => {
     if (isAuthReady && !user) {
@@ -144,9 +165,9 @@ export default function MiCelula() {
     return () => unsubUser();
   }, [user]);
 
-  // Load studies only if tab is 'estudios' and user has celula
+  // Load studies only if tab is 'estudios' or 'peticiones' and user has celula
   useEffect(() => {
-    if (!user || userCelulaId === null || activeTab !== 'estudios') return;
+    if (!user || userCelulaId === null || (activeTab !== 'estudios' && activeTab !== 'peticiones')) return;
     
     const fetchStudies = async () => {
       let list: WeeklyStudy[] = [];
@@ -154,23 +175,136 @@ export default function MiCelula() {
          const studiesQuery = query(collection(studiesDb, 'studies'));
          const snap = await getDocs(studiesQuery);
          list = snap.docs.map(d => ({ id: d.id, ...d.data() } as WeeklyStudy));
+
+         // Filter out future scheduled studies
+         list = list.filter(study => {
+           // 1. Si no está programado, está enviado y se muestra
+           if (study.isScheduled === false || !study.scheduledAt) {
+             return true;
+           }
+           // 2. Si está programado, se muestra SÓLO si la fecha programada ya pasó
+           const publishDate = new Date(study.scheduledAt);
+           const now = new Date();
+           return publishDate <= now;
+         });
+
+         // sort to get latest first by date string if exists, else by createdAt
+         list.sort((a,b) => {
+           const dateA = a.startDate || (a as any).date;
+           const dateB = b.startDate || (b as any).date;
+           if (dateA && dateB) {
+              return dateB.localeCompare(dateA);
+           }
+           const timeA = a.createdAt?.seconds ? a.createdAt.seconds : 0;
+           const timeB = b.createdAt?.seconds ? b.createdAt.seconds : 0;
+           return timeB - timeA;
+         });
       } catch (err) {
          console.warn("studies collection error:", err);
       }
       
       setAllStudies(list);
          
-      try {
-         const interQuery = query(collection(studiesDb, 'user_study_interactions'), where('userId', '==', user.uid));
-         const interSnap = await getDocs(interQuery);
-         const interList = interSnap.docs.map(d => ({ id: d.id, ...d.data() } as StudyInteraction));
-         setUserInteractions(interList);
-      } catch (err) {
-        console.error("Error fetching user_study_interactions", err);
+      if (activeTab === 'estudios') {
+        try {
+           const interQuery = query(collection(studiesDb, 'user_study_interactions'), where('userId', '==', user.uid));
+           const interSnap = await getDocs(interQuery);
+           const interList = interSnap.docs.map(d => ({ id: d.id, ...d.data() } as StudyInteraction));
+           setUserInteractions(interList);
+        } catch (err) {
+          console.error("Error fetching user_study_interactions", err);
+        }
+      }
+
+      // Fetch petitions if tab is peticiones
+      if (activeTab === 'peticiones' && list.length > 0 && myCelula) {
+        setLoadingPetitions(true);
+        try {
+          const topStudies = list.slice(0, 2);
+
+          // Fetch users in the same cell
+          const usersQuery = query(collection(db, 'users'), where('celulaId', '==', myCelula.id), where('status', '==', 'active'));
+          const usersSnap = await getDocs(usersQuery);
+          const cellUsers: Record<string, string> = {};
+          usersSnap.forEach(docSnap => {
+            const data = docSnap.data();
+            if (data.celulaStatus === 'approved') {
+              cellUsers[docSnap.id] = data.displayName || data.email || 'Miembro';
+            }
+          });
+
+          // Also include the leader's data, as they might not have the same celulaStatus/celulaId structure
+          const cellLeaderId = myCelula.leaderId || myCelula.id;
+          if (cellLeaderId && !cellUsers[cellLeaderId]) {
+             const leaderDoc = await getDoc(doc(db, 'users', cellLeaderId));
+             if (leaderDoc.exists()) {
+                const ld = leaderDoc.data();
+                cellUsers[cellLeaderId] = ld.displayName || ld.email || 'Líder';
+             }
+          }
+          
+          // Always ensure the current user sees their own
+          if (!cellUsers[user.uid]) {
+             cellUsers[user.uid] = user.displayName || user.email || 'Tú';
+          }
+
+          const nextStudiesPetitions = [];
+
+          for (const study of topStudies) {
+            const studyInterQuery = query(collection(studiesDb, 'user_study_interactions'), where('studyId', '==', study.id));
+            const studyInterSnap = await getDocs(studyInterQuery);
+            
+            const petitionsList: {user: string, petitions: string[], date: string}[] = [];
+            for (const docSnap of studyInterSnap.docs) {
+              const data = docSnap.data();
+              if (data.petitions && data.petitions.length > 0) {
+                let userName = cellUsers[data.userId];
+                
+                // Fallback of fetching the user on-demand if they are not preloaded mapping under active/approved cell users
+                if (!userName && data.userId) {
+                  try {
+                    const uDoc = await getDoc(doc(db, 'users', data.userId));
+                    if (uDoc.exists()) {
+                      const uData = uDoc.data();
+                      if (uData.celulaId === myCelula.id || data.userId === cellLeaderId) {
+                        userName = uData.displayName || uData.email || 'Miembro';
+                        cellUsers[data.userId] = userName; // Cache name
+                      }
+                    }
+                  } catch (e) {
+                    console.error("Error fetching user info on-demand for petitions list", e);
+                  }
+                }
+
+                if (userName) {
+                  const validPetitions = data.petitions.filter((p: string) => typeof p === 'string' && p.trim() !== '');
+                  if (validPetitions.length > 0) {
+                    petitionsList.push({
+                      user: userName,
+                      petitions: validPetitions,
+                      date: data.lastUpdated
+                    });
+                  }
+                }
+              }
+            }
+            
+            nextStudiesPetitions.push({
+               studyTitle: study.title || (study as any).studyTitle || 'Estudio sin título',
+               petitions: petitionsList
+            });
+          }
+          
+          setStudiesPetitions(nextStudiesPetitions);
+        } catch (err) {
+          console.error("Error fetching petitions", err);
+        } finally {
+          setLoadingPetitions(false);
+        }
       }
     };
     fetchStudies();
-  }, [user, userCelulaId, activeTab]);
+  }, [user, userCelulaId, activeTab, myCelula]);
 
   // Load cell_notifications
   useEffect(() => {
@@ -324,13 +458,12 @@ export default function MiCelula() {
             {/* Tabs Header */}
             <div className="flex border-b border-slate-100 overflow-x-auto">
               <button
-                onClick={() => setActiveTab('info')}
+                onClick={() => setActiveTab('notificaciones')}
                 className={`flex-1 py-4 px-6 font-bold text-sm min-w-[120px] transition-colors flex justify-center items-center gap-2 border-b-2 ${
-                  activeTab === 'info' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:bg-slate-50 hover:text-slate-600'
+                  activeTab === 'notificaciones' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:bg-slate-50 hover:text-slate-600'
                 }`}
               >
-                <MapPin className="w-5 h-5" />
-                Información
+                Notificaciones
               </button>
               <button
                 onClick={() => setActiveTab('estudios')}
@@ -338,17 +471,23 @@ export default function MiCelula() {
                   activeTab === 'estudios' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:bg-slate-50 hover:text-slate-600'
                 }`}
               >
-                <BookOpen className="w-5 h-5" />
                 Estudios
               </button>
               <button
-                onClick={() => setActiveTab('lider')}
+                onClick={() => setActiveTab('peticiones')}
                 className={`flex-1 py-4 px-6 font-bold text-sm min-w-[120px] transition-colors flex justify-center items-center gap-2 border-b-2 ${
-                  activeTab === 'lider' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:bg-slate-50 hover:text-slate-600'
+                  activeTab === 'peticiones' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:bg-slate-50 hover:text-slate-600'
                 }`}
               >
-                <MessageSquare className="w-5 h-5" />
-                Mi Líder
+                Peticiones
+              </button>
+              <button
+                onClick={() => setActiveTab('info')}
+                className={`flex-1 py-4 px-6 font-bold text-sm min-w-[120px] transition-colors flex justify-center items-center gap-2 border-b-2 ${
+                  activeTab === 'info' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:bg-slate-50 hover:text-slate-600'
+                }`}
+              >
+                Información
               </button>
             </div>
 
@@ -403,28 +542,6 @@ export default function MiCelula() {
                             </div>
                           </div>
                         </div>
-
-                        {cellNotifications.length > 0 && (
-                          <div className="mt-8 space-y-4">
-                            <h3 className="text-xl font-kenao text-primary flex items-center gap-2">
-                              <AlertCircle className="w-6 h-6 text-emerald-500" />
-                              Avisos de mi Líder
-                            </h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {cellNotifications.map((ann) => (
-                                <div key={ann.id} className="bg-emerald-50 border border-emerald-100 p-5 rounded-2xl shadow-sm">
-                                  <h4 className="font-bold text-emerald-900 mb-2">{ann.title}</h4>
-                                  <p className="text-sm text-emerald-800 leading-relaxed whitespace-pre-line">{ann.message}</p>
-                                  {ann.expiry && (
-                                    <div className="mt-4 text-[10px] uppercase font-bold text-emerald-600/60 bg-emerald-100 inline-block px-2 py-1 rounded-md tracking-wider">
-                                      Vigente hasta: {ann.expiry.split('-').reverse().join('/')}
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
                       </>
                     ) : (
                       <p>Cargando información de la célula...</p>
@@ -454,7 +571,15 @@ export default function MiCelula() {
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {userInteractions.map(interaction => {
+                          {[...userInteractions]
+                            .sort((a, b) => {
+                              const indexA = allStudies.findIndex(s => s.id === a.studyId);
+                              const indexB = allStudies.findIndex(s => s.id === b.studyId);
+                              const numA = indexA === -1 ? 999999 : indexA;
+                              const numB = indexB === -1 ? 999999 : indexB;
+                              return numA - numB;
+                            })
+                            .map(interaction => {
                             const relatedStudy = allStudies.find(s => s.id === interaction.studyId);
                             return (
                               <a
@@ -569,21 +694,135 @@ export default function MiCelula() {
                   </motion.div>
                 )}
 
-                {activeTab === 'lider' && (
+                {activeTab === 'notificaciones' && (
                   <motion.div
-                    key="lider"
+                    key="notificaciones"
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 10 }}
-                    className="h-full flex flex-col items-center justify-center py-10"
+                    className="space-y-6"
                   >
-                    <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-6">
-                      <MessageSquare className="w-8 h-8 text-slate-400" />
+                    <div>
+                      <h3 className="text-xl font-kenao text-primary flex items-center gap-2 border-b border-slate-100 pb-4 text-left">
+                        <Bell className="w-6 h-6 text-secondary" />
+                        Notificaciones
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-1 mb-6 text-left">Avisos y mensajes importantes de tu líder.</p>
+                      {cellNotifications.length === 0 ? (
+                        <div className="bg-white p-12 text-center rounded-[2rem] border border-slate-100 text-slate-400 font-bold shadow-sm">
+                          <MessageSquare className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                          <p className="text-sm text-slate-500 font-medium">No hay notificaciones actuales.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {cellNotifications.map(notice => {
+                            const isRead = readNotifications.includes(notice.id);
+                            return (
+                              <div 
+                                key={notice.id} 
+                                className={`bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative hover:shadow-md transition-all ${isRead ? 'opacity-60 bg-slate-50/50' : ''}`}
+                              >
+                                <div className="flex justify-between items-start mb-3">
+                                  <div>
+                                    <h4 className="font-bold text-secondary text-lg text-left">{notice.title}</h4>
+                                    <div className="flex items-center gap-2 mt-1.5 text-[10px] font-bold text-slate-400 uppercase">
+                                      <Calendar className="w-3.5 h-3.5"/> 
+                                      <span>Vence: {new Date(notice.expiry).toLocaleDateString()}</span>
+                                    </div>
+                                  </div>
+                                  <button 
+                                    onClick={() => toggleReadNotification(notice.id)} 
+                                    className={`p-1.5 rounded-full transition-colors ${isRead ? 'bg-secondary/20 text-secondary' : 'bg-slate-100 text-slate-400 hover:bg-secondary/10 hover:text-secondary'}`}
+                                    title={isRead ? "Marcar como no leído" : "Marcar como leído"}
+                                  >
+                                    <Check className="w-4 h-4" />
+                                  </button>
+                                </div>
+                                
+                                <p className="text-sm text-slate-700 leading-relaxed font-medium text-left bg-slate-50/50 p-4 rounded-2xl border border-slate-100/50 whitespace-pre-wrap mt-3">
+                                  {notice.message}
+                                </p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                    <h3 className="text-xl font-kenao text-primary mb-2">Mensajería y Avisos</h3>
-                    <p className="text-slate-500 text-center max-w-md">
-                      Plataforma de comunicación con tu líder próximamente. Aquí podrás ver anuncios generales y chatear de forma directa.
-                    </p>
+                  </motion.div>
+                )}
+                {activeTab === 'peticiones' && (
+                  <motion.div
+                    key="peticiones"
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 10 }}
+                    className="space-y-8"
+                  >
+                    <div>
+                      <h3 className="text-xl font-kenao text-primary mb-6 flex items-center gap-2">
+                        <Heart className="w-6 h-6 text-secondary" />
+                        Peticiones de Oración
+                      </h3>
+ 
+                       {loadingPetitions ? (
+                          <div className="flex justify-center p-8">
+                            <div className="w-8 h-8 border-4 border-slate-200 border-t-primary rounded-full animate-spin"></div>
+                          </div>
+                       ) : (
+                          <>
+                            {studiesPetitions.length === 0 ? (
+                               <div className="bg-slate-50 border border-slate-200 border-dashed rounded-2xl p-10 text-center">
+                                 <Heart className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                                 <h3 className="text-lg font-kenao text-slate-600 mb-2">Sin peticiones</h3>
+                                 <p className="text-sm text-slate-400 max-w-sm mx-auto">
+                                   Aún no se han registrado peticiones en los estudios recientes de tu célula.
+                                 </p>
+                               </div>
+                            ) : (
+                               <div className="space-y-10">
+                                 {studiesPetitions.map((studyData, studyIdx) => (
+                                   <div key={studyIdx}>
+                                      <h4 className="font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 mb-4 text-left">
+                                        Estudio: <span className="text-primary">{studyData.studyTitle}</span>
+                                      </h4>
+                                      {studyData.petitions.length === 0 ? (
+                                         <div className="text-sm text-slate-500 py-3 px-4 bg-slate-50/50 rounded-xl border border-slate-100 flex items-center gap-2 text-left">
+                                           <BookOpen className="w-5 h-5 text-slate-300" />
+                                           No hay peticiones registradas para este estudio.
+                                         </div>
+                                      ) : (
+                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                           {studyData.petitions.map((cp, idx) => (
+                                             <div key={idx} className="bg-secondary/5 border border-secondary/15 rounded-2xl p-5 shadow-sm flex flex-col items-start hover:shadow-md transition-shadow">
+                                                <div className="flex items-center gap-3 w-full mb-4 border-b border-secondary/10 pb-3">
+                                                  <div className="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center text-secondary shrink-0">
+                                                     <UserIcon className="w-5 h-5" />
+                                                  </div>
+                                                  <div className="text-left">
+                                                     <h4 className="font-bold text-slate-800 text-sm">{cp.user}</h4>
+                                                     <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold font-mono">
+                                                        {cp.date ? new Date(cp.date).toLocaleDateString('es-ES') : 'Sin fecha'}
+                                                     </p>
+                                                  </div>
+                                                </div>
+                                                <ul className="space-y-3 w-full">
+                                                  {cp.petitions.map((pet, pidx) => (
+                                                    <li key={pidx} className="text-sm text-slate-700 text-left leading-relaxed bg-white rounded-xl p-3 border border-slate-150 shadow-sm relative before:absolute before:left-0 before:top-0 before:h-full before:w-1 before:bg-secondary before:rounded-l-xl pl-4">
+                                                      {pet}
+                                                    </li>
+                                                  ))}
+                                                </ul>
+                                             </div>
+                                           ))}
+                                         </div>
+                                      )}
+                                   </div>
+                                 ))}
+                               </div>
+                            )}
+                          </>
+                       )}
+                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>
