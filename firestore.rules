@@ -187,6 +187,15 @@ service cloud.firestore {
              (!('consecutiveAbsences' in data) || data.consecutiveAbsences is int || data.consecutiveAbsences is float);
     }
 
+    function isValidContactNotification(data) {
+      return data.nombre is string &&
+             data.whatsapp is string &&
+             data.email is string &&
+             data.zona is string && 
+             data.leaderId is string &&
+             data.createdAt is string;
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -354,6 +363,22 @@ service cloud.firestore {
       allow create: if isValidCellMember(request.resource.data);
       allow update: if isValidCellMember(request.resource.data);
       allow delete: if true; // Members can be removed automatically when consecutive absences reach 10
+    }
+
+    match /contact_notifications/{notificationId} {
+      allow read: if isAuthenticated() && (
+        (isLider() && resource.data.leaderId == request.auth.uid) ||
+        (isSupervisor() && resource.data.supervisorId == request.auth.uid)
+      );
+      allow create: if isValidContactNotification(request.resource.data);
+      allow update: if isAuthenticated() && (
+        (isLider() && resource.data.leaderId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readByLeader'])) ||
+        (isSupervisor() && resource.data.supervisorId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBySupervisor']))
+      );
+      allow delete: if isAuthenticated() && (
+        (isLider() && resource.data.leaderId == request.auth.uid) ||
+        (isSupervisor() && resource.data.supervisorId == request.auth.uid)
+      );
     }
   }
 }

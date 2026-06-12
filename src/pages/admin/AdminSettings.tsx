@@ -9,8 +9,28 @@ export default function AdminSettings() {
   const { user, isAuthReady } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [resetting, setResetting] = useState(false);
   
   const [meetingTime, setMeetingTime] = useState('Domingos a las 18:30h');
+
+  const handleResetMyCelula = async () => {
+    if (!user) return;
+    if (!window.confirm("¿Está seguro de que desea restablecer su vinculación de célula? Esto le permitirá volver a seleccionar una célula desde cero en la página Mi Célula.")) return;
+    setResetting(true);
+    try {
+      const userDocRef = doc(db, 'users', user.uid);
+      await setDoc(userDocRef, {
+        celulaId: null,
+        celulaStatus: null
+      }, { merge: true });
+      alert("¡Se ha restablecido tu vinculación de célula con éxito!");
+    } catch (err) {
+      console.error("Error resetting celula:", err);
+      alert("No se pudo restablecer la célula.");
+    } finally {
+      setResetting(false);
+    }
+  };
 
   useEffect(() => {
     if (!isAuthReady || !user) return;
@@ -97,6 +117,30 @@ export default function AdminSettings() {
             </div>
           </form>
         </motion.div>
+
+        {user?.email === 'huelvachurch@gmail.com' && (
+          <motion.div 
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-8 bg-white rounded-3xl p-8 border border-amber-200 shadow-sm text-left"
+          >
+            <h2 className="text-xl font-kenao text-primary mb-4 flex items-center gap-2">
+              <span className="text-xl">🛠️</span>
+              Modo Demo / Captura de Pantalla
+            </h2>
+            <p className="text-sm text-primary/70 mb-6">
+              Como administrador <strong>huelvachurch@gmail.com</strong>, puedes restablecer tu vinculación a "Mi Célula" desde esta sección de Ajustes para simular el estado inicial o realizar capturas de pantalla limpias de la interfaz.
+            </p>
+            <button
+              onClick={handleResetMyCelula}
+              disabled={resetting}
+              className="px-5 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer disabled:opacity-50 flex items-center gap-2"
+            >
+              {resetting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              Restablecer Mi Célula de esta Cuenta
+            </button>
+          </motion.div>
+        )}
       </div>
     </div>
   );

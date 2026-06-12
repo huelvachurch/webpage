@@ -12,9 +12,10 @@ import {
   FileText,
   TrendingUp,
   Bell,
-  Search
+  Search,
+  Check
 } from 'lucide-react';
-import { collection, query, where, getDocs, doc, deleteDoc, updateDoc, setDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, deleteDoc, updateDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { 
@@ -43,6 +44,9 @@ export default function Supervision() {
   const [leaderToUnlink, setLeaderToUnlink] = useState<any | null>(null);
   const [unlinkInput, setUnlinkInput] = useState('');
   const [selectedLeaderFilter, setSelectedLeaderFilter] = useState<string>('all');
+  const [contactNotifications, setContactNotifications] = useState<any[]>([]);
+  const [notificationToDelete, setNotificationToDelete] = useState<any>(null);
+  const [deleteConfirmationInput, setDeleteConfirmationInput] = useState('');
 
   const isSupervisor = roles.includes('supervisor');
 
@@ -198,6 +202,49 @@ export default function Supervision() {
 
     loadData();
   }, [user, isAuthReady, isSupervisor]);
+
+  // Listen to contact notifications in real-time
+  useEffect(() => {
+    if (!isSupervisor || !isAuthReady || !user) return;
+
+    const q = query(
+      collection(db, 'contact_notifications'),
+      where('supervisorId', '==', user.uid)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach(docSnap => {
+        list.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      list.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setContactNotifications(list);
+    }, (err) => {
+      console.error("Error listening to supervisor contact notifications:", err);
+    });
+
+    return () => unsubscribe();
+  }, [isSupervisor, isAuthReady, user]);
+
+  const toggleReadContactNotification = async (notifId: string, currentRead: boolean) => {
+    try {
+      const docRef = doc(db, 'contact_notifications', notifId);
+      await updateDoc(docRef, { readBySupervisor: !currentRead });
+    } catch (err) {
+      console.error("Error marking contact notification as read/unread for supervisor:", err);
+    }
+  };
+
+  const handleDeleteContactNotification = async () => {
+    if (!notificationToDelete) return;
+    try {
+      await deleteDoc(doc(db, 'contact_notifications', notificationToDelete.id));
+      setNotificationToDelete(null);
+      setDeleteConfirmationInput('');
+    } catch (err) {
+      console.error("Error deleting contact notification:", err);
+    }
+  };
 
   const handlePostNotice = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -804,18 +851,107 @@ export default function Supervision() {
               exit={{ opacity: 0, y: -15 }}
               className="space-y-12 max-w-4xl mx-auto"
             >
-              {/* 1. NOTIFICACIONES RECIBIDAS */}
-              <div className="space-y-6">
-                <div className="border-b border-slate-100 pb-4 text-left">
-                  <h2 className="text-2xl font-kenao text-primary flex items-center gap-2">
-                    <Bell className="w-6 h-6 text-secondary" /> Notificaciones
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-1">Anuncios y avisos recibidos.</p>
+              {/* 1. NOTIFICACIONES RECIBIDAS (Currently supervisors don't receive notifications from above, but we hide it if empty as requested) */}
+              {false && (
+                <div className="space-y-6">
+                  <div className="border-b border-slate-100 pb-4 text-left">
+                    <h2 className="text-2xl font-kenao text-primary flex items-center gap-2">
+                      <Bell className="w-6 h-6 text-secondary" /> Notificaciones
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-1">Anuncios y avisos recibidos.</p>
+                  </div>
                 </div>
-                <div className="bg-white p-12 text-center rounded-[2rem] border border-slate-100 text-slate-400 font-bold shadow-sm">
-                  No tienes notificaciones recibidas actualmente.
+              )}
+
+              {/* SOLICITUDES DE CONTACTO DE CÉLULAS (!ÚNETE A UNA CÉLULA!) */}
+              {contactNotifications.length > 0 && (
+                <div className="space-y-6">
+                  <div className="border-b border-slate-100 pb-4 text-left">
+                    <h2 className="text-2xl font-kenao text-primary flex items-center gap-2">
+                      <Users className="w-6 h-6 text-secondary animate-pulse" /> Solicitudes de Contacto
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-1">Asistentes que han completado el formulario de "¡Únete a una Célula!" en células bajo tu supervisión.</p>
+                  </div>
+
+                  <div className="space-y-4">
+                    {contactNotifications.slice(0, 3).map((notif) => {
+                      const isRead = notif.readBySupervisor;
+                      const formattedDate = notif.createdAt 
+                        ? new Date(notif.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) 
+                        : 'Recientemente';
+                      
+                      const cleanPhone = notif.whatsapp.replace(/\D/g, '');
+                      const waLink = cleanPhone.length === 9 ? `https://wa.me/34${cleanPhone}` : `https://wa.me/${cleanPhone}`;
+
+                      return (
+                        <div 
+                          key={notif.id}
+                          className={`bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative hover:shadow-md transition-all text-left ${isRead ? 'opacity-60 bg-slate-50/50 shadow-none' : ''}`}
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <h3 className="text-xl font-bold font-kenao text-primary">
+                                {notif.nombre} {notif.apellidos}
+                              </h3>
+                              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                <span className="text-[10px] bg-secondary/15 px-2 py-0.5 rounded text-slate-800 font-extrabold uppercase tracking-wider">
+                                  Célula: {notif.cellName || 'Sin especificar'}
+                                </span>
+                                <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-650 font-bold">
+                                  Líder: {notif.leaderName || 'Sin especificar'}
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-medium tracking-wider uppercase">
+                                  Enviado: {formattedDate}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button 
+                                onClick={() => toggleReadContactNotification(notif.id, !!isRead)}
+                                className={`p-1.5 rounded-full transition-colors ${isRead ? 'bg-secondary/25 text-primary' : 'bg-slate-100 text-slate-400 hover:bg-secondary/15 hover:text-secondary'}`}
+                                title={isRead ? "Marcar como pendiente" : "Marcar como aprendido/leído"}
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
+                              <button 
+                                onClick={() => setNotificationToDelete(notif)}
+                                className="p-1.5 rounded-full bg-slate-100 text-slate-400 hover:bg-red-50 hover:text-red-650 transition-colors"
+                                title="Eliminar notificación"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50/50 p-4 rounded-2xl border border-slate-100/50 text-xs">
+                            <div>
+                              <span className="block text-[9px] uppercase font-bold text-slate-400 mb-1">WhatsApp / Teléfono</span>
+                              <a 
+                                href={waLink}
+                                target="_blank" 
+                                referrerPolicy="no-referrer"
+                                className="text-secondary font-bold hover:underline inline-flex items-center gap-1.5 text-sm"
+                              >
+                                {notif.whatsapp} 
+                                <span className="text-[9px] bg-secondary/20 px-2 py-0.5 rounded font-mono uppercase tracking-widest text-slate-800">Mensaje</span>
+                              </a>
+                            </div>
+                            <div>
+                              <span className="block text-[9px] uppercase font-bold text-slate-400 mb-1">Correo Electrónico</span>
+                              <a 
+                                href={`mailto:${notif.email}`}
+                                className="text-primary hover:underline font-bold block text-sm overflow-hidden text-ellipsis"
+                              >
+                                {notif.email}
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* 2. DIFUNDIR */}
               <div className="space-y-6">
@@ -977,6 +1113,53 @@ export default function Supervision() {
                   className="flex-grow py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition-colors disabled:opacity-40 disabled:hover:bg-red-600 cursor-pointer select-none"
                 >
                   Desvincular
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Reusable Popup Modal for Deleting Contact Notification */}
+        {notificationToDelete && (
+          <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
+            <div className="bg-white rounded-[2rem] border border-slate-200 p-6 max-w-sm w-full shadow-2xl text-center text-slate-800">
+              <div className="w-12 h-12 bg-red-50 text-red-650 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-100">
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </div>
+              <h3 className="text-lg font-bold font-kenao text-primary mb-2">Eliminar Contacto</h3>
+              <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+                ¿Estás seguro de que deseas eliminar permanentemente la solicitud de contacto de <span className="font-bold text-slate-800">{notificationToDelete.nombre} {notificationToDelete.apellidos}</span>? Esta acción no se puede deshacer.
+              </p>
+              
+              <div className="p-3 bg-slate-100/50 rounded-xl mb-4 border border-slate-100 text-[11px] text-slate-650">
+                Escribe <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-red-200 font-bold text-red-650">DELETE</span> en mayúsculas para confirmar.
+              </div>
+              
+              <input
+                type="text"
+                placeholder="Escribe DELETE aquí..."
+                value={deleteConfirmationInput}
+                onChange={(e) => setDeleteConfirmationInput(e.target.value)}
+                className="text-center w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500/25 focus:bg-white text-xs font-mono uppercase tracking-widest font-bold mb-4 text-slate-800"
+              />
+              
+              <div className="flex gap-3 justify-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNotificationToDelete(null);
+                    setDeleteConfirmationInput('');
+                  }}
+                  className="flex-grow py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer select-none"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={deleteConfirmationInput !== 'DELETE'}
+                  onClick={handleDeleteContactNotification}
+                  className="flex-grow py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition-colors disabled:opacity-40 disabled:hover:bg-red-600 cursor-pointer select-none"
+                >
+                  Eliminar
                 </button>
               </div>
             </div>

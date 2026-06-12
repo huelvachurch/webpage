@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { collection, doc, getDoc, getDocs, setDoc, query, where, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, studiesDb } from '../firebase';
-import { Shield, BookOpen, MessageSquare, MapPin, Map, Clock, AlertCircle, ChevronRight, User as UserIcon, LogOut, Check, Heart, Bell, Calendar } from 'lucide-react';
+import { Shield, BookOpen, MessageSquare, MapPin, Map, Clock, AlertCircle, ChevronRight, User as UserIcon, LogOut, Check, Heart, Bell, Calendar, Share2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -39,6 +39,10 @@ interface WeeklyStudy {
   status?: string;
   category?: string;
   link?: string;
+  summary?: string;
+  excerpt?: string;
+  summaryDescription?: string;
+  shortCode?: string;
   isScheduled?: boolean;
   scheduledAt?: string;
 }
@@ -89,6 +93,8 @@ export default function MiCelula() {
       return [];
     }
   });
+
+  const activeCellNotificationsForBadge = cellNotifications.filter(n => !readNotifications.includes(n.id));
 
   const toggleReadNotification = (id: string) => {
     const updated = readNotifications.includes(id)
@@ -220,7 +226,7 @@ export default function MiCelula() {
       if (activeTab === 'peticiones' && list.length > 0 && myCelula) {
         setLoadingPetitions(true);
         try {
-          const topStudies = list.slice(0, 2);
+          const topStudies = list.slice(0, 3);
 
           // Fetch users in the same cell
           const usersQuery = query(collection(db, 'users'), where('celulaId', '==', myCelula.id), where('status', '==', 'active'));
@@ -381,6 +387,46 @@ export default function MiCelula() {
     }
   };
 
+  const getStudyUrl = (study: WeeklyStudy, includeUid: boolean = true) => {
+    let urlStr = study.link;
+    if (!urlStr) {
+      if (study.shortCode) {
+        urlStr = `https://estudios.huelvachurch.com/s/${study.shortCode}`;
+      } else {
+        urlStr = `https://estudios.huelvachurch.com/?id=${study.id}`;
+      }
+    }
+    if (includeUid && user?.uid && urlStr.includes('estudios.huelvachurch.com')) {
+      urlStr += (urlStr.includes('?') ? '&' : '?') + `uid=${user.uid}`;
+    }
+    return urlStr;
+  };
+
+  const handleShare = (e: React.MouseEvent, study: WeeklyStudy) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const title = study.studyTitle || study.title || 'Estudio';
+    const url = getStudyUrl(study, false);
+    const text = `Mira este estudio de la Célula: "${title}" - ${url}`;
+    
+    if (navigator.share) {
+      navigator.share({
+        title: title,
+        text: text,
+        url: url
+      }).catch(err => console.log(err));
+    } else {
+      navigator.clipboard.writeText(url).then(() => {
+        alert("¡Enlace del estudio copiado al portapapeles!");
+        const encodedText = encodeURIComponent(text);
+        window.open(`https://api.whatsapp.com/send?text=${encodedText}`, '_blank');
+      }).catch(() => {
+        const encodedText = encodeURIComponent(text);
+        window.open(`https://api.whatsapp.com/send?text=${encodedText}`, '_blank');
+      });
+    }
+  };
+
   if (!isAuthReady || loading) {
     return (
       <div className="pt-32 pb-20 flex justify-center items-center">
@@ -454,45 +500,62 @@ export default function MiCelula() {
             <p className="text-slate-600">Conecta con tu grupo y continúa con tus estudios semanales.</p>
           </div>
 
-          <div className="bg-white rounded-3xl border border-slate-100 shadow-xl overflow-hidden">
-            {/* Tabs Header */}
-            <div className="flex border-b border-slate-100 overflow-x-auto">
-              <button
-                onClick={() => setActiveTab('notificaciones')}
-                className={`flex-1 py-4 px-6 font-bold text-sm min-w-[120px] transition-colors flex justify-center items-center gap-2 border-b-2 ${
-                  activeTab === 'notificaciones' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:bg-slate-50 hover:text-slate-600'
-                }`}
-              >
-                Notificaciones
-              </button>
-              <button
-                onClick={() => setActiveTab('estudios')}
-                className={`flex-1 py-4 px-6 font-bold text-sm min-w-[120px] transition-colors flex justify-center items-center gap-2 border-b-2 ${
-                  activeTab === 'estudios' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:bg-slate-50 hover:text-slate-600'
-                }`}
-              >
-                Estudios
-              </button>
-              <button
-                onClick={() => setActiveTab('peticiones')}
-                className={`flex-1 py-4 px-6 font-bold text-sm min-w-[120px] transition-colors flex justify-center items-center gap-2 border-b-2 ${
-                  activeTab === 'peticiones' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:bg-slate-50 hover:text-slate-600'
-                }`}
-              >
-                Peticiones
-              </button>
-              <button
-                onClick={() => setActiveTab('info')}
-                className={`flex-1 py-4 px-6 font-bold text-sm min-w-[120px] transition-colors flex justify-center items-center gap-2 border-b-2 ${
-                  activeTab === 'info' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:bg-slate-50 hover:text-slate-600'
-                }`}
-              >
-                Información
-              </button>
-            </div>
+          {/* Menu de Pestañas Independiente (Similar a Liderazgo) */}
+          <div className="flex flex-col md:grid md:grid-cols-4 bg-white p-2 rounded-2xl shadow-sm border border-slate-100 w-full mb-10 gap-1">
+            <button
+              onClick={() => setActiveTab('notificaciones')}
+              className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase relative cursor-pointer ${
+                activeTab === 'notificaciones' 
+                  ? 'bg-amber-100 text-amber-950 border border-amber-200' 
+                  : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+              }`}
+            >
+              <Bell className="w-4 h-4 shrink-0" />
+              Notificaciones
+              {activeCellNotificationsForBadge.length > 0 && (
+                <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white shadow-sm animate-pulse"></span>
+              )}
+            </button>
 
-            <div className="p-6 md:p-10 min-h-[400px]">
-              <AnimatePresence mode="wait">
+            <button
+              onClick={() => setActiveTab('estudios')}
+              className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase cursor-pointer ${
+                activeTab === 'estudios' 
+                  ? 'bg-amber-100 text-amber-950 border border-amber-200' 
+                  : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+              }`}
+            >
+              <BookOpen className="w-4 h-4 shrink-0" />
+              Estudios
+            </button>
+
+            <button
+              onClick={() => setActiveTab('peticiones')}
+              className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase cursor-pointer ${
+                activeTab === 'peticiones' 
+                  ? 'bg-amber-100 text-amber-950 border border-amber-200' 
+                  : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+              }`}
+            >
+              <Heart className="w-4 h-4 shrink-0" />
+              Peticiones
+            </button>
+
+            <button
+              onClick={() => setActiveTab('info')}
+              className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase cursor-pointer ${
+                activeTab === 'info' 
+                  ? 'bg-amber-100 text-amber-950 border border-amber-200' 
+                  : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+              }`}
+            >
+              <UserIcon className="w-4 h-4 shrink-0" />
+              Información
+            </button>
+          </div>
+
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-xl overflow-hidden p-6 md:p-10 min-h-[400px]">
+            <AnimatePresence mode="wait">
                 {activeTab === 'info' && (
                   <motion.div
                     key="info"
@@ -579,6 +642,7 @@ export default function MiCelula() {
                               const numB = indexB === -1 ? 999999 : indexB;
                               return numA - numB;
                             })
+                            .slice(0, 3)
                             .map(interaction => {
                             const relatedStudy = allStudies.find(s => s.id === interaction.studyId);
                             return (
@@ -643,50 +707,54 @@ export default function MiCelula() {
                             <p className="text-sm text-slate-500">No hay estudios disponibles actualmente.</p>
                         ) : (
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {allStudies.map(study => (
-                              <a
+                            {allStudies.slice(0, 3).map(study => (
+                              <div
                                 key={study.id}
-                                href={(() => {
-                                  let urlStr = study.link || `https://estudios.huelvachurch.com/?id=${study.id}`;
-                                  if (user?.uid && urlStr.includes('estudios.huelvachurch.com')) {
-                                    urlStr += (urlStr.includes('?') ? '&' : '?') + `uid=${user.uid}`;
-                                  }
-                                  return urlStr;
-                                })()}
-                                target="_blank"
-                                rel="noopener noreferrer"
                                 className="group flex flex-col bg-white border border-slate-200 rounded-2xl overflow-hidden hover:shadow-xl hover:-translate-y-1 hover:border-secondary transition-all h-full"
                               >
-                                {study.worshipUrl && (
-                                   <div className="h-32 bg-slate-100 relative overflow-hidden flex items-center justify-center">
-                                      <BookOpen className="w-10 h-10 text-slate-300" />
-                                   </div>
-                                )}
-                                <div className="p-5 flex-grow flex flex-col">
-                                  <div className="flex items-center gap-2 mb-3">
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-primary bg-slate-100 px-2.5 py-1 rounded-md">
-                                      {study.yearTheme || 'Estudio'}
-                                    </span>
-                                    {study.startDate && (
-                                      <span className="text-[10px] font-mono text-slate-400 bg-slate-50 px-2.5 py-1 rounded-md">
+                                <a
+                                  href={getStudyUrl(study)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-5 flex-grow flex flex-col cursor-pointer text-left"
+                                >
+                                  {study.startDate && (
+                                    <div className="flex items-center mb-3 text-left">
+                                      <span className="text-[10px] font-mono text-slate-400 bg-slate-50 px-2.5 py-1 rounded-md font-bold">
                                         {study.startDate}
                                       </span>
-                                    )}
-                                  </div>
-                                  <h4 className="font-bold text-slate-800 leading-tight mb-2 group-hover:text-primary transition-colors">
+                                    </div>
+                                  )}
+                                  <h4 className="font-bold text-slate-800 leading-tight mb-2 group-hover:text-primary transition-colors text-left">
                                     {study.studyTitle || study.title || 'Sin Título'}
                                   </h4>
-                                  {study.icebreaker && (
-                                    <p className="text-xs text-slate-500 line-clamp-2 mt-auto mb-4">{study.icebreaker}</p>
-                                  )}
-                                  <div className="mt-auto pt-4 border-t border-slate-50 flex items-center justify-between">
+                                  
+                                  {(() => {
+                                    const summaryText = study.summaryDescription || study.summary || study.excerpt || (study as any).excerpt_es || study.visionText || study.icebreaker;
+                                    return summaryText ? (
+                                      <p className="text-xs text-slate-500 line-clamp-3 mt-2 mb-4 text-left">
+                                        {summaryText}
+                                      </p>
+                                    ) : null;
+                                  })()}
+
+                                  <div className="mt-auto pt-4 border-t border-slate-100 flex items-center justify-between w-full">
                                     <span className="text-xs font-bold text-primary group-hover:text-secondary flex items-center gap-1 transition-colors">
                                       Abrir Estudio
                                       <ChevronRight className="w-3.5 h-3.5" />
                                     </span>
+                                    
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleShare(e, study)}
+                                      className="p-2 text-slate-400 hover:text-secondary hover:bg-slate-50 rounded-full transition-all cursor-pointer shrink-0"
+                                      title="Compartir por WhatsApp"
+                                    >
+                                      <Share2 className="w-4 h-4" />
+                                    </button>
                                   </div>
-                                </div>
-                              </a>
+                                </a>
+                              </div>
                             ))}
                           </div>
                         )}
@@ -702,12 +770,14 @@ export default function MiCelula() {
                     exit={{ opacity: 0, x: 10 }}
                     className="space-y-6"
                   >
-                    <div>
-                      <h3 className="text-xl font-kenao text-primary flex items-center gap-2 border-b border-slate-100 pb-4 text-left">
-                        <Bell className="w-6 h-6 text-secondary" />
-                        Notificaciones
-                      </h3>
-                      <p className="text-xs text-slate-400 mt-1 mb-6 text-left">Avisos y mensajes importantes de tu líder.</p>
+                    <div className="text-left">
+                      <div className="border-b border-slate-100 pb-4 mb-6">
+                        <h3 className="text-xl font-kenao text-primary flex items-center gap-2">
+                          <Bell className="w-6 h-6 text-secondary" />
+                          Notificaciones
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-1">Avisos y mensajes importantes de tu líder.</p>
+                      </div>
                       {cellNotifications.length === 0 ? (
                         <div className="bg-white p-12 text-center rounded-[2rem] border border-slate-100 text-slate-400 font-bold shadow-sm">
                           <MessageSquare className="w-10 h-10 text-slate-300 mx-auto mb-3" />
@@ -828,8 +898,7 @@ export default function MiCelula() {
               </AnimatePresence>
             </div>
           </div>
-        </div>
-      )}
-    </div>
-  );
-}
+        )}
+      </div>
+    );
+  }

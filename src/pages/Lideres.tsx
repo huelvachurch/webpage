@@ -107,7 +107,7 @@ export default function Lideres() {
   const isLider = roles.includes('lider');
 
   // Tabs state
-  const [activeTab, setActiveTab] = useState<'form' | 'stats' | 'announcements' | 'supervision' | 'cell' | 'attendees'>('attendees');
+  const [activeTab, setActiveTab] = useState<'form' | 'stats' | 'announcements' | 'supervision' | 'cell' | 'attendees'>('form');
 
   const [readAnnouncements, setReadAnnouncements] = useState<string[]>(() => {
     try {
@@ -123,6 +123,26 @@ export default function Lideres() {
       : [...readAnnouncements, id];
     setReadAnnouncements(updated);
     localStorage.setItem('read_notifs_leaders', JSON.stringify(updated));
+  };
+
+  const toggleReadContactNotification = async (notifId: string, currentRead: boolean) => {
+    try {
+      const docRef = doc(db, 'contact_notifications', notifId);
+      await updateDoc(docRef, { readByLeader: !currentRead });
+    } catch (err) {
+      console.error("Error marking contact notification as read/unread:", err);
+    }
+  };
+
+  const handleDeleteContactNotification = async () => {
+    if (!notificationToDelete) return;
+    try {
+      await deleteDoc(doc(db, 'contact_notifications', notificationToDelete.id));
+      setNotificationToDelete(null);
+      setDeleteConfirmationInput('');
+    } catch (err) {
+      console.error("Error deleting contact notification:", err);
+    }
   };
 
   // My Cell states
@@ -206,6 +226,9 @@ export default function Lideres() {
   const [reports, setReports] = useState<MeetingReport[]>([]);
   const [announcements, setAnnouncements] = useState<LeaderAnnouncement[]>([]);
   const [studies, setStudies] = useState<CellStudy[]>([]);
+  const [contactNotifications, setContactNotifications] = useState<any[]>([]);
+  const [notificationToDelete, setNotificationToDelete] = useState<any>(null);
+  const [deleteConfirmationInput, setDeleteConfirmationInput] = useState('');
   
   // Leader To Cell Notifications
   const [cellNotifications, setCellNotifications] = useState<any[]>([]);
@@ -875,6 +898,29 @@ export default function Lideres() {
     return () => unsubscribe();
   }, [isLider, user]);
 
+  // Load contact_notifications (Join a cell form entries)
+  useEffect(() => {
+    if (!isLider || !user) return;
+    
+    const q = query(
+      collection(db, 'contact_notifications'),
+      where('leaderId', '==', user.uid)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach(doc => {
+        list.push({ id: doc.id, ...doc.data() });
+      });
+      list.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setContactNotifications(list);
+    }, (err) => {
+      console.error("Error loading contact_notifications", err);
+    });
+
+    return () => unsubscribe();
+  }, [isLider, user]);
+
   // Load reports based on user (each leader loads only their own, even if they are Admin)
   useEffect(() => {
     if (!isLider || !user || !effectiveLeaderId) return;
@@ -1467,7 +1513,7 @@ export default function Lideres() {
 
   const displayedAnnouncements = announcements.filter(ann => !ann.expiry || ann.expiry >= todayStr);
 
-  const activeAnnouncementsForBadge = announcements.filter(ann => !ann.expiry || ann.expiry >= todayStr);
+  const activeAnnouncementsForBadge = announcements.filter(ann => (!ann.expiry || ann.expiry >= todayStr) && !readAnnouncements.includes(ann.id));
 
   return (
     <div className="pt-32 pb-24 bg-slate-50 min-h-screen font-sans">
@@ -1492,20 +1538,8 @@ export default function Lideres() {
         {/* Tab Selection Navigation Bar */}
         <div className="flex flex-col lg:grid lg:grid-cols-5 bg-white p-2 rounded-2xl shadow-sm border border-slate-100 w-full mb-10 gap-1">
           <button
-            onClick={() => { window.scrollTo(0, 0); setActiveTab('attendees'); }}
-            className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase ${
-              activeTab === 'attendees' 
-                ? 'bg-amber-100 text-amber-950 border border-amber-200' 
-                : 'text-slate-500 hover:text-primary hover:bg-slate-50'
-            }`}
-          >
-            <Users className="w-4 h-4 shrink-0" />
-            Asistentes
-          </button>
-
-          <button
             onClick={() => { window.scrollTo(0, 0); setActiveTab('form'); }}
-            className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase ${
+            className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase cursor-pointer ${
               activeTab === 'form' 
                 ? 'bg-amber-100 text-amber-950 border border-amber-200' 
                 : 'text-slate-500 hover:text-primary hover:bg-slate-50'
@@ -1513,6 +1547,18 @@ export default function Lideres() {
           >
             <FileText className="w-4 h-4 shrink-0" />
             Formularios
+          </button>
+
+          <button
+            onClick={() => { window.scrollTo(0, 0); setActiveTab('attendees'); }}
+            className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase cursor-pointer ${
+              activeTab === 'attendees' 
+                ? 'bg-amber-100 text-amber-950 border border-amber-200' 
+                : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+            }`}
+          >
+            <Users className="w-4 h-4 shrink-0" />
+            Asistentes
           </button>
 
           <button
@@ -1710,136 +1756,7 @@ export default function Lideres() {
                     </div>
                   )}
 
-                  {/* Add New Attendee Form Card */}
-                  <div className="bg-white p-6 rounded-2xl border border-slate-200/60 shadow-sm space-y-4 text-left">
-                    <h3 className="text-sm uppercase tracking-wider font-extrabold text-slate-600 flex items-center gap-2">
-                       <Plus className="w-4 h-4 text-secondary" />
-                       Añadir Nuevo Asistente
-                    </h3>
-                    <form onSubmit={async (e) => {
-                      e.preventDefault();
-                      const formEl = e.currentTarget;
-                      const nameInput = (formEl.elements.namedItem('new_member_name') as HTMLInputElement).value.trim();
-                      const dateInput = (formEl.elements.namedItem('new_member_birthdate') as HTMLInputElement).value;
-                      const sizeYearCheckbox = (formEl.elements.namedItem('new_member_year_optional') as HTMLInputElement).checked;
 
-                      const selectedCategories: string[] = [...newMemberCategories];
-
-                      if (selectedCategories.length === 0) {
-                        alert('Por favor, seleccione al menos un estado.');
-                        return;
-                      }
-
-                      if (!nameInput) return;
-                      try {
-                        const newMemberDoc = {
-                          leaderId: effectiveLeaderId,
-                          name: nameInput,
-                          category: selectedCategories[0], // fallback for backward-compatibility
-                          categories: selectedCategories,
-                          consecutiveAbsences: 0,
-                          birthDate: dateInput || '',
-                          birthYearOptional: !!sizeYearCheckbox,
-                          updatedAt: new Date().toISOString()
-                        };
-                        await addDoc(collection(db, 'cell_members'), newMemberDoc);
-                        formEl.reset();
-                        setNewMemberCategories(['bautizado']);
-                        alert(`¡${nameInput} ha sido añadido con éxito!`);
-                      } catch (err) {
-                        console.error("Error creating member:", err);
-                        alert("Error al añadir asistente.");
-                      }
-                    }} className="space-y-4">
-                      {/* FILA 1 (Escritorio/Tablet horizontal) -> Nombre Completo + Nacimiento (con Año Opcional) */}
-                      {/* En móvil: 2 filas separadas */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Campo 1: Nombre Completo */}
-                        <div>
-                          <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5">Nombre Completo</label>
-                          <input
-                            name="new_member_name"
-                            type="text"
-                            required
-                            placeholder="Nombre y Apellidos..."
-                            className="px-3.5 py-2.5 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white outline-none text-xs text-primary font-semibold"
-                          />
-                        </div>
-
-                        {/* Campo 2: Nacimiento con Año Opcional */}
-                        <div className="flex flex-col sm:flex-row sm:items-end gap-3">
-                          <div className="flex-1">
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5">Nacimiento</label>
-                            <input
-                              name="new_member_birthdate"
-                              type="date"
-                              className="px-3.5 py-2.5 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white outline-none text-xs text-primary font-semibold"
-                            />
-                          </div>
-                          <div className="flex items-center pb-2.5 h-10 select-none">
-                            <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 font-semibold cursor-pointer">
-                              <input
-                                name="new_member_year_optional"
-                                type="checkbox"
-                                className="rounded text-primary focus:ring-secondary focus:ring-offset-0 border-slate-300 w-3.5 h-3.5"
-                              />
-                              <span>Sin Año</span>
-                            </label>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* FILA 2 (Escritorio/Tablet horizontal) -> Categorías + Botón Registrar */}
-                      {/* En móvil: 2 filas separadas (Fila 3: Categorías, Fila 4: Botón Registrar) */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end pt-2 border-t border-slate-100/50">
-                        {/* Campo 3: Categorías */}
-                        <div>
-                          <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5">Estados:</label>
-                          <div className="flex flex-wrap gap-2 py-1 select-none">
-                            {['bautizado', 'no_bautizado', 'no_creyente'].map((catCode) => {
-                              const isSelected = newMemberCategories.includes(catCode);
-                              return (
-                                <button
-                                  key={catCode}
-                                  type="button"
-                                  onClick={() => {
-                                    setNewMemberCategories(prev => 
-                                      prev.includes(catCode) 
-                                        ? prev.filter(c => c !== catCode) 
-                                        : [...prev, catCode]
-                                    );
-                                  }}
-                                  className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all border cursor-pointer select-none ${
-                                    isSelected
-                                      ? catCode === 'bautizado'
-                                        ? 'bg-amber-100 text-[#A18105] border-amber-300'
-                                        : catCode === 'no_bautizado'
-                                          ? 'bg-blue-100 text-primary border-blue-300'
-                                          : 'bg-slate-200 text-slate-600 border-slate-300'
-                                      : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
-                                  }`}
-                                >
-                                  {catCode === 'bautizado' && 'Creyente Bautizado'}
-                                  {catCode === 'no_bautizado' && 'Creyente No Bautizado'}
-                                  {catCode === 'no_creyente' && 'No Creyente'}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Campo 4: Botón Registrar */}
-                        <div className="flex justify-end">
-                          <button
-                            type="submit"
-                            className="w-full md:w-auto px-4 py-2 bg-secondary hover:bg-secondary/90 text-primary text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-                          >
-                            Registrar
-                          </button>
-                        </div>
-                      </div>
-                    </form>
-                  </div>
 
                   {/* List / Selection grid of assistants */}
                   <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden text-left">
@@ -3083,19 +3000,15 @@ export default function Lideres() {
                 className="space-y-12 max-w-4xl mx-auto"
               >
                 {/* 1. NOTIFICACIONES RECIBIDAS */}
-                <div className="space-y-6">
-                  <div className="border-b border-slate-100 pb-4 text-left">
-                    <h2 className="text-2xl font-kenao text-primary flex items-center gap-2">
-                      <Bell className="w-6 h-6 text-secondary" /> Notificaciones
-                    </h2>
-                    <p className="text-xs text-slate-400 mt-1">Recordatorios y anuncios oficiales de tu Supervisor o Pastores.</p>
-                  </div>
-
-                  {displayedAnnouncements.length === 0 ? (
-                    <div className="bg-white p-12 text-center rounded-[2rem] border border-slate-100 text-slate-400 font-bold shadow-sm">
-                      No tienes notificaciones recibidas actualmente.
+                {displayedAnnouncements.length > 0 && (
+                  <div className="space-y-6">
+                    <div className="border-b border-slate-100 pb-4 text-left">
+                      <h2 className="text-2xl font-kenao text-primary flex items-center gap-2">
+                        <Bell className="w-6 h-6 text-secondary" /> Notificaciones
+                      </h2>
+                      <p className="text-xs text-slate-400 mt-1">Recordatorios y anuncios oficiales de tu Supervisor o Pastores.</p>
                     </div>
-                  ) : (
+
                     <div className="space-y-4">
                       {displayedAnnouncements.map((ann) => {
                         const isExpired = ann.expiry && ann.expiry < todayStr;
@@ -3142,8 +3055,90 @@ export default function Lideres() {
                         );
                       })}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
+
+                {/* SOLICITUDES DE CONTACTO (¡ÚNETE A UNA CÉLULA!) */}
+                {contactNotifications.length > 0 && (
+                  <div className="space-y-6 pt-4">
+                    <div className="border-b border-slate-100 pb-4 text-left">
+                      <h2 className="text-2xl font-kenao text-primary flex items-center gap-2">
+                        <Users className="w-6 h-6 text-secondary animate-pulse" /> Solicitudes de Contacto
+                      </h2>
+                      <p className="text-xs text-slate-400 mt-1">Personas que han completado el formulario de "¡Únete a una Célula!" interesadas en tu zona.</p>
+                    </div>
+
+                    <div className="space-y-4">
+                      {contactNotifications.slice(0, 3).map((notif) => {
+                        const isRead = notif.readByLeader;
+                        const formattedDate = notif.createdAt 
+                          ? new Date(notif.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) 
+                          : 'Recientemente';
+                        
+                        const cleanPhone = notif.whatsapp.replace(/\D/g, '');
+                        const waLink = cleanPhone.length === 9 ? `https://wa.me/34${cleanPhone}` : `https://wa.me/${cleanPhone}`;
+
+                        return (
+                          <div 
+                            key={notif.id}
+                            className={`bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative hover:shadow-md transition-all text-left ${isRead ? 'opacity-60 bg-slate-50/50 shadow-none' : ''}`}
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div>
+                                <h3 className="text-xl font-bold font-kenao text-primary">
+                                  {notif.nombre} {notif.apellidos}
+                                </h3>
+                                <span className="text-[10px] text-slate-450 font-bold block mt-1 tracking-wider uppercase">
+                                  Enviado: {formattedDate}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <button 
+                                  onClick={() => toggleReadContactNotification(notif.id, !!isRead)}
+                                  className={`p-1.5 rounded-full transition-colors ${isRead ? 'bg-secondary/25 text-primary' : 'bg-slate-100 text-slate-400 hover:bg-secondary/15 hover:text-secondary'}`}
+                                  title={isRead ? "Marcar como pendiente" : "Marcar como aprendido/leído"}
+                                >
+                                  <Check className="w-4 h-4" />
+                                </button>
+                                <button 
+                                  onClick={() => setNotificationToDelete(notif)}
+                                  className="p-1.5 rounded-full bg-slate-100 text-slate-400 hover:bg-red-50 hover:text-red-650 transition-colors"
+                                  title="Eliminar notificación"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50/50 p-4 rounded-2xl border border-slate-100/50 text-xs">
+                              <div>
+                                <span className="block text-[9px] uppercase font-bold text-slate-400 mb-1">WhatsApp / Teléfono</span>
+                                <a 
+                                  href={waLink}
+                                  target="_blank" 
+                                  referrerPolicy="no-referrer"
+                                  className="text-secondary font-bold hover:underline inline-flex items-center gap-1.5 text-sm"
+                                >
+                                  {notif.whatsapp} 
+                                  <span className="text-[9px] bg-secondary/20 px-2 py-0.5 rounded font-mono uppercase tracking-widest text-slate-800">Mensaje</span>
+                                </a>
+                              </div>
+                              <div>
+                                <span className="block text-[9px] uppercase font-bold text-slate-400 mb-1">Correo Electrónico</span>
+                                <a 
+                                  href={`mailto:${notif.email}`}
+                                  className="text-primary hover:underline font-bold block text-sm overflow-hidden text-ellipsis"
+                                >
+                                  {notif.email}
+                                </a>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* 2. DIFUNDIR */}
                 <div className="space-y-6">
@@ -3933,6 +3928,53 @@ export default function Lideres() {
                 className="flex-grow py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition-colors disabled:opacity-40 disabled:hover:bg-red-600 cursor-pointer select-none"
               >
                 Desvincular
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Reusable Popup Modal for Deleting Contact Notification */}
+      {notificationToDelete && (
+        <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] border border-slate-200 p-6 max-w-sm w-full shadow-2xl text-center text-slate-800">
+            <div className="w-12 h-12 bg-red-50 text-red-650 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-100">
+              <Trash2 className="w-5 h-5 text-red-600" />
+            </div>
+            <h3 className="text-lg font-bold font-kenao text-primary mb-2">Eliminar Contacto</h3>
+            <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+              ¿Estás seguro de que deseas eliminar permanentemente la solicitud de contacto de <span className="font-bold text-slate-800">{notificationToDelete.nombre} {notificationToDelete.apellidos}</span>? Esta acción no se puede deshacer.
+            </p>
+            
+            <div className="p-3 bg-slate-100/50 rounded-xl mb-4 border border-slate-100 text-[11px] text-slate-650">
+              Escribe <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-red-200 font-bold text-red-650">DELETE</span> en mayúsculas para confirmar.
+            </div>
+            
+            <input
+              type="text"
+              placeholder="Escribe DELETE aquí..."
+              value={deleteConfirmationInput}
+              onChange={(e) => setDeleteConfirmationInput(e.target.value)}
+              className="text-center w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500/25 focus:bg-white text-xs font-mono uppercase tracking-widest font-bold mb-4 text-slate-800"
+            />
+            
+            <div className="flex gap-3 justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setNotificationToDelete(null);
+                  setDeleteConfirmationInput('');
+                }}
+                className="flex-grow py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer select-none"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={deleteConfirmationInput !== 'DELETE'}
+                onClick={handleDeleteContactNotification}
+                className="flex-grow py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition-colors disabled:opacity-40 disabled:hover:bg-red-600 cursor-pointer select-none"
+              >
+                Eliminar
               </button>
             </div>
           </div>

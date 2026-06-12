@@ -68,13 +68,17 @@ export default function Nosotros() {
             viewport={{ once: true }}
             className="relative"
           >
-            <div className="aspect-square rounded-[3rem] overflow-hidden shadow-2xl">
-              <img 
-                src="https://images.unsplash.com/photo-1511632765486-a01980e01a18?auto=format&fit=crop&q=80&w=1000" 
-                alt={t('about.valCommunity')} 
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-              />
+            <div className="aspect-square bg-gradient-to-tr from-slate-50 to-amber-50/40 rounded-[3rem] p-10 flex flex-col justify-between border border-slate-100 shadow-md">
+              <div className="space-y-4">
+                <span className="bg-secondary/20 text-slate-900 font-mono text-[10px] uppercase tracking-widest px-3 py-1 rounded-full font-bold inline-block">Huelva Church</span>
+                <h4 className="text-3xl font-kenao text-primary leading-tight">{t('about.valCommunity')}</h4>
+                <p className="text-primary/75 text-sm leading-relaxed">{t('about.desc')}</p>
+              </div>
+              <div className="pt-6 border-t border-slate-100 flex items-center gap-2 text-xs font-bold text-secondary uppercase tracking-wider">
+                <span>Viviendo en comunidad</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+                <span>Huelva, España</span>
+              </div>
             </div>
           </motion.div>
         </div>
