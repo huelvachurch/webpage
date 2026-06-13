@@ -47,6 +47,8 @@ export default function Supervision() {
   const [contactNotifications, setContactNotifications] = useState<any[]>([]);
   const [notificationToDelete, setNotificationToDelete] = useState<any>(null);
   const [deleteConfirmationInput, setDeleteConfirmationInput] = useState('');
+  const [superNoticeToDelete, setSuperNoticeToDelete] = useState<any>(null);
+  const [superNoticeDeleteInput, setSuperNoticeDeleteInput] = useState('');
 
   const isSupervisor = roles.includes('supervisor');
 
@@ -269,11 +271,13 @@ export default function Supervision() {
     }
   };
 
-  const handleDeleteNotice = async (id: string) => {
-    if (!window.confirm("¿Borrar esta notificación?")) return;
+  const handleDeleteNotice = async () => {
+    if (!superNoticeToDelete) return;
     try {
-      await deleteDoc(doc(db, 'supervisor_notifications', id));
-      setNotificaciones(prev => prev.filter(n => n.id !== id));
+      await deleteDoc(doc(db, 'supervisor_notifications', superNoticeToDelete.id));
+      setNotificaciones(prev => prev.filter(n => n.id !== superNoticeToDelete.id));
+      setSuperNoticeToDelete(null);
+      setSuperNoticeDeleteInput('');
     } catch(e) {
       console.error(e);
     }
@@ -1044,7 +1048,7 @@ export default function Supervision() {
                               </div>
                             </div>
                             <button 
-                              onClick={() => handleDeleteNotice(n.id)} 
+                              onClick={() => setSuperNoticeToDelete(n)} 
                               className="p-1.5 rounded-full bg-red-50 text-red-400 hover:text-red-650 hover:bg-red-500 hover:text-white transition-colors animate-none shrink-0"
                               title="Eliminar notificación"
                             >
@@ -1157,6 +1161,54 @@ export default function Supervision() {
                   type="button"
                   disabled={deleteConfirmationInput !== 'DELETE'}
                   onClick={handleDeleteContactNotification}
+                  className="flex-grow py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition-colors disabled:opacity-40 disabled:hover:bg-red-600 cursor-pointer select-none"
+                >
+                  Eliminar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Reusable Popup Modal for Deleting Supervisor Notification */}
+        {superNoticeToDelete && (
+          <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
+            <div className="bg-white rounded-[2rem] border border-slate-200 p-6 max-w-sm w-full shadow-2xl text-center text-slate-800">
+              <div className="w-12 h-12 bg-red-50 text-red-650 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-100">
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </div>
+              <h3 className="text-lg font-bold font-kenao text-primary mb-2">Eliminar Notificación</h3>
+              <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+                ¿Estás seguro de que deseas eliminar permanentemente la notificación <span className="font-bold text-slate-800">{superNoticeToDelete.title}</span>? Esta acción no se puede deshacer.
+              </p>
+              
+              <div className="p-3 bg-slate-100/50 rounded-xl mb-4 border border-slate-100 text-[11px] text-slate-650">
+                Escribe <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-red-200 font-bold text-red-650">DELETE</span> en mayúsculas para confirmar.
+              </div>
+              
+              <input
+                type="text"
+                placeholder="Escribe DELETE aquí..."
+                value={superNoticeDeleteInput}
+                onChange={(e) => setSuperNoticeDeleteInput(e.target.value)}
+                className="text-center w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500/25 focus:bg-white text-xs font-mono uppercase tracking-widest font-bold mb-4 text-slate-800"
+              />
+              
+              <div className="flex gap-3 justify-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSuperNoticeToDelete(null);
+                    setSuperNoticeDeleteInput('');
+                  }}
+                  className="flex-grow py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer select-none"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={superNoticeDeleteInput !== 'DELETE'}
+                  onClick={handleDeleteNotice}
                   className="flex-grow py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition-colors disabled:opacity-40 disabled:hover:bg-red-600 cursor-pointer select-none"
                 >
                   Eliminar

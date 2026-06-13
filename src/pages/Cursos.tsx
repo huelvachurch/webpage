@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, Filter, GraduationCap, Calendar, Clock, User, ChevronRight, CheckCircle, AlertCircle, LogIn } from 'lucide-react';
-import { collection, addDoc, onSnapshot, query, where, orderBy, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, where, orderBy, serverTimestamp, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
@@ -146,6 +146,11 @@ export default function Cursos() {
         enrolledAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+      // also grant 'alumno' role automatically if not there
+      if (!roles?.includes('alumno')) {
+        const userDocRef = doc(db, 'users', user.uid);
+        await setDoc(userDocRef, { roles: [...(roles || []), 'alumno'] }, { merge: true });
+      }
       // Success will be reflected via onSnapshot
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'enrollments');
@@ -211,10 +216,8 @@ export default function Cursos() {
           </motion.p>
         </div>
 
-        {isStudent ? (
-          <>
-            {/* Search and Filters */}
-            <div className="bg-white p-6 rounded-[2.5rem] shadow-sm mb-12 flex flex-col md:flex-row gap-4">
+        {/* Search and Filters */}
+        <div className="bg-white p-6 rounded-[2.5rem] shadow-sm mb-12 flex flex-col md:flex-row gap-4">
               <div className="relative flex-grow">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-primary/30 w-5 h-5" />
                 <input 
@@ -357,50 +360,6 @@ export default function Cursos() {
                 <h3 className="text-2xl font-kenao text-primary mb-2">{t('courses.notFound')}</h3>
               </div>
             )}
-          </>
-        ) : (
-          <div className="bg-white rounded-[3rem] p-12 border border-slate-100 shadow-xl text-center max-w-3xl mx-auto mt-6 relative overflow-hidden">
-            {/* Background design accents */}
-            <div className="absolute -right-16 -top-16 w-36 h-36 rounded-full bg-secondary/5 pointer-events-none" />
-            <div className="absolute -left-12 -bottom-12 w-24 h-24 rounded-full bg-primary/5 pointer-events-none" />
-
-            <div className="w-20 h-20 bg-primary/5 text-primary rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-sm">
-              <GraduationCap className="w-10 h-10" />
-            </div>
-
-            <h3 className="text-3xl md:text-4xl font-kenao text-primary mb-4">Plataforma de Capacitación</h3>
-            <p className="text-primary/60 mb-10 leading-relaxed max-w-xl mx-auto text-base">
-              Para poder visualizar el catálogo completo de nuestros cursos, inscribirte en clases y participar en programas académicos, se requiere tener asignado el Rol de Alumno oficial.
-            </p>
-
-            <div className="flex flex-col items-center justify-center">
-              {requestedAlumno ? (
-                <div className="flex flex-col items-center gap-3 bg-amber-50/70 text-amber-800 border border-amber-200/50 px-8 py-6 rounded-2xl max-w-md w-full">
-                  <div className="flex items-center gap-2.5 font-bold text-sm uppercase tracking-wider">
-                    <Clock className="w-5 h-5 text-amber-500 animate-pulse shrink-0" />
-                    Esperando asignación de Rol de Alumno
-                  </div>
-                  <p className="text-xs text-amber-700/80 leading-relaxed font-semibold">
-                    Tu solicitud ha sido enviada con éxito. El equipo de secretaría y administración de Huelva Church se encuentra revisándola y te habilitará el acceso académico muy pronto.
-                  </p>
-                </div>
-              ) : (
-                <button
-                  onClick={handleRequestAlumno}
-                  disabled={requestingAlumno}
-                  className="bg-primary text-white hover:bg-secondary hover:text-primary px-10 py-5 rounded-2xl font-black text-sm uppercase tracking-widest transition-all shadow-lg hover:shadow-xl cursor-pointer"
-                  style={{ minHeight: "44px" }}
-                >
-                  {requestingAlumno ? (
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  ) : (
-                    'Solicitar ser alumno'
-                  )}
-                </button>
-              )}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

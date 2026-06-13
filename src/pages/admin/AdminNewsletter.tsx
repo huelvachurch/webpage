@@ -777,14 +777,20 @@ export default function AdminNewsletter() {
     }
   };
 
+  const [subscriberToDelete, setSubscriberToDelete] = useState<{id: string, email: string} | null>(null);
+
   const handleDeleteSubscriber = async (id: string, email: string) => {
-    if (window.confirm(`¿Estás seguro de eliminar a ${email} como suscriptor?`)) {
-      try {
-        await deleteDoc(doc(db, 'subscribers', id));
-      } catch (error) {
-        console.error(error);
-        alert('Error al eliminar suscritor.');
-      }
+    setSubscriberToDelete({ id, email });
+  };
+
+  const confirmDeleteSubscriber = async () => {
+    if (!subscriberToDelete) return;
+    try {
+      await deleteDoc(doc(db, 'subscribers', subscriberToDelete.id));
+      setSubscriberToDelete(null);
+    } catch (error) {
+      console.error(error);
+      alert('Error al eliminar suscriptor.');
     }
   };
 
@@ -1737,6 +1743,34 @@ export default function AdminNewsletter() {
         </AnimatePresence>
 
       </div>
+
+      {subscriberToDelete && (
+        <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] border border-slate-200 p-6 max-w-sm w-full shadow-2xl text-center text-slate-800">
+            <h3 className="text-lg font-bold font-kenao text-primary mb-2">Eliminar Suscriptor</h3>
+            <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+              ¿Estás seguro de eliminar a <span className="font-bold">{subscriberToDelete.email}</span> de la lista de boletines?
+            </p>
+            
+            <div className="flex gap-3 justify-center">
+              <button
+                type="button"
+                onClick={() => setSubscriberToDelete(null)}
+                className="flex-grow py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer select-none"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteSubscriber}
+                className="flex-grow py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer select-none"
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

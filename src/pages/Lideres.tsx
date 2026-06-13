@@ -230,6 +230,9 @@ export default function Lideres() {
   const [notificationToDelete, setNotificationToDelete] = useState<any>(null);
   const [deleteConfirmationInput, setDeleteConfirmationInput] = useState('');
   
+  const [cellNoticeToDelete, setCellNoticeToDelete] = useState<any>(null);
+  const [cellNoticeDeleteInput, setCellNoticeDeleteInput] = useState('');
+  
   // Leader To Cell Notifications
   const [cellNotifications, setCellNotifications] = useState<any[]>([]);
   const [newCellNotification, setNewCellNotification] = useState({ title: '', message: '', expiry: '' });
@@ -1366,10 +1369,12 @@ export default function Lideres() {
     }
   };
 
-  const handleDeleteCellNotification = async (id: string) => {
-    if (!window.confirm("¿Borrar esta notificación?")) return;
+  const handleDeleteCellNotification = async () => {
+    if (!cellNoticeToDelete) return;
     try {
-      await deleteDoc(doc(db, 'cell_notifications', id));
+      await deleteDoc(doc(db, 'cell_notifications', cellNoticeToDelete.id));
+      setCellNoticeToDelete(null);
+      setCellNoticeDeleteInput('');
     } catch (err) {
       console.error("Error deleting cell notification", err);
     }
@@ -3217,7 +3222,7 @@ export default function Lideres() {
                               </div>
                             </div>
                             <button 
-                              onClick={() => handleDeleteCellNotification(ann.id)}
+                              onClick={() => setCellNoticeToDelete(ann)}
                               className="p-1.5 rounded-full bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-colors animate-none"
                               title="Eliminar notificación"
                             >
@@ -3249,7 +3254,7 @@ export default function Lideres() {
                 <div className="lg:col-span-2 bg-white rounded-[2rem] border border-slate-100 p-6 md:p-8 shadow-sm text-left">
                   <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 pb-6 border-b border-slate-100 gap-4">
                     <div>
-                      <h2 className="text-3xl font-kenao font-bold text-primary mb-2">Gestionar Datos</h2>
+                      <h2 className="text-3xl font-kenao font-bold text-primary mb-2">Datos de Célula</h2>
                       <p className="text-sm text-slate-500">
                         Configure el punto de encuentro de su célula. Estos datos aparecerán de forma automática en la página de Ubicaciones pública de Huelva Church.
                       </p>
@@ -3933,6 +3938,54 @@ export default function Lideres() {
           </div>
         </div>
       )}
+      {/* Reusable Popup Modal for Deleting Cell Notification */}
+      {cellNoticeToDelete && (
+        <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] border border-slate-200 p-6 max-w-sm w-full shadow-2xl text-center text-slate-800">
+            <div className="w-12 h-12 bg-red-50 text-red-650 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-100">
+              <Trash2 className="w-5 h-5 text-red-600" />
+            </div>
+            <h3 className="text-lg font-bold font-kenao text-primary mb-2">Eliminar Notificación</h3>
+            <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+              ¿Estás seguro de que deseas eliminar permanentemente la notificación <span className="font-bold text-slate-800">{cellNoticeToDelete.title}</span>? Esta acción no se puede deshacer.
+            </p>
+            
+            <div className="p-3 bg-slate-100/50 rounded-xl mb-4 border border-slate-100 text-[11px] text-slate-650">
+              Escribe <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-red-200 font-bold text-red-650">DELETE</span> en mayúsculas para confirmar.
+            </div>
+            
+            <input
+              type="text"
+              placeholder="Escribe DELETE aquí..."
+              value={cellNoticeDeleteInput}
+              onChange={(e) => setCellNoticeDeleteInput(e.target.value)}
+              className="text-center w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500/25 focus:bg-white text-xs font-mono uppercase tracking-widest font-bold mb-4 text-slate-800"
+            />
+            
+            <div className="flex gap-3 justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setCellNoticeToDelete(null);
+                  setCellNoticeDeleteInput('');
+                }}
+                className="flex-grow py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer select-none"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={cellNoticeDeleteInput !== 'DELETE'}
+                onClick={handleDeleteCellNotification}
+                className="flex-grow py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition-colors disabled:opacity-40 disabled:hover:bg-red-600 cursor-pointer select-none"
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Reusable Popup Modal for Deleting Contact Notification */}
       {notificationToDelete && (
         <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-sm z-[150] flex items-center justify-center p-4">

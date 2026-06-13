@@ -88,9 +88,6 @@ export default function AdminUsuarios() {
       draftRoles.push(roleToToggle);
     }
     
-    // Ensure at least 'alumno' if empty
-    if (draftRoles.length === 0) draftRoles = ['alumno'];
-    
     setDrafts(prev => ({
       ...prev,
       [uid]: {
@@ -128,9 +125,6 @@ export default function AdminUsuarios() {
         status: finalStatus,
         updatedAt: serverTimestamp()
       };
-      if (finalRoles.includes('alumno')) {
-        updates.requestedAlumnoRole = false;
-      }
       await updateDoc(userRef, updates);
 
       // --- NEW LIDER ROLE REMOVAL LOGIC ---

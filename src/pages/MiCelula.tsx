@@ -5,6 +5,7 @@ import { db, studiesDb } from '../firebase';
 import { Shield, BookOpen, MessageSquare, MapPin, Map, Clock, AlertCircle, ChevronRight, User as UserIcon, LogOut, Check, Heart, Bell, Calendar, Share2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useGlobalSettings } from '../utils/useSettings';
 
 interface Celula {
   id: string;
@@ -61,6 +62,7 @@ interface StudyInteraction {
 export default function MiCelula() {
   const { user, isAuthReady } = useAuth();
   const navigate = useNavigate();
+  const { hideHuelvaChurchCell } = useGlobalSettings();
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -153,8 +155,14 @@ export default function MiCelula() {
         if (!currentCelulaId) {
           // Fetch all celulas for selection
           const celulasSnap = await getDocs(collection(db, 'celulas'));
-          const celulasList: Celula[] = [];
+          let celulasList: Celula[] = [];
           celulasSnap.forEach(d => celulasList.push({ id: d.id, ...d.data() } as Celula));
+          if (hideHuelvaChurchCell) {
+             celulasList = celulasList.filter(c => 
+               !c.leader?.toLowerCase().includes('huelva church') && 
+               !c.name?.toLowerCase().includes('huelva church')
+             );
+          }
           setAvailableCelulas(celulasList);
           setMyCelula(null);
         }
@@ -169,7 +177,7 @@ export default function MiCelula() {
     }
 
     return () => unsubUser();
-  }, [user]);
+  }, [user, hideHuelvaChurchCell]);
 
   // Load studies only if tab is 'estudios' or 'peticiones' and user has celula
   useEffect(() => {
@@ -460,7 +468,7 @@ export default function MiCelula() {
                 <option value="">-- Seleccionar Célula --</option>
                 {availableCelulas.map(celula => (
                   <option key={celula.id} value={celula.id}>
-                    {celula.name} (Líder: {celula.leader})
+                    {celula.name}
                   </option>
                 ))}
               </select>

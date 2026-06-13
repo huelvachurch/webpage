@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { collection, addDoc, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { InteractiveCelulasMap, CelulaMapData } from '../components/InteractiveCelulasMap';
+import { useGlobalSettings } from '../utils/useSettings';
 
 export default function Celulas() {
   const { t } = useTranslation();
@@ -82,6 +83,9 @@ export default function Celulas() {
     setActiveStep(steps[0]);
   }, [t]);
 
+  // Use global settings
+  const { hideHuelvaChurchCell } = useGlobalSettings();
+
   // Load celulas
   useEffect(() => {
     const fetchCelulas = async () => {
@@ -91,8 +95,17 @@ export default function Celulas() {
         querySnapshot.forEach((doc) => {
           list.push({ id: doc.id, ...doc.data() } as Celula);
         });
-        if (list.length > 0) {
-          setCelulas(list);
+        
+        let filteredList = list;
+        if (hideHuelvaChurchCell) {
+          filteredList = list.filter(c => 
+            !c.leader?.toLowerCase().includes('huelva church') && 
+            !c.name?.toLowerCase().includes('huelva church')
+          );
+        }
+
+        if (filteredList.length > 0) {
+          setCelulas(filteredList);
         } else {
           // Default fallback data if empty in DB
           setCelulas([
@@ -111,7 +124,7 @@ export default function Celulas() {
       }
     };
     fetchCelulas();
-  }, []);
+  }, [hideHuelvaChurchCell]);
 
   // Unauthenticated users cannot read the 'users' collection to get leader emails.
   // The system relies on the fallback email 'huelvachurch@gmail.com' for the mailto: link,
@@ -381,7 +394,6 @@ export default function Celulas() {
                   {celulas.map(c => (
                     <option key={c.id} value={c.name}>{c.name}</option>
                   ))}
-                  <option value={t('cells.formOtherZone')} >{t('cells.formOtherZone')}</option>
                 </select>
               </div>
               <div className="flex items-start gap-4 pt-4">

@@ -4,6 +4,7 @@ import { doc, getDoc } from 'firebase/firestore';
 
 export function useGlobalSettings() {
   const [meetingTime, setMeetingTime] = useState('Domingos a las 18:30h');
+  const [hideHuelvaChurchCell, setHideHuelvaChurchCell] = useState(false);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -13,6 +14,7 @@ export function useGlobalSettings() {
         if (snap.exists()) {
           const data = snap.data();
           if (data.meetingTime) setMeetingTime(data.meetingTime);
+          if (data.hideHuelvaChurchCell !== undefined) setHideHuelvaChurchCell(data.hideHuelvaChurchCell);
         }
       } catch (err) {
         console.error("Error fetching general settings", err);
@@ -21,5 +23,5 @@ export function useGlobalSettings() {
     fetchSettings();
   }, []);
 
-  return { meetingTime };
+  return { meetingTime, hideHuelvaChurchCell };
 }
