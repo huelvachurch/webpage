@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { 
   collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, 
-  serverTimestamp, getDocs, where, setDoc 
+  serverTimestamp, getDocs, where, setDoc, arrayUnion 
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { useAuth } from '../../AuthContext';
@@ -28,8 +28,9 @@ interface NewsletterCampaign {
   subject: string;
   sentAt: any;
   sentCount: number;
+  sentTo?: string[];
   config: any;
-  status?: 'sent' | 'scheduled' | 'draft';
+  status?: 'sent' | 'scheduled' | 'draft' | 'sending';
   scheduledAt?: any;
   contentHtml?: string;
   createdAt?: any;
@@ -150,11 +151,18 @@ export default function AdminNewsletter() {
       // 1. Subscribers
       const qSub = query(collection(db, 'subscribers'), orderBy('subscribedAt', 'desc'));
       const unsubSub = onSnapshot(qSub, (snapshot) => {
-        const subs = snapshot.docs.map(doc => ({
+        const subsRaw = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         })) as Subscriber[];
-        setSubscribers(subs);
+        
+        const uniqueSubsMap = new Map<string, Subscriber>();
+        for (const sub of subsRaw) {
+          if (!uniqueSubsMap.has(sub.email)) {
+            uniqueSubsMap.set(sub.email, sub);
+          }
+        }
+        setSubscribers(Array.from(uniqueSubsMap.values()));
       }, (error) => {
         handleFirestoreError(error, OperationType.LIST, 'subscribers');
       });
@@ -195,6 +203,74 @@ export default function AdminNewsletter() {
     }
   }, [isAuthReady, user, isComunicador]);
 
+  // Handle immediate dispatch for bulk emailing
+  const processBulkEmailSend = async (campaign: NewsletterCampaign | { id: string; subject: string; contentHtml: string }, activeSubs: any[]) => {
+    try {
+      if (!campaign.contentHtml) {
+        throw new Error('El diseño HTML del boletín está vacío.');
+      }
+
+      await updateDoc(doc(db, 'newsletters', campaign.id), {
+        status: 'sending',
+        updatedAt: serverTimestamp()
+      });
+
+      let sentCount = 0;
+      for (const subscriber of activeSubs) {
+        let success = false;
+        let attempts = 0;
+        
+        while (!success && attempts < 3) {
+          attempts++;
+          try {
+            const res = await fetch('/api/newsletter/send', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                to: subscriber.email,
+                subject: campaign.subject,
+                contentHtml: campaign.contentHtml
+              })
+            });
+            const data = await res.json();
+            if (data.success) {
+              success = true;
+              sentCount++;
+              
+              // Register success immediately in DB
+              try {
+                await updateDoc(doc(db, 'newsletters', campaign.id), {
+                  sentTo: arrayUnion(subscriber.email),
+                  sentCount: sentCount,
+                  updatedAt: serverTimestamp()
+                });
+              } catch (dbErr) {
+                console.error("No se pudo actualizar Firestore para ", subscriber.email, dbErr);
+              }
+            }
+          } catch (e) {
+            console.error(`Intento ${attempts} fallido para ${subscriber.email}: `, e);
+            if (attempts < 3) {
+              await new Promise(r => setTimeout(r, 1000));
+            }
+          }
+        }
+      }
+
+      await updateDoc(doc(db, 'newsletters', campaign.id), {
+        status: 'sent',
+        sentAt: serverTimestamp(),
+        sentCount,
+        updatedAt: serverTimestamp()
+      });
+
+      return sentCount;
+    } catch (e: any) {
+      console.error(e);
+      throw e;
+    }
+  };
+
   // Frontend Scheduler: process scheduled campaigns when they reach their time
   useEffect(() => {
     if (!isAuthReady || !user || !isComunicador || !history.length || !subscribers.length) return;
@@ -215,37 +291,8 @@ export default function AdminNewsletter() {
           console.log(`[Frontend Scheduler] Procesando campaña programada ID: ${campaign.id}`);
           
           try {
-            await updateDoc(doc(db, 'newsletters', campaign.id), {
-              status: 'sending',
-              updatedAt: serverTimestamp()
-            });
-
             const activeSubs = subscribers.filter(s => s.active);
-            let sentCount = 0;
-            
-            for (const subscriber of activeSubs) {
-              try {
-                 await fetch('/api/newsletter/send', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    to: subscriber.email,
-                    subject: campaign.subject,
-                    contentHtml: campaign.contentHtml || ''
-                  })
-                });
-                sentCount++;
-              } catch (e) {
-                console.error(e);
-              }
-            }
-
-            await updateDoc(doc(db, 'newsletters', campaign.id), {
-              status: 'sent',
-              sentAt: serverTimestamp(),
-              sentCount,
-              updatedAt: serverTimestamp()
-            });
+            const sentCount = await processBulkEmailSend(campaign, activeSubs);
             console.log(`[Frontend Scheduler] Campaña completada: ${sentCount} correos enviados.`);
           } catch (e) {
             console.error('[Frontend Scheduler] Error al procesar:', e);
@@ -291,7 +338,11 @@ export default function AdminNewsletter() {
       const response = await fetch('/api/gemini/generate-newsletter', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: promptText, hasPostContext })
+        body: JSON.stringify({ 
+          prompt: promptText, 
+          hasPostContext,
+          scheduledDate: shouldSchedule ? scheduledAt : new Date().toISOString()
+        })
       });
 
       if (!response.ok) {
@@ -320,7 +371,11 @@ export default function AdminNewsletter() {
       const res = await fetch('/api/gemini/generate-short-text', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ promptType: type, context: type === 'sermonDescription' ? sermonContext : undefined })
+        body: JSON.stringify({ 
+          promptType: type, 
+          context: type === 'sermonDescription' ? sermonContext : undefined,
+          scheduledDate: shouldSchedule ? scheduledAt : new Date().toISOString()
+        })
       });
 
       if (!res.ok) throw new Error('Error en generación de texto');
@@ -850,7 +905,11 @@ export default function AdminNewsletter() {
       return;
     }
 
-    setIsBroadcasting(false);
+    if (!previewHtml) {
+      alert('El diseño del boletín está vacío o no se ha cargado todavía.');
+      return;
+    }
+
     setIsBroadcasting(true);
     setApiResponse(null);
 
@@ -859,41 +918,15 @@ export default function AdminNewsletter() {
       : specialSubject;
 
     try {
-      let sentCount = 0;
-      let hadRealDelivery = false;
-      let logs = '';
-
-      // Loop through subscribers and dispatch sending
-      for (const subscriber of activeSubs) {
-        try {
-          const res = await fetch('/api/newsletter/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              to: subscriber.email,
-              subject,
-              contentHtml: previewHtml
-            })
-          });
-          const data = await res.json();
-          if (data.success) {
-            sentCount++;
-            if (data.realDelivery) hadRealDelivery = true;
-          }
-        } catch (e) {
-          console.error(`Error enviando correo a ${subscriber.email}:`, e);
-        }
-      }
-
-      // Record campaign in historical databases
-      await addDoc(collection(db, 'newsletters'), {
+      // Create campaign in historical database as sending first
+      const docRef = await addDoc(collection(db, 'newsletters'), {
         type: campaignType,
         subject,
         contentHtml: previewHtml,
-        status: 'sent',
-        sentAt: serverTimestamp(),
+        status: 'sending',
         createdAt: serverTimestamp(),
-        sentCount,
+        sentCount: 0,
+        sentTo: [],
         config: campaignType === 'semanal' ? {
           greetingText,
           sermonImageUrl,
@@ -909,12 +942,19 @@ export default function AdminNewsletter() {
         }
       });
 
+      // Dispatch bulk job
+      const sentCount = await processBulkEmailSend(
+        { id: docRef.id, subject, contentHtml: previewHtml } as NewsletterCampaign,
+        activeSubs
+      );
+
       alert(`Boletín enviado con éxito. Envíos procesados: ${sentCount}/${activeSubs.length}.`);
       setApiResponse({
         success: true,
-        realDelivery: hadRealDelivery,
+        realDelivery: sentCount > 0,
         details: `Campaña completada. Se guardó el registro de envío (Historial). Recipientes: ${sentCount}`
       });
+      setActiveTab('history');
     } catch (e: any) {
       console.error(e);
       alert('Error durante el proceso de difusión masiva.');
@@ -950,6 +990,7 @@ export default function AdminNewsletter() {
         contentHtml: previewHtml,
         status,
         sentCount: 0,
+        sentTo: [],
         createdAt: serverTimestamp(),
         scheduledAt: status === 'scheduled' ? new Date(scheduledAt) : null,
         config: campaignType === 'semanal' ? {
@@ -996,38 +1037,37 @@ export default function AdminNewsletter() {
 
     setIsActionCampaignId(campaign.id);
     try {
-      let sentCount = 0;
-      for (const subscriber of activeSubs) {
-        try {
-          const res = await fetch('/api/newsletter/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              to: subscriber.email,
-              subject: campaign.subject,
-              contentHtml: campaign.contentHtml || ''
-            })
-          });
-          const data = await res.json();
-          if (data.success) {
-            sentCount++;
-          }
-        } catch (e) {
-          console.error(e);
-        }
-      }
-
-      await updateDoc(doc(db, 'newsletters', campaign.id), {
-        status: 'sent',
-        sentAt: serverTimestamp(),
-        sentCount,
-        updatedAt: serverTimestamp()
-      });
-
+      const sentCount = await processBulkEmailSend(campaign, activeSubs);
       alert(`Campaña enviada con éxito a ${sentCount} personas.`);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      alert('Error enviando boletín.');
+      alert(`Error enviando boletín: ${e.message || 'Desconocido'}`);
+    } finally {
+      setIsActionCampaignId(null);
+    }
+  };
+
+  const handleRetryFailedSend = async (campaign: NewsletterCampaign) => {
+    const sentTo = campaign.sentTo || [];
+    const activeSubs = subscribers.filter(s => s.active);
+    const failedSubs = activeSubs.filter(s => !sentTo.includes(s.email));
+
+    if (failedSubs.length === 0) {
+      alert('¡Todos los suscriptores activos ya han recibido este boletín!');
+      return;
+    }
+
+    if (!window.confirm(`Parece que faltan enviar a ${failedSubs.length} suscriptores. ¿Quieres reintentar el envío para estas personas ahora?`)) {
+      return;
+    }
+
+    setIsActionCampaignId(campaign.id);
+    try {
+      const sentCount = await processBulkEmailSend(campaign, failedSubs);
+      alert(`Reintento completado. Se enviaron con éxito a ${sentCount} personas más.`);
+    } catch (e: any) {
+      console.error(e);
+      alert(`Error reenviando boletín: ${e.message || 'Desconocido'}`);
     } finally {
       setIsActionCampaignId(null);
     }
@@ -1561,9 +1601,15 @@ export default function AdminNewsletter() {
                                 : 'Recién incorporado'}
                             </td>
                             <td className="p-6">
-                              <span className="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider border border-emerald-100">
-                                Activo
-                              </span>
+                              {sub.active ? (
+                                <span className="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider border border-emerald-100">
+                                  Activo
+                                </span>
+                              ) : (
+                                <span className="bg-red-50 text-red-700 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider border border-red-100">
+                                  Inactivo
+                                </span>
+                              )}
                             </td>
                             <td className="p-6 text-right">
                               <button
@@ -1640,6 +1686,8 @@ export default function AdminNewsletter() {
                                   </span>
                                 ) : status === 'draft' ? (
                                   <span className="text-slate-400 font-medium italic">Borrador Guardado</span>
+                                ) : status === 'sending' ? (
+                                  <span className="text-blue-500 font-bold italic">Procesando envíos...</span>
                                 ) : (
                                   camp.sentAt?.toDate 
                                     ? camp.sentAt.toDate().toLocaleString() 
@@ -1647,12 +1695,18 @@ export default function AdminNewsletter() {
                                 )}
                               </td>
                               <td className="p-6 font-bold text-primary font-mono text-xs">
-                                {status === 'sent' ? `${camp.sentCount || 0} personas` : '—'}
+                                {status === 'sent' 
+                                  ? `${camp.sentTo?.length || camp.sentCount || 0}/${subscribers.filter(s => s.active).length} personas` 
+                                  : '—'}
                               </td>
                               <td className="p-6 text-center">
                                 {status === 'sent' ? (
                                   <span className="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider border border-emerald-100">
                                     Completado
+                                  </span>
+                                ) : status === 'sending' ? (
+                                  <span className="bg-blue-50 text-blue-700 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider border border-blue-100 animate-pulse">
+                                    Enviando
                                   </span>
                                 ) : status === 'scheduled' ? (
                                   <span className="bg-amber-50 text-amber-700 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider border border-amber-100 animate-pulse">
@@ -1666,13 +1720,13 @@ export default function AdminNewsletter() {
                               </td>
                               <td className="p-6 text-right">
                                 <div className="flex justify-end items-center gap-2">
-                                  {(status === 'draft' || status === 'scheduled') && (
+                                  {(status === 'draft' || status === 'scheduled' || status === 'sending') && (
                                     <>
                                       <button
                                         onClick={() => handleDirectSend(camp)}
                                         disabled={isActionCampaignId === camp.id}
                                         className="bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all shadow-sm flex items-center gap-1 disabled:opacity-50"
-                                        title="Enviar inmediatamente"
+                                        title={status === 'sending' ? "Forzar envío (puede duplicar)" : "Enviar inmediatamente"}
                                       >
                                         {isActionCampaignId === camp.id ? (
                                           <Loader2 className="w-3 h-3 animate-spin" />
@@ -1709,13 +1763,24 @@ export default function AdminNewsletter() {
                                     </>
                                   )}
 
-                                  {status === 'scheduled' && (
+                                  {(status === 'scheduled' || status === 'sending') && (
                                     <button
                                       onClick={() => handleCancelScheduled(camp.id)}
                                       className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-200/50 text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all"
-                                      title="Desprogramar y volver a borrador"
+                                      title="Desprogramar / Cancelar envío"
                                     >
                                       Cancelar
+                                    </button>
+                                  )}
+
+                                  {status === 'sent' && (camp.sentCount || 0) < subscribers.filter(s => s.active).length && (
+                                    <button
+                                      onClick={() => handleRetryFailedSend(camp)}
+                                      disabled={isActionCampaignId === camp.id}
+                                      className="bg-blue-100 hover:bg-blue-200 text-blue-900 border border-blue-200/50 text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
+                                      title={`Faltan ${subscribers.filter(s => s.active).length - (camp.sentTo?.length || camp.sentCount)} por enviar`}
+                                    >
+                                      {isActionCampaignId === camp.id ? 'Reenviando...' : 'Reintentar fallidos'}
                                     </button>
                                   )}
 

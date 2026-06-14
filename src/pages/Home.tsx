@@ -60,14 +60,6 @@ export default function Home() {
     setSubscribing(true);
     setSubError('');
     try {
-      const q = query(collection(db, 'subscribers'), where('email', '==', subEmail.toLowerCase().trim()));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        setSubSuccess(true);
-        setSubscribing(false);
-        return;
-      }
-
       await addDoc(collection(db, 'subscribers'), {
         email: subEmail.toLowerCase().trim(),
         active: true,

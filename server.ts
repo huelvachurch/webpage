@@ -191,13 +191,15 @@ Notas sobre los campos:
         return res.status(500).json({ error: "Gemini API integration missing." });
       }
 
-      const { prompt, hasPostContext } = req.body;
+      const { prompt, hasPostContext, scheduledDate } = req.body;
 
       if (!prompt) {
         return res.status(400).json({ error: "Missing prompt" });
       }
 
-      const instruction = `Eres un redactor de contenido experto para comunicados de la Iglesia Cristiana Evangélica "Huelva Church". Tu rol es redactar un comunicado especial para ser enviado por correo electrónico a la congregación. El tono debe ser cálido, claro, pastoral y al mismo tiempo directo y fácil de leer. IMPORTANTE: Redacta siempre en primera persona del plural (nosotros, nuestro), hablando como iglesia o equipo pastoral, nunca como un individuo en singular (yo).
+      const dayContext = scheduledDate ? `Este correo se enviará el ${new Date(scheduledDate).toLocaleDateString('es-ES', { weekday: 'long' })}.` : '';
+
+      const instruction = `Eres un redactor de contenido experto para comunicados de la Iglesia Cristiana Evangélica "Huelva Church". Tu rol es redactar un comunicado especial para ser enviado por correo electrónico a la congregación. El tono debe ser cálido, claro, pastoral y al mismo tiempo directo y fácil de leer. ${dayContext} IMPORTANTE: Redacta siempre en primera persona del plural (nosotros, nuestro), hablando como iglesia o equipo pastoral, nunca como un individuo en singular (yo).
 
 Instrucciones:
 ${hasPostContext ? '- Usa el contexto provisto para redactar el evento/noticia, animando a la iglesia a participar.' : '- Redacta un correo completo basado exclusivamente en el texto provisto. Desarrolla la idea con un lenguaje cordial y familiar.'}
@@ -239,16 +241,18 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
         return res.status(500).json({ error: "Gemini API integration missing." });
       }
 
-      const { promptType, context } = req.body;
+      const { promptType, context, scheduledDate } = req.body;
       let instruction = "";
       
+      const dayContext = scheduledDate ? `Este boletín está programado para enviarse el ${new Date(scheduledDate).toLocaleDateString('es-ES', { weekday: 'long' })}.` : 'El día de envío es genérico o indefinido.';
+
       if (promptType === 'greeting') {
-         instruction = "Eres el equipo pastoral de la iglesia 'Huelva Church'. Redacta UN solo párrafo (no más de 4 o 5 líneas) como un saludo muy cálido, amoroso y alegre para iniciar el boletín semanal de la iglesia. Transmite gozo por la celebración de hoy y anima a observar todas las secciones de este boletín para estar al tanto de lo nuevo de esta semana. Motiva indirectamente a permanecer conectados mediante nuestras actividades semanales (células o grupos pequeños, noches de oración, radio Huelva Church, y redes sociales). Varía las palabras para que suene muy natural, inspirador y cercano. IMPORTANTE: Redacta siempre en primera persona del plural (nosotros, nuestro), hablando como iglesia o equipo pastoral, nunca como un individuo en singular (yo). No uses comillas al principio o al final.";
+         instruction = `Eres el equipo pastoral de la iglesia 'Huelva Church'. Redacta UN solo párrafo (no más de 4 o 5 líneas) como un saludo muy cálido, amoroso y alegre para iniciar el boletín semanal de la iglesia. ${dayContext} Transmite gozo por nuestra comunión y anima a observar todas las secciones de este boletín para estar al tanto de lo nuevo. Motiva indirectamente a permanecer conectados mediante nuestras actividades semanales (células o grupos pequeños, noches de oración, radio Huelva Church, y redes sociales). Varía las palabras para que suene muy natural, inspirador y cercano. SIEMPRE ten en cuenta el día de la semana del envío para no decir 'feliz domingo' si se envía otro día. IMPORTANTE: Redacta siempre en primera persona del plural (nosotros, nuestro), hablando como iglesia o equipo pastoral, nunca como un individuo en singular (yo). No uses comillas.`;
       } else if (promptType === 'sermonDescription') {
          let contextText = context ? ` Contexto a tener en cuenta: ${context}.` : '';
-         instruction = `Eres el equipo pastoral de la iglesia 'Huelva Church'. Redacta UN solo párrafo corto (2-3 líneas) invitando y animando con entusiasmo a la congregación a venir a la reunión general familiar de este domingo para adorar al Señor y recibir una palabra fresca de parte de Dios. Varía el mensaje, que no suene repetitivo.${contextText} IMPORTANTE: Redacta siempre en primera persona del plural (nosotros, nuestro), nunca como un individuo en singular (yo). No uses comillas al principio o al final.`;
+         instruction = `Eres el equipo pastoral de la iglesia 'Huelva Church'. Redacta UN solo párrafo corto (2-3 líneas) invitando y animando con entusiasmo a la congregación a venir a la reunión general familiar de este fin de semana para adorar al Señor y recibir una palabra fresca de parte de Dios. ${dayContext} Varía el mensaje, que no suene repetitivo.${contextText} IMPORTANTE: Redacta siempre en primera persona del plural (nosotros, nuestro), nunca como un individuo en singular (yo). No uses comillas al principio o al final.`;
       } else if (promptType === 'cenaDescription') {
-         instruction = "Eres el equipo pastoral de la iglesia 'Huelva Church'. Redacta una descripción muy breve (máximo 2 oraciones cortas) invitando a la iglesia a participar a la mesa de la Cena del Señor en la reunión de este domingo. IMPORTANTE: Redacta siempre en primera persona del plural (nosotros, nuestro). No uses comillas al principio o al final.";
+         instruction = `Eres el equipo pastoral de la iglesia 'Huelva Church'. Redacta una descripción muy breve (máximo 2 oraciones cortas) invitando a la iglesia a participar a la mesa de la Cena del Señor en la reunión general próxima. ${dayContext} IMPORTANTE: Redacta siempre en primera persona del plural (nosotros, nuestro). No uses comillas al principio o al final.`;
       } else {
          return res.status(400).json({ error: "Invalid prompt type" });
       }
@@ -330,6 +334,47 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
       res.json({ id: session.id });
     } catch (error: any) {
       console.error("Stripe Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Newsletter Bulk Sending Endpoint (Real & Simulated)
+  app.post("/api/newsletter/send-bulk", async (req, res) => {
+    try {
+      const { toList, subject, contentHtml } = req.body;
+      if (!Array.isArray(toList) || !subject || !contentHtml) {
+         return res.status(400).json({ error: "Faltan campos obligatorios (toList debe ser un array, subject, contentHtml)" });
+      }
+
+      console.log(`Petición para enviar correos en masa a ${toList.length} destinatarios`);
+      let sentCount = 0;
+      let hadRealDelivery = false;
+
+      // Envía emails en chunks en paralelo para no colapsar la conexión SMTP,
+      // y procesa cada chunk consecutivamente.
+      const CHUNK_SIZE = 20;
+      for (let i = 0; i < toList.length; i += CHUNK_SIZE) {
+        const chunk = toList.slice(i, i + CHUNK_SIZE);
+        await Promise.all(chunk.map(async (email) => {
+          try {
+            const result = await sendSingleEmail(email, subject, contentHtml);
+            if (result.success) {
+              sentCount++;
+              if (result.realDelivery) hadRealDelivery = true;
+            }
+          } catch (e) {
+            console.error(`Error enviando a ${email}: `, e);
+          }
+        }));
+      }
+
+      res.json({
+        success: true,
+        sentCount,
+        realDelivery: hadRealDelivery
+      });
+    } catch (error: any) {
+      console.error("Error en Newsletter Bulk Endpoint:", error);
       res.status(500).json({ error: error.message });
     }
   });

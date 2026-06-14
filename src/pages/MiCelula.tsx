@@ -508,8 +508,28 @@ export default function MiCelula() {
             <p className="text-slate-600">Conecta con tu grupo y continúa con tus estudios semanales.</p>
           </div>
 
-          {/* Menu de Pestañas Independiente (Similar a Liderazgo) */}
-          <div className="flex flex-col md:grid md:grid-cols-4 bg-white p-2 rounded-2xl shadow-sm border border-slate-100 w-full mb-10 gap-1">
+          {/* Menú Móvil Colapsable */}
+          <div className="block lg:hidden mb-8">
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Menú de Navegación</label>
+            <div className="relative">
+              <select
+                value={activeTab}
+                onChange={(e) => setActiveTab(e.target.value as TabType)}
+                className="w-full bg-white border border-slate-200 text-primary font-bold px-4 py-3.5 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-secondary/50 uppercase text-sm tracking-wide shadow-sm"
+              >
+                <option value="notificaciones">Notificaciones ({activeCellNotificationsForBadge.length})</option>
+                <option value="estudios">Estudios</option>
+                <option value="peticiones">Peticiones</option>
+                <option value="info">Información</option>
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400">
+                <ChevronRight className="w-5 h-5 transform rotate-90" />
+              </div>
+            </div>
+          </div>
+
+          {/* Menu de Pestañas Independiente (Desktop) */}
+          <div className="hidden lg:grid lg:grid-cols-4 bg-white p-2 rounded-2xl shadow-sm border border-slate-100 w-full mb-10 gap-1">
             <button
               onClick={() => setActiveTab('notificaciones')}
               className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase relative cursor-pointer ${

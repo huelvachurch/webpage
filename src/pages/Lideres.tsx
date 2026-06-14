@@ -26,7 +26,8 @@ import {
   Pencil,
   ChevronDown,
   UserCheck,
-  Check
+  Check,
+  ChevronRight
 } from 'lucide-react';
 import { 
   collection, 
@@ -253,6 +254,8 @@ export default function Lideres() {
   const [attendeeSearch, setAttendeeSearch] = useState('');
   const [attendeeFilterCategory, setAttendeeFilterCategory] = useState<string>('all');
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+  const [deleteMemberVerification, setDeleteMemberVerification] = useState<any>(null);
+  const [deleteMemberInput, setDeleteMemberInput] = useState("");
   const [memberSearchTerm, setMemberSearchTerm] = useState('');
   const [showMemberSearchResults, setShowMemberSearchResults] = useState(false);
   const [systemUsers, setSystemUsers] = useState<any[]>([]);
@@ -1084,6 +1087,24 @@ export default function Lideres() {
   const [memberToUnlink, setMemberToUnlink] = useState<any | null>(null);
   const [releaseInput, setReleaseInput] = useState('');
 
+  const confirmDestroyMember = async () => {
+    if (!deleteMemberVerification) return;
+    try {
+      if (deleteMemberVerification.id.startsWith('temp-')) {
+        setCellMembers(prev => prev.filter(m => m.id !== deleteMemberVerification.id));
+      } else {
+        await deleteDoc(doc(db, 'cell_members', deleteMemberVerification.id));
+        setCellMembers(prev => prev.filter(m => m.id !== deleteMemberVerification.id));
+      }
+      setDeleteMemberVerification(null);
+      setDeleteMemberInput("");
+      setEditingMemberId(null);
+    } catch (err) {
+      console.error(err);
+      alert("Error al eliminar asistente.");
+    }
+  };
+
   const handleDeleteMember = async (memberId: string) => {
     if (memberId.startsWith('temp-')) {
       setCellMembers(prev => prev.filter(m => m.id !== memberId));
@@ -1540,8 +1561,29 @@ export default function Lideres() {
           </div>
         </div>
 
-        {/* Tab Selection Navigation Bar */}
-        <div className="flex flex-col lg:grid lg:grid-cols-5 bg-white p-2 rounded-2xl shadow-sm border border-slate-100 w-full mb-10 gap-1">
+        {/* Menú Móvil Colapsable */}
+        <div className="block lg:hidden mb-8">
+          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Sección</label>
+          <div className="relative">
+            <select
+              value={activeTab}
+              onChange={(e) => setActiveTab(e.target.value as any)}
+              className="w-full bg-white border border-slate-200 text-primary font-bold px-4 py-3.5 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-secondary/50 uppercase text-sm tracking-wide shadow-sm"
+            >
+              <option value="form">Formularios</option>
+              <option value="attendees">Asistentes</option>
+              <option value="stats">Estadísticas</option>
+              <option value="announcements">Notificaciones ({activeAnnouncementsForBadge.length})</option>
+              <option value="cell">Mi Célula</option>
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400">
+              <ChevronRight className="w-5 h-5 transform rotate-90" />
+            </div>
+          </div>
+        </div>
+
+        {/* Tab Selection Navigation Bar (Desktop) */}
+        <div className="hidden lg:grid lg:grid-cols-5 bg-white p-2 rounded-2xl shadow-sm border border-slate-100 w-full mb-10 gap-1">
           <button
             onClick={() => { window.scrollTo(0, 0); setActiveTab('form'); }}
             className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase cursor-pointer ${
@@ -2003,20 +2045,33 @@ export default function Lideres() {
                                         </div>
                                       </div>
                                     </div>
-                                    <div className="flex justify-end gap-2 mt-2 pt-4 border-t border-slate-100">
+                                    <div className="flex justify-between items-center mt-2 pt-4 border-t border-slate-100">
                                       <button
                                         type="button"
-                                        onClick={() => setEditingMemberId(null)}
-                                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg transition-colors border border-slate-200 cursor-pointer"
+                                        onClick={() => {
+                                          setDeleteMemberVerification(member);
+                                          setDeleteMemberInput("");
+                                        }}
+                                        className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                        title="Eliminar asistente"
                                       >
-                                        Cancelar
+                                        <Trash2 className="w-4 h-4" />
                                       </button>
-                                      <button
-                                        type="submit"
-                                        className="px-4 py-2 bg-secondary hover:bg-secondary/90 text-primary text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-                                      >
-                                        Guardar
-                                      </button>
+                                      <div className="flex justify-end gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingMemberId(null)}
+                                          className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg transition-colors border border-slate-200 cursor-pointer"
+                                        >
+                                          Cancelar
+                                        </button>
+                                        <button
+                                          type="submit"
+                                          className="px-4 py-2 bg-secondary hover:bg-secondary/90 text-primary text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                                        >
+                                          Guardar
+                                        </button>
+                                      </div>
                                     </div>
                                   </form>
                                 ) : (
@@ -3938,6 +3993,57 @@ export default function Lideres() {
           </div>
         </div>
       )}
+
+      {/* Popup Modal for Eliminar Asistente (Destroy) */}
+      {deleteMemberVerification && (
+        <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] border border-slate-200 p-6 max-w-sm w-full shadow-2xl text-center text-slate-800">
+            <div className="w-12 h-12 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-100">
+              <Trash2 className="w-5 h-5 text-red-600" />
+            </div>
+            <h3 className="text-lg font-bold font-kenao text-primary mb-2">Eliminar Asistente</h3>
+            <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+              ¿Estás seguro de que deseas eliminar permanentemente a <span className="font-bold text-slate-800">{deleteMemberVerification.name}</span> de los registros? 
+              <br/><br/>
+              <span className="font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded border border-amber-200 inline-block">⚠️ Advertencia:</span> Esto afectará las estadísticas históricas donde este asistente haya participado.
+            </p>
+            
+            <div className="p-3 bg-slate-100/50 rounded-xl mb-4 border border-slate-100 text-[11px] text-slate-650">
+              Escribe <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-red-200 font-bold text-red-600">DELETE</span> para confirmar su eliminación.
+            </div>
+            
+            <input
+              type="text"
+              placeholder="Escribe DELETE aquí..."
+              value={deleteMemberInput}
+              onChange={(e) => setDeleteMemberInput(e.target.value)}
+              className="text-center w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500/25 focus:bg-white text-xs font-mono uppercase tracking-widest font-bold mb-4 text-slate-800"
+            />
+            
+            <div className="flex gap-3 justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteMemberVerification(null);
+                  setDeleteMemberInput('');
+                }}
+                className="flex-grow py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer select-none"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={deleteMemberInput !== 'DELETE'}
+                onClick={confirmDestroyMember}
+                className="flex-grow py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition-colors disabled:opacity-40 disabled:hover:bg-red-600 cursor-pointer select-none"
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Reusable Popup Modal for Deleting Cell Notification */}
       {cellNoticeToDelete && (
         <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-sm z-[150] flex items-center justify-center p-4">

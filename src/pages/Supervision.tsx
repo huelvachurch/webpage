@@ -13,7 +13,8 @@ import {
   TrendingUp,
   Bell,
   Search,
-  Check
+  Check,
+  ChevronRight
 } from 'lucide-react';
 import { collection, query, where, getDocs, doc, deleteDoc, updateDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -443,8 +444,27 @@ export default function Supervision() {
           </div>
         </div>
 
-        {/* Barra de navegación de Tabs (Consistente con Lideres.tsx) */}
-        <div className="flex flex-col lg:grid lg:grid-cols-3 bg-white p-2 rounded-2xl shadow-sm border border-slate-100 w-full mb-10 gap-1">
+        {/* Menú Móvil Colapsable */}
+        <div className="block lg:hidden mb-8">
+          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Sección</label>
+          <div className="relative">
+            <select
+              value={activeTab}
+              onChange={(e) => setActiveTab(e.target.value as any)}
+              className="w-full bg-white border border-slate-200 text-primary font-bold px-4 py-3.5 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-secondary/50 uppercase text-sm tracking-wide shadow-sm"
+            >
+              <option value="lideres">Líderes y Células</option>
+              <option value="estadisticas">Estadísticas</option>
+              <option value="notificaciones">Notificaciones ({contactNotifications.length})</option>
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400">
+              <ChevronRight className="w-5 h-5 transform rotate-90" />
+            </div>
+          </div>
+        </div>
+
+        {/* Barra de navegación de Tabs (Desktop) */}
+        <div className="hidden lg:grid lg:grid-cols-3 bg-white p-2 rounded-2xl shadow-sm border border-slate-100 w-full mb-10 gap-1">
           <button
             onClick={() => { window.scrollTo(0, 0); setActiveTab('lideres'); }}
             className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase cursor-pointer ${
