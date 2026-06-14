@@ -27,6 +27,7 @@ import Presentacion from './pages/Presentacion';
 import Legal from './pages/Legal';
 import AsistenciaCompartida from './pages/AsistenciaCompartida';
 import CursoDetalle from './pages/CursoDetalle';
+import Marca from './pages/Marca';
 import CookieBanner from './components/CookieBanner';
 import { AuthProvider, ErrorBoundary, useAuth } from './AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
@@ -157,6 +158,7 @@ export default function App() {
                 <Route path="/presentacion" element={<Presentacion />} />
                 <Route path="/asistencia-compartida" element={<AsistenciaCompartida />} />
                 <Route path="/legal" element={<Legal />} />
+                <Route path="/marca" element={<Marca />} />
                 
                 {/* Admin Routes */}
                 <Route path="/admin/comunicaciones" element={<AdminComunicaciones />} />

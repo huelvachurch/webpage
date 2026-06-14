@@ -39,6 +39,7 @@ export default function Footer() {
         <div className="border-t border-white/10 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs md:text-sm text-center md:text-left">
           <p>&copy; {new Date().getFullYear()} HuelvaChurch. {t('footer.rights')}</p>
           <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-white/50">
+            <Link to="/marca" className="hover:text-secondary transition-colors">Manual de Marca</Link>
             <Link to="/legal?tab=privacy" className="hover:text-secondary transition-colors">{t('footer.links.privacy')}</Link>
             <Link to="/legal?tab=terms" className="hover:text-secondary transition-colors">{t('footer.links.terms')}</Link>
             <Link to="/legal?tab=cookies" className="hover:text-secondary transition-colors">{t('footer.links.cookies')}</Link>
