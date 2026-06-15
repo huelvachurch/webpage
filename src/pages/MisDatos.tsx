@@ -29,7 +29,7 @@ interface Enrollment {
 }
 
 export default function MisDatos() {
-  const { user, roles, isAuthReady, loading } = useAuth();
+  const { user, roles, status, isAuthReady, loading } = useAuth();
   const navigate = useNavigate();
 
   // State
@@ -219,7 +219,11 @@ export default function MisDatos() {
 
     try {
       const userDocRef = doc(db, 'users', user.uid);
-      await updateDoc(userDocRef, {
+      await setDoc(userDocRef, {
+        uid: user.uid,
+        email: user.email || '',
+        roles: roles || [],
+        status: status || 'active',
         notificationPreferences: {
           celula: prefCelula,
           liderazgo: prefLiderazgo,
@@ -229,12 +233,17 @@ export default function MisDatos() {
           celebracion: prefCelebracion
         },
         updatedAt: serverTimestamp()
-      });
+      }, { merge: true });
       setPrefsSuccess(true);
       setTimeout(() => setPrefsSuccess(false), 5000);
     } catch (error) {
       console.error("Error saving notification preferences:", error);
       setPrefsError("Error al guardar las preferencias. Por favor intentalo de nuevo.");
+      try {
+        handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+      } catch (fErr) {
+        // Log formatted Firestore details
+      }
     } finally {
       setSavingPrefs(false);
     }
@@ -313,9 +322,13 @@ export default function MisDatos() {
     try {
       const fullDisplayName = `${nombre.trim()} ${apellidos.trim()}`.trim() || user.displayName || '';
       
-      // Update User Document
+      // Update User Document with setDoc merge: true
       const userDocRef = doc(db, 'users', user.uid);
-      await updateDoc(userDocRef, {
+      await setDoc(userDocRef, {
+        uid: user.uid,
+        email: user.email || '',
+        roles: roles || [],
+        status: status || 'active',
         displayName: fullDisplayName,
         birthDate: fechaNacimiento,
         lugarResidencia: lugar,
@@ -323,7 +336,7 @@ export default function MisDatos() {
         municipio: lugar === 'Otro Municipio de Huelva' ? municipio : '',
         lugarDetalle: lugar === 'Otro' ? lugarDetalle : '',
         updatedAt: serverTimestamp()
-      });
+      }, { merge: true });
 
       // Update Subscriptions Link
       if (user.email) {
@@ -349,6 +362,11 @@ export default function MisDatos() {
     } catch (error) {
       console.error("Error updating profile:", error);
       setErrorMsg("Error al actualizar la información. Inténtalo de nuevo.");
+      try {
+        handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+      } catch (fErr) {
+        // Log formatted Firestore details
+      }
     } finally {
       setSaving(false);
     }
