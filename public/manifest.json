@@ -1,0 +1,31 @@
+{
+  "name": "Huelva Church",
+  "short_name": "Huelva Church",
+  "description": "Una Iglesia Cristiana Evangélica en Huelva dedicada a compartir el amor de Jesús.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "orientation": "any",
+  "categories": ["lifestyle", "education"],
+  "icons": [
+    {
+      "src": "/images/LogoPWA.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/images/LogoPWA.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/images/LogoPWA.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

@@ -22,7 +22,19 @@
           "enum": ["pending", "active", "blocked"],
           "description": "Account status"
         },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "notificationPreferences": {
+          "type": "object",
+          "properties": {
+            "celula": { "type": "boolean", "description": "Update push alerts from the user's cell leader" },
+            "liderazgo": { "type": "boolean", "description": "Supervisor/assistants notifications and leadership warnings" },
+            "oracion": { "type": "boolean", "description": "Prayer group alerts 30 minutes before" },
+            "cellMeet": { "type": "boolean", "description": "Cell meeting alerts 1 day before" },
+            "publicaciones": { "type": "boolean", "description": "Notification when blogger / church announcements published" },
+            "celebracion": { "type": "boolean", "description": "Celebration service countdown reminder 3 hours before" }
+          },
+          "description": "User notification channel preferences"
+        }
       },
       "required": ["uid", "email", "roles"]
     },

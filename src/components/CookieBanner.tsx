@@ -44,11 +44,13 @@ export default function CookieBanner() {
   const handleAccept = () => {
     localStorage.setItem('huelvachurch_cookies_consent', 'accepted');
     setIsVisible(false);
+    window.dispatchEvent(new CustomEvent('huelvachurch_cookies_resolved'));
   };
 
   const handleDecline = () => {
     localStorage.setItem('huelvachurch_cookies_consent', 'declined');
     setIsVisible(false);
+    window.dispatchEvent(new CustomEvent('huelvachurch_cookies_resolved'));
   };
 
   // Get current translation texts based on context language

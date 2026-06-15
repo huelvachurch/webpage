@@ -29,6 +29,7 @@ import AsistenciaCompartida from './pages/AsistenciaCompartida';
 import CursoDetalle from './pages/CursoDetalle';
 import Marca from './pages/Marca';
 import CookieBanner from './components/CookieBanner';
+import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { AuthProvider, ErrorBoundary, useAuth } from './AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -175,6 +176,7 @@ export default function App() {
             <Footer />
             <WelcomePopup />
             <CookieBanner />
+            <PWAInstallPrompt />
           </div>
         </Router>
       </AuthProvider>

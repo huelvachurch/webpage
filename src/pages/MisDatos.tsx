@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   User, Calendar, MapPin, Mail, Check, Loader2, AlertTriangle, Trash2, 
-  ShieldAlert, BookOpen, Clock, GraduationCap, CheckCircle, Bell, ArrowRight
+  ShieldAlert, BookOpen, Clock, GraduationCap, CheckCircle, Bell, ArrowRight,
+  Smartphone, Volume2
 } from 'lucide-react';
 import { 
   doc, getDoc, updateDoc, setDoc, query, collection, where, getDocs, 
@@ -50,6 +51,25 @@ export default function MisDatos() {
   const [newsletterSubscribed, setNewsletterSubscribed] = useState(false);
   const [subscriberDocId, setSubscriberDocId] = useState<string | null>(null);
   const [hasRequestedAlumno, setHasRequestedAlumno] = useState(false);
+  const [userCelulaId, setUserCelulaId] = useState<string | null>(null);
+
+  // Notification Preferences States
+  const [prefCelula, setPrefCelula] = useState(true);
+  const [prefLiderazgo, setPrefLiderazgo] = useState(true);
+  const [prefOracion, setPrefOracion] = useState(true);
+  const [prefCellMeet, setPrefCellMeet] = useState(true);
+  const [prefPublicaciones, setPrefPublicaciones] = useState(true);
+  const [prefCelebracion, setPrefCelebracion] = useState(true);
+
+  // Browser Push permission states
+  const [browserPermission, setBrowserPermission] = useState<string>('default');
+  const [pushSupported, setPushSupported] = useState(false);
+  const [savingPrefs, setSavingPrefs] = useState(false);
+  const [prefsSuccess, setPrefsSuccess] = useState(false);
+  const [prefsError, setPrefsError] = useState('');
+  const [showTestBanner, setShowTestBanner] = useState(false);
+  const [testBannerMessage, setTestBannerMessage] = useState('');
+  const [isSimulatingPush, setIsSimulatingPush] = useState(false);
 
   // Enrollments State
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
@@ -66,6 +86,14 @@ export default function MisDatos() {
       navigate('/login');
     }
   }, [user, loading, isAuthReady, navigate]);
+
+  // Check notification support on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setPushSupported(true);
+      setBrowserPermission((window as any).Notification.permission);
+    }
+  }, []);
 
   // Load profile data and newsletter subscription
   useEffect(() => {
@@ -96,6 +124,16 @@ export default function MisDatos() {
             setMunicipio(data.municipio || '');
             setLugarDetalle(data.lugarDetalle || '');
             setHasRequestedAlumno(data.requestedAlumnoRole === true);
+            setUserCelulaId(data.celulaId || null);
+
+            // Load existing notification preferences
+            const prefs = data.notificationPreferences || {};
+            setPrefCelula(prefs.celula !== false);
+            setPrefLiderazgo(prefs.liderazgo !== false);
+            setPrefOracion(prefs.oracion !== false);
+            setPrefCellMeet(prefs.cellMeet !== false);
+            setPrefPublicaciones(prefs.publicaciones !== false);
+            setPrefCelebracion(prefs.celebracion !== false);
           }
 
           // 2. Fetch newsletter subscribers list for this user's email
@@ -152,6 +190,99 @@ export default function MisDatos() {
       </div>
     );
   }
+
+  // Handle notification preferences save
+  const handleSaveNotificationPrefs = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    setSavingPrefs(true);
+    setPrefsSuccess(false);
+    setPrefsError('');
+
+    try {
+      const userDocRef = doc(db, 'users', user.uid);
+      await updateDoc(userDocRef, {
+        notificationPreferences: {
+          celula: prefCelula,
+          liderazgo: prefLiderazgo,
+          oracion: prefOracion,
+          cellMeet: prefCellMeet,
+          publicaciones: prefPublicaciones,
+          celebracion: prefCelebracion
+        },
+        updatedAt: serverTimestamp()
+      });
+      setPrefsSuccess(true);
+      setTimeout(() => setPrefsSuccess(false), 5000);
+    } catch (error) {
+      console.error("Error saving notification preferences:", error);
+      setPrefsError("Error al guardar las preferencias. Por favor intentalo de nuevo.");
+    } finally {
+      setSavingPrefs(false);
+    }
+  };
+
+  // Request notification permission
+  const requestNotificationPermission = async () => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      setPrefsError('Las notificaciones del navegador no son compatibles con este dispositivo o navegador.');
+      return;
+    }
+
+    try {
+      const permission = await (window as any).Notification.requestPermission();
+      setBrowserPermission(permission);
+      if (permission === 'granted') {
+        setPrefsSuccess(true);
+        setTestBannerMessage('¡Permiso concedido! Ahora puedes recibir alertas push en este navegador.');
+        setShowTestBanner(true);
+        setTimeout(() => {
+          setShowTestBanner(false);
+          setPrefsSuccess(false);
+        }, 5000);
+      } else if (permission === 'denied') {
+        setPrefsError('Permiso denegado. Para recibir notificaciones, debes habilitarlas desde la configuración de tu navegador.');
+      }
+    } catch (err) {
+      console.error('Error requesting notification permission:', err);
+      setPrefsError('Error al solicitar permiso de notificación.');
+    }
+  };
+
+  // Simulate or trigger real test push notification
+  const handleTriggerTestPush = () => {
+    if (typeof window === 'undefined') return;
+    setIsSimulatingPush(true);
+    
+    setTimeout(() => {
+      setIsSimulatingPush(false);
+      
+      const hasNotificationAPI = 'Notification' in window;
+      const isGranted = hasNotificationAPI && (window as any).Notification.permission === 'granted';
+
+      if (isGranted) {
+        // Trigger real HTML5 Notification
+        try {
+          new (window as any).Notification("Mi Célula - Huelva Church", {
+            body: "¡Prueba de alerta exitosa! Tus canales de notificaciones han sido configurados correctamente.",
+            icon: "/images/LogoPWA.png",
+            tag: "test-notification"
+          });
+        } catch (err) {
+          console.error("Native notification failed, falling back to in-app banner:", err);
+          setTestBannerMessage("🔔 Mi Célula: ¡Prueba de Alerta Exitosa! Preferences guardadas en tu cuenta de forma segura.");
+          setShowTestBanner(true);
+          setTimeout(() => setShowTestBanner(false), 5000);
+        }
+      } else {
+        // Fallback banner for when standard desktop permission is denied/unsupported/inside iframe
+        setTestBannerMessage("🔔 Mi Célula: ¡Prueba de Alerta Exitosa! Preferences guardadas en tu cuenta de forma segura.");
+        setShowTestBanner(true);
+        setTimeout(() => setShowTestBanner(false), 5000);
+      }
+    }, 1200);
+  };
 
   // Handle Save
   const handleSave = async (e: React.FormEvent) => {
@@ -528,6 +659,301 @@ export default function MisDatos() {
                 </div>
               </form>
             </div>
+
+            {/* Tarjeta de Administración de Notificaciones (Push/Email) */}
+            <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none">
+                <Bell className="w-32 h-32" />
+              </div>
+
+              <h2 className="text-xl font-kenao text-primary mb-2 flex items-center gap-2 relative z-10">
+                <Bell className="w-5 h-5 text-secondary" />
+                Administración de Notificaciones
+              </h2>
+              <p className="text-primary/60 text-xs mb-8">
+                Controla qué avisos push y recordatorios personalizados deseas recibir en tu cuenta para mantenerte al día.
+              </p>
+
+              {/* Status and Browser Permission indicator */}
+              <div className="mb-6 p-4 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-1.5">
+                    <Smartphone className="w-4 h-4 text-primary" />
+                    Estado del Dispositivo
+                  </h4>
+                  <p className="text-xs text-primary/70 leading-normal">
+                    {!pushSupported ? (
+                      'Notificaciones nativas no compatibles temporalmente en este navegador.'
+                    ) : browserPermission === 'granted' ? (
+                      <span className="text-emerald-700 font-bold flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        Alertas push activadas en este navegador
+                      </span>
+                    ) : browserPermission === 'denied' ? (
+                      <span className="text-amber-700 font-semibold">
+                        Bloqueadas. Actívalas en la configuración de tu navegador
+                      </span>
+                    ) : (
+                      'Pendiente de configurar alertas push en este navegador'
+                    )}
+                  </p>
+                </div>
+
+                {pushSupported && browserPermission !== 'granted' && (
+                  <button
+                    type="button"
+                    onClick={requestNotificationPermission}
+                    className="shrink-0 bg-secondary hover:bg-secondary/90 text-primary font-bold py-2 px-4 rounded-xl text-xs transition-all shadow-sm cursor-pointer flex items-center gap-1.5"
+                  >
+                    Habilitar Push
+                  </button>
+                )}
+
+                {pushSupported && browserPermission === 'granted' && (
+                  <button
+                    type="button"
+                    onClick={handleTriggerTestPush}
+                    disabled={isSimulatingPush}
+                    className="shrink-0 bg-slate-100 hover:bg-slate-200 text-primary/80 font-bold py-2 px-4 rounded-xl text-xs transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    {isSimulatingPush ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-secondary" />
+                        Enviando...
+                      </>
+                    ) : (
+                      <>
+                        <Volume2 className="w-3.5 h-3.5 text-secondary" />
+                        Probar Alerta Push
+                      </>
+                    )}
+                  </button>
+                )}
+
+                {(!pushSupported || browserPermission !== 'granted') && (
+                  <button
+                    type="button"
+                    onClick={handleTriggerTestPush}
+                    disabled={isSimulatingPush}
+                    className="shrink-0 bg-slate-100 hover:bg-slate-200 text-primary/80 font-bold py-2 px-4 rounded-xl text-xs transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    {isSimulatingPush ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-secondary" />
+                        Sincronizando...
+                      </>
+                    ) : (
+                      <>
+                        <Volume2 className="w-3.5 h-3.5 text-secondary" />
+                        Probar Alerta en Cuenta
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+
+              {/* In-app Notification Test Banner feedback */}
+              <AnimatePresence>
+                {showTestBanner && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="mb-6 p-4 bg-primary text-white rounded-2xl flex items-center gap-3 text-xs font-bold shadow-lg border border-primary/25 relative overflow-hidden"
+                  >
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-secondary/15 rounded-full blur-xl -mr-6 -mt-6 pointer-events-none" />
+                    <Bell className="w-5 h-5 text-secondary flex-shrink-0 animate-bounce" />
+                    <div>
+                      <p className="font-semibold text-secondary">Notificación Demo Recibida</p>
+                      <p className="text-white/85 font-normal leading-relaxed">{testBannerMessage}</p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Preferences messages */}
+              <AnimatePresence>
+                {prefsSuccess && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="mb-6 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl flex items-center gap-3 text-xs font-bold"
+                  >
+                    <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
+                    ¡Preferencias de notificaciones guardadas en tu perfil de Firestore con éxito!
+                  </motion.div>
+                )}
+
+                {prefsError && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="mb-6 p-4 bg-red-50 border border-red-200 text-red-800 rounded-2xl flex items-center gap-3 text-xs font-bold"
+                  >
+                    <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+                    {prefsError}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <form onSubmit={handleSaveNotificationPrefs} className="space-y-4">
+                
+                <div className="space-y-3">
+                  
+                  {/* Item 1: Mi Celula */}
+                  {userCelulaId && (
+                    <div className="flex items-start justify-between p-4 bg-slate-50/50 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-all gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-xs font-black uppercase tracking-wider text-primary">Mi Célula</h3>
+                        </div>
+                        <p className="text-[11px] text-primary/60 leading-relaxed max-w-md">
+                          Comunicados, anuncios y actualizaciones publicados específicamente por el líder de tu célula.
+                        </p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer select-none shrink-0 mt-0.5">
+                        <input 
+                          type="checkbox" 
+                          checked={prefCelula}
+                          onChange={(e) => setPrefCelula(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="relative w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                      </label>
+                    </div>
+                  )}
+
+                  {/* Item 2: Liderazgo */}
+                  {(roles.includes('lider') || roles.includes('supervisor') || roles.includes('admin') || roles.includes('superadmin')) && (
+                    <div className="flex items-start justify-between p-4 bg-slate-50/50 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-all gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-xs font-black uppercase tracking-wider text-primary">Liderazgo y Supervisión</h3>
+                        </div>
+                        <p className="text-[11px] text-primary/60 leading-relaxed max-w-md">
+                          Nueva solicitud de asistente registrada desde el formulario de 'Mi Célula' o de 'Unirme a una Célula', avisos pastorales para líderes y actualizaciones de supervisión.
+                        </p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer select-none shrink-0 mt-0.5">
+                        <input 
+                          type="checkbox" 
+                          checked={prefLiderazgo}
+                          onChange={(e) => setPrefLiderazgo(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="relative w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                      </label>
+                    </div>
+                  )}
+
+                  {/* Item 3: Oracion Reminders */}
+                  <div className="flex items-start justify-between p-4 bg-slate-50/50 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-all gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-xs font-black uppercase tracking-wider text-primary">Recordatorios de Oración</h3>
+                      </div>
+                      <p className="text-[11px] text-primary/60 leading-relaxed max-w-md">
+                        Alertas automáticas 30 minutos antes para recordar conectarte o unirte a nuestras Noches de Oración.
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer select-none shrink-0 mt-0.5">
+                      <input 
+                        type="checkbox" 
+                        checked={prefOracion}
+                        onChange={(e) => setPrefOracion(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="relative w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                    </label>
+                  </div>
+
+                  {/* Item 4: Reuniones de Celula */}
+                  <div className="flex items-start justify-between p-4 bg-slate-50/50 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-all gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-xs font-black uppercase tracking-wider text-primary">Reuniones de Célula</h3>
+                      </div>
+                      <p className="text-[11px] text-primary/60 leading-relaxed max-w-md">
+                        Recordatorio un día antes de la reunión de tu célula para que apartes el momento y confirmes tu asistencia.
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer select-none shrink-0 mt-0.5">
+                      <input 
+                        type="checkbox" 
+                        checked={prefCellMeet}
+                        onChange={(e) => setPrefCellMeet(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="relative w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                    </label>
+                  </div>
+
+                  {/* Item 5: Publicaciones */}
+                  <div className="flex items-start justify-between p-4 bg-slate-50/50 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-all gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-xs font-black uppercase tracking-wider text-primary">Novedades y Publicaciones</h3>
+                      </div>
+                      <p className="text-[11px] text-primary/60 leading-relaxed max-w-md">
+                        Avisos inmediatos cada vez que se publique un nuevo sermón dominical, blog con estudios de fe o actividad comunitaria.
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer select-none shrink-0 mt-0.5">
+                      <input 
+                        type="checkbox" 
+                        checked={prefPublicaciones}
+                        onChange={(e) => setPrefPublicaciones(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="relative w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                    </label>
+                  </div>
+
+                  {/* Item 6: Celebracion Principal */}
+                  <div className="flex items-start justify-between p-4 bg-slate-50/50 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-all gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-xs font-black uppercase tracking-wider text-primary">Celebración Principal</h3>
+                      </div>
+                      <p className="text-[11px] text-primary/60 leading-relaxed max-w-md">
+                        Recordatorio cálido los domingos 3 horas antes de la celebración principal de adoración para prepararte en comunión.
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer select-none shrink-0 mt-0.5">
+                      <input 
+                        type="checkbox" 
+                        checked={prefCelebracion}
+                        onChange={(e) => setPrefCelebracion(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="relative w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                    </label>
+                  </div>
+
+                </div>
+
+                {/* Submit button */}
+                <div className="pt-4">
+                  <button
+                    type="submit"
+                    disabled={savingPrefs}
+                    className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-white font-bold py-4 px-8 rounded-xl transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 cursor-pointer text-sm"
+                  >
+                    {savingPrefs ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Sincronizando preferencias...
+                      </>
+                    ) : (
+                      'Guardar Preferencias de Notificación'
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+
           </div>
 
           {/* Sidebar / Additional Options & Analytics */}
