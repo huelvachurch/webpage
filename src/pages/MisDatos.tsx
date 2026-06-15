@@ -135,9 +135,14 @@ export default function MisDatos() {
             setPrefPublicaciones(prefs.publicaciones !== false);
             setPrefCelebracion(prefs.celebracion !== false);
           }
+        } catch (error) {
+          console.error("Critical error loading user profile document:", error);
+          setErrorMsg(`Error al cargar los datos de tu cuenta (detalles: ${error instanceof Error ? error.message : String(error)})`);
+        }
 
-          // 2. Fetch newsletter subscribers list for this user's email
-          if (user.email) {
+        // 2. Fetch newsletter subscribers list for this user's email (Isolated/Failsafe)
+        if (user.email) {
+          try {
             const qSub = query(collection(db, 'subscribers'), where('email', '==', user.email));
             const subSnap = await getDocs(qSub);
             if (!subSnap.empty) {
@@ -149,9 +154,13 @@ export default function MisDatos() {
               setNewsletterSubscribed(false);
               setSubscriberDocId(null);
             }
+          } catch (error) {
+            console.warn("Non-critical error: subscribers query failed:", error);
           }
+        }
 
-          // 3. Fetch courses enrollments
+        // 3. Fetch courses enrollments (Isolated/Failsafe)
+        try {
           const qEnr = query(collection(db, 'enrollments'), where('studentId', '==', user.uid));
           const enrSnap = await getDocs(qEnr);
           const enrollData = enrSnap.docs.map(doc => ({
@@ -160,20 +169,28 @@ export default function MisDatos() {
           })) as Enrollment[];
 
           // Enrich with course details
-          const enriched = await Promise.all(
-            enrollData.map(async (enr) => {
-              const crsSnap = await getDoc(doc(db, 'courses', enr.courseId));
-              return {
-                ...enr,
-                course: crsSnap.exists() ? { id: crsSnap.id, ...crsSnap.data() } as Course : undefined
-              };
-            })
-          );
-          setEnrollments(enriched);
-
+          try {
+            const enriched = await Promise.all(
+              enrollData.map(async (enr) => {
+                try {
+                  const crsSnap = await getDoc(doc(db, 'courses', enr.courseId));
+                  return {
+                    ...enr,
+                    course: crsSnap.exists() ? { id: crsSnap.id, ...crsSnap.data() } as Course : undefined
+                  };
+                } catch (courseErr) {
+                  console.warn("Could not enrich course detailed metadata:", courseErr);
+                  return enr;
+                }
+              })
+            );
+            setEnrollments(enriched);
+          } catch (enrichErr) {
+            console.warn("Course enrichment list mapping failed gracefully:", enrichErr);
+            setEnrollments(enrollData);
+          }
         } catch (error) {
-          console.error("Error loading profile data:", error);
-          setErrorMsg("Error al cargar los datos del perfil");
+          console.warn("Non-critical error: enrollments query failed:", error);
         } finally {
           setProfileLoading(false);
         }
@@ -751,25 +768,6 @@ export default function MisDatos() {
                   </button>
                 )}
               </div>
-
-              {/* In-app Notification Test Banner feedback */}
-              <AnimatePresence>
-                {showTestBanner && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    className="mb-6 p-4 bg-primary text-white rounded-2xl flex items-center gap-3 text-xs font-bold shadow-lg border border-primary/25 relative overflow-hidden"
-                  >
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-secondary/15 rounded-full blur-xl -mr-6 -mt-6 pointer-events-none" />
-                    <Bell className="w-5 h-5 text-secondary flex-shrink-0 animate-bounce" />
-                    <div>
-                      <p className="font-semibold text-secondary">Notificación Demo Recibida</p>
-                      <p className="text-white/85 font-normal leading-relaxed">{testBannerMessage}</p>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
 
               {/* Preferences messages */}
               <AnimatePresence>
