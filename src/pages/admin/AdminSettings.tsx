@@ -14,8 +14,29 @@ export default function AdminSettings() {
   const [meetingTime, setMeetingTime] = useState('Domingos a las 18:30h');
   const [hideHuelvaChurchCell, setHideHuelvaChurchCell] = useState(false);
 
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   const [resetModalType, setResetModalType] = useState<'celula' | 'asistentes' | null>(null);
   const [resetInput, setResetInput] = useState('');
+
+  // Helper to show temporary success message
+  const triggerSuccess = (msg: string) => {
+    setSuccessMessage(msg);
+    setErrorMessage(null);
+    setTimeout(() => {
+      setSuccessMessage(current => current === msg ? null : current);
+    }, 5000);
+  };
+
+  // Helper to show temporary error message
+  const triggerError = (msg: string) => {
+    setErrorMessage(msg);
+    setSuccessMessage(null);
+    setTimeout(() => {
+      setErrorMessage(current => current === msg ? null : current);
+    }, 5000);
+  };
 
   const handleResetMyCelula = async () => {
     if (!user) return;
@@ -26,12 +47,12 @@ export default function AdminSettings() {
         celulaId: null,
         celulaStatus: null
       }, { merge: true });
-      alert("Se restableció Mi Célula con éxito");
+      triggerSuccess("Se restableció Mi Célula con éxito.");
       setResetModalType(null);
       setResetInput('');
     } catch (err) {
       console.error("Error resetting celula:", err);
-      alert("No se pudo restablecer la célula.");
+      triggerError("No se pudo restablecer la célula.");
     } finally {
       setResetting(false);
     }
@@ -44,7 +65,7 @@ export default function AdminSettings() {
       const qCell = query(collection(db, 'celulas'), where('leaderId', '==', user.uid));
       const cellSnap = await getDocs(qCell);
       if (cellSnap.empty) {
-        alert("No se encontró tu célula.");
+        triggerError("No se encontró tu célula.");
         return;
       }
       const cellId = cellSnap.docs[0].id;
@@ -67,12 +88,12 @@ export default function AdminSettings() {
 
       await batch.commit();
       
-      alert(`Se restablecieron los asistentes con éxito`);
+      triggerSuccess("Se restablecieron los asistentes con éxito.");
       setResetModalType(null);
       setResetInput('');
     } catch (err) {
       console.error("Error resetting asistentes:", err);
-      alert("No se pudo restablecer los asistentes.");
+      triggerError("No se pudo restablecer los asistentes.");
     } finally {
       setResetting(false);
     }
@@ -107,10 +128,10 @@ export default function AdminSettings() {
         meetingTime: meetingTime,
         hideHuelvaChurchCell: hideHuelvaChurchCell
       }, { merge: true });
-      alert('Ajustes guardados correctamente.');
+      triggerSuccess('Ajustes guardados correctamente.');
     } catch (err) {
       console.error(err);
-      alert('Error al guardar los ajustes.');
+      triggerError('Error al guardar los ajustes.');
     } finally {
       setSaving(false);
     }
@@ -123,6 +144,34 @@ export default function AdminSettings() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <h1 className="text-4xl font-kenao text-primary mb-2">Ajustes Generales</h1>
         <p className="text-primary/60 mb-8">Configura horarios e información general que se refleja en toda la aplicación web.</p>
+        
+        {successMessage && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-sm font-medium flex items-center justify-between shadow-sm"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-emerald-500">✓</span>
+              <span>{successMessage}</span>
+            </div>
+            <button onClick={() => setSuccessMessage(null)} className="text-emerald-400 hover:text-emerald-600 text-xs font-bold font-mono p-1">✕</button>
+          </motion.div>
+        )}
+        
+        {errorMessage && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 p-4 bg-rose-50 border border-rose-200 text-rose-850 rounded-2xl text-sm font-medium flex items-center justify-between shadow-sm"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-rose-500">⚠️</span>
+              <span>{errorMessage}</span>
+            </div>
+            <button onClick={() => setErrorMessage(null)} className="text-rose-400 hover:text-rose-600 text-xs font-bold font-mono p-1">✕</button>
+          </motion.div>
+        )}
         
         <motion.div 
           initial={{ opacity: 0, y: 15 }}

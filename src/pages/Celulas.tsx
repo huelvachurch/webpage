@@ -217,6 +217,24 @@ export default function Celulas() {
         readBySupervisor: false
       });
       
+      // Enviar notificación Push real e instantánea al líder y al supervisor (si están enlazados en FCM)
+      try {
+        await fetch('/api/notifications/send-cell-notice', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            leaderId: leaderId || 'admin',
+            userIds: supervisorId ? [supervisorId] : [],
+            title: "Nueva Solicitud de Célula 📢",
+            message: `¡Hola! ${formData.nombre} ${formData.apellidos || ''} ha solicitado unirse a la célula ${selectedCell ? selectedCell.name : (formData.zona || 'seleccionada')}.`
+          })
+        });
+      } catch (pushErr) {
+        console.warn("No se pudo disparar el envío de push FCM en tiempo real:", pushErr);
+      }
+      
       // Trigger mailto link on user's browser
       // window.location.href = `mailto:${emailTo}?subject=${subject}${emailCc}&body=${body}`;
       

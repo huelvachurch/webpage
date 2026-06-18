@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { auth, db, handleFirestoreError, OperationType, handleRedirectResult } from './firebase';
+import { auth, db, handleFirestoreError, OperationType, handleRedirectResult, requestAndSaveFCMToken } from './firebase';
 
 interface AuthContextType {
   user: User | null;
@@ -90,6 +90,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       return () => unsubscribeUser();
+    }
+  }, [user]);
+
+  // Silently refresh the FCM push token in background if permission is already granted
+  useEffect(() => {
+    if (user && typeof window !== 'undefined' && 'Notification' in window && (window as any).Notification.permission === 'granted') {
+      setTimeout(() => {
+        requestAndSaveFCMToken(user.uid)
+          .then(token => {
+            if (token) console.log("[FCM Auto-Refresh] Token refreshed in background:", token.substring(0, 10) + "...");
+          })
+          .catch(err => console.warn("[FCM Auto-Refresh] Silent token recovery failed:", err));
+      }, 3000); // 3-second delay to ensure SPA loads and registrations are completed smoothly
     }
   }, [user]);
 

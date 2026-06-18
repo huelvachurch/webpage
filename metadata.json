@@ -1,5 +1,5 @@
 {
-  "name": "Iglesia Evangelica Huelva",
+  "name": "Huelva Church",
   "description": "Página web oficial de la Iglesia Cristiana Evangélica en Huelva. Un lugar de encuentro, alegría y muchas actividades para toda la familia.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

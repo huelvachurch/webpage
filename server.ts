@@ -7,6 +7,7 @@ import { GoogleGenAI } from "@google/genai";
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, query, where, getDocs, updateDoc, doc, serverTimestamp, getDoc } from "firebase/firestore";
 import fs from "fs";
+import { GoogleAuth } from "google-auth-library";
 
 const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
 const firebaseConfig = fs.existsSync(firebaseConfigPath) ? JSON.parse(fs.readFileSync(firebaseConfigPath, "utf8")) : null;
@@ -484,6 +485,196 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
       res.json({ success: true, ...result });
     } catch (error: any) {
       console.error("Error sending role notification:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Reusable server-side helper to send real push notifications using FCM v1 REST API
+  async function sendFcmNotification(tokens: string[], title: string, body: string, clickActionUrl?: string) {
+    if (!firebaseConfig || !firebaseConfig.projectId) {
+      console.warn("[FCM] No se pudo enviar notificación: Falta configuración del proyecto.");
+      return { success: false, error: "Falta configuración de Firebase" };
+    }
+
+    const projectId = firebaseConfig.projectId;
+
+    try {
+      // Obtenemos las credenciales por defecto de la instancia (ADC - de Cloud Run)
+      const auth = new GoogleAuth({
+        scopes: [
+          'https://www.googleapis.com/auth/firebase.messaging',
+          'https://www.googleapis.com/auth/cloud-platform'
+        ]
+      });
+      const client = await auth.getClient();
+      const tokenResponse = await client.getAccessToken();
+      const accessToken = tokenResponse.token;
+
+      if (!accessToken) {
+        throw new Error("No se pudo obtener el Token OAuth 2.0 de la cuenta de servicio local");
+      }
+
+      console.log(`[FCM] Enviando notificación push real a ${tokens.length} tokens.`);
+
+      const results = await Promise.all(tokens.map(async (token) => {
+        try {
+          const payload = {
+            message: {
+              token: token,
+              notification: {
+                title: title,
+                body: body
+              },
+              webpush: {
+                headers: {
+                  Urgency: "high"
+                },
+                notification: {
+                  title: title,
+                  body: body,
+                  icon: "/images/LogoPWA.png",
+                  badge: "/images/LogoPWA.png"
+                },
+                fcm_options: {
+                  link: clickActionUrl || "https://ais-dev-iwia4pkyasjkhe7kc3tvni-295341840360.europe-west2.run.app/micelula"
+                }
+              }
+            }
+          };
+
+          const res = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+          });
+
+          const resData = await res.json();
+          if (!res.ok) {
+            console.error(`[FCM] Error enviando a token ${token.substring(0, 10)}...:`, resData);
+            return { token, success: false, error: resData };
+          }
+          return { token, success: true, messageId: resData.name };
+        } catch (err: any) {
+          console.error(`[FCM] Error de transporte en token ${token.substring(0, 10)}...:`, err.message);
+          return { token, success: false, error: err.message };
+        }
+      }));
+
+      return { success: true, results };
+    } catch (err: any) {
+      console.error("[FCM Root Error] Error al enviar notificaciones:", err);
+      return { success: false, error: err.message };
+    }
+  }
+
+  // API Route to dispatch push notifications to cell members
+  app.post("/api/notifications/send-cell-notice", async (req, res) => {
+    try {
+      const { leaderId, celulaId, title, message } = req.body;
+
+      if (!title || !message) {
+        return res.status(400).json({ error: "Faltan campos obligatorios (title, message)" });
+      }
+
+      if (!db) {
+        return res.status(500).json({ error: "Base de datos Firestore no inicializada" });
+      }
+
+      console.log(`[FCM API] Procesando notificación de célula. Leader: ${leaderId} | Célula: ${celulaId}`);
+
+      const tokens: string[] = [];
+
+      // 1. Buscar tokens de usuarios asociados a la Célula
+      if (celulaId) {
+        const q1 = query(collection(db, 'users'), where('celulaId', '==', celulaId));
+        const snap1 = await getDocs(q1);
+        snap1.forEach(docSnap => {
+          const u = docSnap.data();
+          if (Array.isArray(u.fcmTokens)) {
+            tokens.push(...u.fcmTokens);
+          }
+        });
+      }
+
+      // 2. Buscar tokens de usuarios asociados al Líder
+      if (leaderId) {
+        const q2 = query(collection(db, 'users'), where('leaderId', '==', leaderId));
+        const snap2 = await getDocs(q2);
+        snap2.forEach(docSnap => {
+          const u = docSnap.data();
+          if (Array.isArray(u.fcmTokens)) {
+            tokens.push(...u.fcmTokens);
+          }
+        });
+      }
+
+      // 3. Buscar tokens del propio Líder y de IDs de usuario directos pasados en la petición (como supervisores o administradores)
+      const directUserIds: string[] = [];
+      if (leaderId) directUserIds.push(leaderId);
+      if (req.body.userIds && Array.isArray(req.body.userIds)) {
+        directUserIds.push(...req.body.userIds);
+      }
+
+      const processedUids = new Set<string>();
+      const uidsToProcess = Array.from(new Set(directUserIds.filter(id => id && id.trim() !== '')));
+
+      for (let i = 0; i < uidsToProcess.length; i++) {
+        const uidVal = uidsToProcess[i];
+        if (processedUids.has(uidVal)) continue;
+        processedUids.add(uidVal);
+
+        try {
+          const userDocRef = doc(db, 'users', uidVal);
+          const userDoc = await getDoc(userDocRef);
+          if (userDoc.exists()) {
+            const u = userDoc.data();
+            if (Array.isArray(u.fcmTokens)) {
+              tokens.push(...u.fcmTokens);
+            }
+            // Descubrir automáticamente el supervisor del líder e incluir sus tokens en la cola de envío
+            if (u.supervisorId && typeof u.supervisorId === 'string' && u.supervisorId.trim() !== '') {
+              const supervisorId = u.supervisorId.trim();
+              if (!processedUids.has(supervisorId) && !uidsToProcess.includes(supervisorId)) {
+                uidsToProcess.push(supervisorId);
+              }
+            }
+          }
+        } catch (docErr) {
+          console.error(`Error buscando tokens directos de usuario ${uidVal}:`, docErr);
+        }
+      }
+
+      // Filtrar tokens nulos, duplicados y vacíos
+      const uniqueTokens = Array.from(new Set(tokens.filter(t => typeof t === 'string' && t.trim() !== '')));
+
+      if (uniqueTokens.length === 0) {
+        console.log("[FCM API] No se encontraron dispositivos (FCM tokens) registrados y enlazados para esta célula.");
+        return res.json({
+          success: true,
+          fcmSent: false,
+          details: "No hay tokens de dispositivos registrados. Los mensajes se guardaron en la base de datos pero no se enviaron notificaciones push offline."
+        });
+      }
+
+      // Enviar la notificación real
+      const clickUrl = process.env.APP_URL 
+        ? `${process.env.APP_URL}/micelula`
+        : "https://ais-dev-iwia4pkyasjkhe7kc3tvni-295341840360.europe-west2.run.app/micelula";
+
+      const fcmResult = await sendFcmNotification(uniqueTokens, title, message, clickUrl);
+
+      res.json({
+        success: true,
+        fcmSent: true,
+        tokensCount: uniqueTokens.length,
+        results: fcmResult
+      });
+
+    } catch (error: any) {
+      console.error("[FCM API Error]:", error);
       res.status(500).json({ error: error.message });
     }
   });

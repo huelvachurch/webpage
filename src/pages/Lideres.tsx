@@ -1374,14 +1374,37 @@ export default function Lideres() {
     e.preventDefault();
     if (!user || !newCellNotification.message.trim()) return;
     try {
+      const parentLeaderId = effectiveLeaderId || user.uid;
+      const titleText = newCellNotification.title.trim() || `Mensaje de tu Líder (${user.displayName || 'Huelva Church'})`;
+      const messageText = newCellNotification.message.trim();
+
       await addDoc(collection(db, 'cell_notifications'), {
-        leaderId: user.uid,
+        leaderId: parentLeaderId,
         leaderName: user.displayName || 'Tu Líder',
-        title: newCellNotification.title.trim(),
-        message: newCellNotification.message.trim(),
+        title: titleText,
+        message: messageText,
         expiry: newCellNotification.expiry,
         createdAt: new Date().toISOString()
       });
+
+      // Disparar las notificaciones Push reales de fondo (background) a todos los usuarios enlazados
+      try {
+        await fetch('/api/notifications/send-cell-notice', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            leaderId: parentLeaderId,
+            celulaId: cellProfile?.id || '',
+            title: titleText,
+            message: messageText
+          })
+        });
+      } catch (fcmErr) {
+        console.warn("Fallo (advertencia) al solicitar envío de notificación push real:", fcmErr);
+      }
+
       setNewCellNotification({ title: '', message: '', expiry: '' });
       alert('Notificación enviada a los asistentes de tu célula.');
     } catch (err) {
@@ -1573,7 +1596,7 @@ export default function Lideres() {
               <option value="form">Formularios</option>
               <option value="attendees">Asistentes</option>
               <option value="stats">Estadísticas</option>
-              <option value="announcements">Notificaciones ({activeAnnouncementsForBadge.length})</option>
+              <option value="announcements">Notificaciones</option>
               <option value="cell">Mi Célula</option>
             </select>
             <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400">
@@ -2688,18 +2711,43 @@ export default function Lideres() {
 
                 {/* Dynamic live calculation column */}
                 <div className="space-y-6">
-                  <div className="bg-gradient-to-br from-amber-300 via-secondary to-amber-500 rounded-[2rem] p-6 text-primary shadow-md text-center flex flex-col items-center justify-center min-h-[250px] border border-amber-400/20">
-                    <span className="text-xs uppercase tracking-widest font-mono font-bold text-primary/80 mb-4">Total de Participantes</span>
-                    <div className="w-28 h-28 bg-[#2D4B73]/15 rounded-full flex items-center justify-center border-4 border-[#2D4B73]/30 backdrop-blur-sm text-5xl font-bold font-kenao mb-4 text-[#2D4B73]">
-                      {believersCount + nonBelieversCount}
-                    </div>
-                    <p className="text-xs font-semibold max-w-[220px] text-primary/90">
-                      Un reporte de estadísticas preciso nos ayuda a pastorear mejor la ciudad de Huelva. ¡Gracias por servir!
-                    </p>
-                  </div>
+                  {(() => {
+                    const liveBaptizedCount = cellMembers.filter(m => (m.categories || [m.category || 'bautizado']).includes('bautizado') && m.activeCategory === 'bautizado').length;
+                    const liveNotBaptizedCount = cellMembers.filter(m => (m.categories || [m.category || 'no_bautizado']).includes('no_bautizado') && m.activeCategory === 'no_bautizado').length;
+                    const liveNonBelieversCount = cellMembers.filter(m => (m.categories || [m.category || 'no_creyente']).includes('no_creyente') && m.activeCategory === 'no_creyente').length;
+                    const liveTotal = liveBaptizedCount + liveNotBaptizedCount + liveNonBelieversCount;
+
+                    const pctBaptized = liveTotal > 0 ? Math.round((liveBaptizedCount / liveTotal) * 100) : 0;
+                    const pctNotBaptized = liveTotal > 0 ? Math.round((liveNotBaptizedCount / liveTotal) * 100) : 0;
+                    const pctNonBelievers = liveTotal > 0 ? Math.round((liveNonBelieversCount / liveTotal) * 100) : 0;
+
+                    return (
+                      <div className="bg-white rounded-[2rem] p-6 border border-slate-200 shadow-sm text-center flex flex-col items-center justify-center min-h-[300px] text-primary">
+                        <span className="text-xs uppercase tracking-widest font-mono font-extrabold text-slate-400 mb-4 block text-center">Total de Participantes</span>
+                        <div className="w-24 h-24 bg-primary/5 rounded-full flex items-center justify-center border-4 border-primary/10 text-4xl font-bold font-kenao mb-4 text-primary">
+                          {liveTotal}
+                        </div>
+                        
+                        <div className="w-full space-y-2 text-xs font-semibold text-slate-600 border-t border-slate-100 pt-4 mt-2">
+                          <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                            <span className="text-slate-500">Creyentes Bautizados</span>
+                            <span className="font-bold text-primary">{liveBaptizedCount} <span className="text-[10px] text-slate-400">({pctBaptized}%)</span></span>
+                          </div>
+                          <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                            <span className="text-slate-500">Creyentes No Bautizados</span>
+                            <span className="font-bold text-primary">{liveNotBaptizedCount} <span className="text-[10px] text-slate-400">({pctNotBaptized}%)</span></span>
+                          </div>
+                          <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                            <span className="text-slate-500">No Creyentes</span>
+                            <span className="font-bold text-primary">{liveNonBelieversCount} <span className="text-[10px] text-slate-400">({pctNonBelievers}%)</span></span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Shareable Box Column */}
-                  <div className="bg-slate-50 rounded-2xl border border-slate-200 p-6 flex flex-col justify-between text-left">
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col justify-between text-left shadow-sm">
                     <div>
                       <span className="inline-block bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-4">
                         💡 Recurso de Relevo
@@ -2956,13 +3004,13 @@ export default function Lideres() {
                         </div>
                       </div>
 
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
+                      <div className="overflow-x-auto select-none">
+                        <table className="w-full text-left border-collapse min-w-[750px]">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-100">
                               <th className="px-6 py-4 text-xs uppercase tracking-wider font-bold text-slate-400">Fecha</th>
-                              <th className="px-6 py-4 text-xs uppercase tracking-wider font-bold text-slate-400">Líder</th>
-                              <th className="px-6 py-4 text-xs uppercase tracking-wider font-bold text-slate-400 text-center">Creyentes</th>
+                              <th className="px-6 py-4 text-xs uppercase tracking-wider font-bold text-slate-400 text-center">Creyentes Bautizados</th>
+                              <th className="px-6 py-4 text-xs uppercase tracking-wider font-bold text-slate-400 text-center">Creyentes No Bautizados</th>
                               <th className="px-6 py-4 text-xs uppercase tracking-wider font-bold text-slate-400 text-center">No Creyentes</th>
                               <th className="px-6 py-4 text-xs uppercase tracking-wider font-bold text-slate-400 text-center">Total</th>
                               <th className="px-6 py-4 text-xs uppercase tracking-wider font-bold text-slate-400 text-right">Detalles</th>
@@ -2971,17 +3019,19 @@ export default function Lideres() {
                           <tbody className="divide-y divide-slate-100">
                             {visibleReports.map((report) => {
                               const isExpanded = expandedReportId === report.id;
+                              const baptized = report.believersBaptizedCount !== undefined ? report.believersBaptizedCount : Math.round((report.believersCount || 0) * 0.6);
+                              const notBaptized = report.believersNotBaptizedCount !== undefined ? report.believersNotBaptizedCount : Math.round((report.believersCount || 0) * 0.4);
                               return (
                                 <React.Fragment key={report.id}>
                                   <tr className="hover:bg-slate-50/50 transition-colors">
                                     <td className="px-6 py-4 text-sm font-semibold text-primary">
                                       {report.meetingDate.split('-').reverse().join('/')}
                                     </td>
-                                    <td className="px-6 py-4 text-sm text-slate-600 font-medium">
-                                      {report.leaderName}
+                                    <td className="px-6 py-4 text-sm text-center text-slate-500 font-semibold">
+                                      {baptized}
                                     </td>
                                     <td className="px-6 py-4 text-sm text-center text-slate-500 font-semibold">
-                                      {report.believersCount}
+                                      {notBaptized}
                                     </td>
                                     <td className="px-6 py-4 text-sm text-center text-[#f43f5e] font-semibold">
                                       {report.nonBelieversCount}
@@ -3209,40 +3259,40 @@ export default function Lideres() {
                     <p className="text-xs text-slate-400 mt-1">Crea alertas oficiales que verán los asistentes de tu célula.</p>
                   </div>
 
-                  <div className="bg-secondary/5 p-6 rounded-[2rem] border border-secondary/20 shadow-sm relative text-left">
+                  <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm relative text-left">
                     <form onSubmit={handlePublishCellNotification} className="space-y-4">
                       <div>
-                        <label className="block text-xs uppercase font-extrabold text-secondary mb-2">Título de la Alerta</label>
+                        <label className="block text-sm font-bold text-primary mb-2">Título de la Alerta</label>
                         <input
                           type="text"
                           required
                           value={newCellNotification.title}
                           onChange={e => setNewCellNotification({...newCellNotification, title: e.target.value})}
-                          className="w-full px-4 py-3 bg-white border border-secondary/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary text-sm font-semibold text-primary"
+                          className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary text-sm font-semibold text-primary"
                           placeholder="Ej. Recordatorio: Entrega de Reportes"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs uppercase font-extrabold text-secondary mb-2">Mensaje</label>
+                        <label className="block text-sm font-bold text-primary mb-2">Mensaje</label>
                         <textarea
                           required
                           rows={3}
                           value={newCellNotification.message}
                           onChange={e => setNewCellNotification({...newCellNotification, message: e.target.value})}
-                          className="w-full px-4 py-3 bg-white border border-secondary/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary text-sm font-semibold text-primary"
+                          className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary text-sm font-semibold text-primary"
                           placeholder="Escribe el mensaje..."
                         />
                       </div>
                       <div>
-                        <label className="block text-xs uppercase font-extrabold text-secondary mb-2">Fecha de Vencimiento (Filtro)</label>
+                        <label className="block text-sm font-bold text-primary mb-2">Fecha de Vencimiento (Filtro)</label>
                         <input
                           type="date"
                           value={newCellNotification.expiry}
                           onChange={e => setNewCellNotification({...newCellNotification, expiry: e.target.value})}
-                          className="w-full px-4 py-3 bg-white border border-secondary/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary text-sm font-semibold text-primary"
+                          className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary text-sm font-semibold text-primary"
                         />
                       </div>
-                      <button type="submit" className="w-full py-4 bg-secondary text-slate-900 rounded-xl font-extrabold shadow-sm hover:bg-secondary/90 transition-all flex justify-center items-center gap-2">
+                      <button type="submit" className="w-full py-4 bg-primary text-white font-bold rounded-xl shadow-md hover:bg-secondary hover:text-primary transition-all flex justify-center items-center gap-2 cursor-pointer">
                         <Send className="w-5 h-5"/> Publicar a mis asistentes
                       </button>
                     </form>

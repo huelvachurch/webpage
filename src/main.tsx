@@ -5,15 +5,15 @@ import './i18n';
 import App from './App.tsx';
 import './index.css';
 
-// Registro de Service Worker para PWA
+// Registro de Service Worker para PWA (incluyendo compatibilidad nativa con FCM)
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
+    navigator.serviceWorker.register('/firebase-messaging-sw.js')
       .then((reg) => {
-        console.log('Service Worker registrado correctamente', reg.scope);
+        console.log('Service Worker de Firebase registrado correctamente', reg.scope);
       })
       .catch((err) => {
-        console.error('Error al registrar Service Worker:', err);
+        console.error('Error al registrar Service Worker de Firebase:', err);
       });
   });
 }

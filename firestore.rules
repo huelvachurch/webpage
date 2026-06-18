@@ -289,9 +289,9 @@ service cloud.firestore {
     }
 
     match /subscribers/{subscriberId} {
-      allow read: if isComunicador() || (isAuthenticated() && resource.data.email == request.auth.token.email);
+      allow read: if isComunicador() || (isAuthenticated() && (subscriberId == request.auth.uid || resource.data.email == request.auth.token.email));
       allow create: if isValidSubscriber(request.resource.data);
-      allow update: if (isComunicador() || (isAuthenticated() && resource.data.email == request.auth.token.email)) && isValidSubscriber(request.resource.data);
+      allow update: if (isComunicador() || (isAuthenticated() && (subscriberId == request.auth.uid || resource.data.email == request.auth.token.email))) && isValidSubscriber(request.resource.data);
       allow delete: if isComunicador();
     }
 

@@ -33,7 +33,100 @@ import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { AuthProvider, ErrorBoundary, useAuth } from './AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 
-import { dismissWelcomePopup } from './firebase';
+import { dismissWelcomePopup, messaging } from './firebase';
+import { onMessage } from 'firebase/messaging';
+
+// Component to handle elegant, interactive foreground push notification bubbles inside the application
+function ForegroundNotificationListener() {
+  const [activeNotification, setActiveNotification] = useState<{ title: string; body: string; clickUrl?: string } | null>(null);
+
+  useEffect(() => {
+    if (!messaging) return;
+
+    try {
+      const unsubscribe = onMessage(messaging, (payload) => {
+        console.log('Foreground Push recibido:', payload);
+        const title = payload.notification?.title || payload.data?.title || 'Huelva Church';
+        const body = payload.notification?.body || payload.data?.body || payload.data?.message || '';
+        const clickUrl = payload.data?.link || (payload as any).fcm_options?.link || (payload as any).fcmOptions?.link || '/mi-celula';
+        
+        setActiveNotification({ title, body, clickUrl });
+        
+        // Intentar reproducir un sonido sutil de notificación
+        try {
+          const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-84.wav');
+          audio.volume = 0.5;
+          audio.play().catch(() => {});
+        } catch (soundErr) {
+          // Ignorar fallos de audio (son bloqueados por navegadores si no hay interacción previa)
+        }
+      });
+
+      return () => unsubscribe();
+    } catch (err) {
+      console.warn("No se pudo iniciar el listener de primer plano para notificaciones:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeNotification) {
+      const timer = setTimeout(() => {
+        setActiveNotification(null);
+      }, 7000);
+      return () => clearTimeout(timer);
+    }
+  }, [activeNotification]);
+
+  return (
+    <AnimatePresence>
+      {activeNotification && (
+        <div className="fixed top-4 left-4 right-4 md:left-auto md:right-4 z-[250] max-w-sm pointer-events-none">
+          <motion.div
+            initial={{ opacity: 0, y: -50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className="bg-white rounded-2xl border border-slate-100 p-4 shadow-xl pointer-events-auto flex gap-4 items-start relative overflow-hidden"
+            style={{ boxShadow: '0 20px 40px -15px rgba(15, 23, 42, 0.15)' }}
+          >
+            {/* Accent Color Strip */}
+            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-secondary" />
+
+            <div className="w-10 h-10 rounded-xl bg-secondary/10 flex items-center justify-center flex-shrink-0 text-lg">
+              🔔
+            </div>
+
+            <div className="flex-grow">
+              <h4 className="text-sm font-bold font-kenao text-primary pr-4">{activeNotification.title}</h4>
+              <p className="text-xs text-primary/70 mt-1 leading-relaxed">{activeNotification.body}</p>
+              <div className="mt-3 flex gap-2 animate-none">
+                <a
+                  href={activeNotification.clickUrl || '/mi-celula'}
+                  onClick={() => setActiveNotification(null)}
+                  className="bg-primary hover:bg-primary/95 text-white font-bold py-1.5 px-3.5 rounded-lg text-[10px] uppercase tracking-wide cursor-pointer transition-all inline-block"
+                >
+                  Ver ahora
+                </a>
+                <button
+                  onClick={() => setActiveNotification(null)}
+                  className="text-primary/60 hover:text-primary hover:bg-slate-50 py-1.5 px-3 rounded-lg text-[10px] uppercase tracking-wide cursor-pointer transition-all"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setActiveNotification(null)}
+              className="absolute top-3 right-3 text-primary/40 hover:text-primary transition-all p-0.5 rounded-full hover:bg-slate-50 cursor-pointer text-xs"
+            >
+              ✕
+            </button>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+}
 
 // Scroll to top on route change
 function ScrollToTop() {
@@ -175,6 +268,7 @@ export default function App() {
             </main>
             <Footer />
             <WelcomePopup />
+            <ForegroundNotificationListener />
             <CookieBanner />
             <PWAInstallPrompt />
           </div>

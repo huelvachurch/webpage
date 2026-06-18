@@ -73,27 +73,76 @@ self.addEventListener('fetch', (event) => {
 
 // Handling basic push notifications or manual reminders
 self.addEventListener('push', (event) => {
-  let data = { title: 'Huelva Church', body: 'Tienes una nueva actualización.' };
+  let title = 'Huelva Church';
+  let body = 'Tienes una nueva actualización.';
+  let icon = '/images/LogoPWA.png';
+  let clickUrl = '/micelula';
+
   if (event.data) {
     try {
-      data = event.data.json();
+      const payload = event.data.json();
+      console.log('Push recibido:', payload);
+      
+      // Intentar extraer de payload.notification (FCM estándar), payload.data.notification, o la raíz
+      const notif = payload.notification || 
+                    (payload.data && payload.data.notification) || 
+                    (payload.data && typeof payload.data === 'object' ? payload.data : null) || 
+                    payload;
+                    
+      if (notif) {
+        title = notif.title || title;
+        body = notif.body || notif.message || body;
+        icon = notif.icon || icon;
+      }
+
+      // Buscar enlaces personalizados para redirigir al pulsar
+      if (payload.data && payload.data.link) {
+        clickUrl = payload.data.link;
+      } else if (payload.fcm_options && payload.fcm_options.link) {
+        clickUrl = payload.fcm_options.link;
+      } else if (payload.notification && payload.notification.click_action) {
+        clickUrl = payload.notification.click_action;
+      }
     } catch (e) {
-      data = { title: 'Huelva Church', body: event.data.text() };
+      body = event.data.text() || body;
     }
   }
 
   const options = {
-    body: data.body,
-    icon: '/images/LogoPWA.png',
+    body: body,
+    icon: icon,
     badge: '/images/LogoPWA.png',
     vibrate: [100, 50, 100],
     data: {
       dateOfArrival: Date.now(),
-      primaryKey: '1'
+      primaryKey: '1',
+      clickUrl: clickUrl
     }
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title, options)
+    self.registration.showNotification(title, options)
+  );
+});
+
+// Click action to open or bring focus to the app
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const clickUrl = event.notification.data?.clickUrl || '/micelula';
+  
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Si hay una ventana del portal abierta, la enfocamos
+      for (const client of clientList) {
+        if ('focus' in client) {
+          // Si el cliente ya está en la URL adecuada o cerca, lo enfocamos
+          return client.focus();
+        }
+      }
+      // Si no hay ventana abierta, abrimos una nueva
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(clickUrl);
+      }
+    })
   );
 });

@@ -10,9 +10,16 @@ import {
   deleteDoc, addDoc, serverTimestamp, onSnapshot 
 } from 'firebase/firestore';
 import { deleteUser } from 'firebase/auth';
-import { db, auth, handleFirestoreError, OperationType } from '../firebase';
+import { db, auth, handleFirestoreError, OperationType, requestAndSaveFCMToken } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { 
+  isNative, 
+  getNotificationPermission, 
+  requestNotificationPermission as requestNativeOrWebPermission, 
+  triggerLocalNotification, 
+  registerNativePush 
+} from '../utils/notifications';
 
 interface Course {
   id: string;
@@ -50,6 +57,9 @@ export default function MisDatos() {
   // Newsletter subscription state
   const [newsletterSubscribed, setNewsletterSubscribed] = useState(false);
   const [subscriberDocId, setSubscriberDocId] = useState<string | null>(null);
+  const [savingNewsletter, setSavingNewsletter] = useState(false);
+  const [newsletterSuccess, setNewsletterSuccess] = useState('');
+  const [newsletterError, setNewsletterError] = useState('');
   const [hasRequestedAlumno, setHasRequestedAlumno] = useState(false);
   const [userCelulaId, setUserCelulaId] = useState<string | null>(null);
 
@@ -89,10 +99,17 @@ export default function MisDatos() {
 
   // Check notification support on mount
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      setPushSupported(true);
-      setBrowserPermission((window as any).Notification.permission);
-    }
+    const checkSupport = async () => {
+      if (isNative()) {
+        setPushSupported(true);
+        const perm = await getNotificationPermission();
+        setBrowserPermission(perm);
+      } else if (typeof window !== 'undefined' && 'Notification' in window) {
+        setPushSupported(true);
+        setBrowserPermission((window as any).Notification.permission);
+      }
+    };
+    checkSupport();
   }, []);
 
   // Load profile data and newsletter subscription
@@ -107,15 +124,20 @@ export default function MisDatos() {
           if (docSnap.exists()) {
             const data = docSnap.data();
             
-            // Extract or separate name/surnames
-            const dispName = data.displayName || '';
-            const spaceIdx = dispName.trim().indexOf(' ');
-            if (spaceIdx !== -1) {
-              setNombre(dispName.substring(0, spaceIdx).trim());
-              setApellidos(dispName.substring(spaceIdx + 1).trim());
+            // Extract or separate name/surnames (Prefer distinct saved fields)
+            if (data.nombre !== undefined || data.apellidos !== undefined) {
+              setNombre(data.nombre || '');
+              setApellidos(data.apellidos || '');
             } else {
-              setNombre(dispName);
-              setApellidos('');
+              const dispName = data.displayName || '';
+              const spaceIdx = dispName.trim().indexOf(' ');
+              if (spaceIdx !== -1) {
+                setNombre(dispName.substring(0, spaceIdx).trim());
+                setApellidos(dispName.substring(spaceIdx + 1).trim());
+              } else {
+                setNombre(dispName);
+                setApellidos('');
+              }
             }
 
             setFechaNacimiento(data.birthDate || '');
@@ -140,13 +162,19 @@ export default function MisDatos() {
           setErrorMsg(`Error al cargar los datos de tu cuenta (detalles: ${error instanceof Error ? error.message : String(error)})`);
         }
 
-        // 2. Fetch newsletter subscribers list for this user's email (Isolated/Failsafe)
-        if (user.email) {
-          try {
+        // 2. Fetch newsletter subscribers list (UID direct check with email query fallback)
+        try {
+          const subDocRef = doc(db, 'subscribers', user.uid);
+          const subSnap = await getDoc(subDocRef);
+          if (subSnap.exists()) {
+            const subData = subSnap.data();
+            setNewsletterSubscribed(subData.active !== false);
+            setSubscriberDocId(subSnap.id);
+          } else if (user.email) {
             const qSub = query(collection(db, 'subscribers'), where('email', '==', user.email));
-            const subSnap = await getDocs(qSub);
-            if (!subSnap.empty) {
-              const subDoc = subSnap.docs[0];
+            const emailSubSnap = await getDocs(qSub);
+            if (!emailSubSnap.empty) {
+              const subDoc = emailSubSnap.docs[0];
               const subData = subDoc.data();
               setNewsletterSubscribed(subData.active !== false);
               setSubscriberDocId(subDoc.id);
@@ -154,9 +182,12 @@ export default function MisDatos() {
               setNewsletterSubscribed(false);
               setSubscriberDocId(null);
             }
-          } catch (error) {
-            console.warn("Non-critical error: subscribers query failed:", error);
+          } else {
+            setNewsletterSubscribed(false);
+            setSubscriberDocId(null);
           }
+        } catch (error) {
+          console.warn("Non-critical error: subscribers query failed:", error);
         }
 
         // 3. Fetch courses enrollments (Isolated/Failsafe)
@@ -251,24 +282,61 @@ export default function MisDatos() {
 
   // Request notification permission
   const requestNotificationPermission = async () => {
-    if (typeof window === 'undefined' || !('Notification' in window)) {
+    const isApp = isNative();
+    if (!isApp && (typeof window === 'undefined' || !('Notification' in window))) {
       setPrefsError('Las notificaciones del navegador no son compatibles con este dispositivo o navegador.');
       return;
     }
 
     try {
-      const permission = await (window as any).Notification.requestPermission();
+      const permission = await requestNativeOrWebPermission();
       setBrowserPermission(permission);
       if (permission === 'granted') {
+        let tokenMsg = '';
+        if (user) {
+          try {
+            if (isApp) {
+              // Register native push FCM listeners
+              await registerNativePush(async (token) => {
+                if (token) {
+                  // Save custom native registration token to Firestore
+                  const userRef = doc(db, 'users', user.uid);
+                  const userDoc = await getDoc(userRef);
+                  let existingTokens: string[] = [];
+                  if (userDoc.exists()) {
+                    existingTokens = Array.isArray(userDoc.data().fcmTokens) ? userDoc.data().fcmTokens : [];
+                  }
+                  if (!existingTokens.includes(token)) {
+                    await setDoc(userRef, { fcmTokens: [...existingTokens, token], uid: user.uid }, { merge: true });
+                  }
+                }
+              });
+              tokenMsg = ' ¡Tu dispositivo móvil ha sido enlazado para recibir notificaciones directas!';
+            } else {
+              const token = await requestAndSaveFCMToken(user.uid);
+              if (token) {
+                tokenMsg = ' ¡Tu dispositivo ha sido enlazado para recibir alertas offline!';
+              }
+            }
+          } catch (e) {
+            console.warn("FCM registration failed:", e);
+          }
+        }
         setPrefsSuccess(true);
-        setTestBannerMessage('¡Permiso concedido! Ahora puedes recibir alertas push en este navegador.');
+        setTestBannerMessage(isApp 
+          ? `¡Permiso concedido! Ahora puedes recibir alertas push en tu aplicación móvil.${tokenMsg}`
+          : `¡Permiso concedido! Ahora puedes recibir alertas push en este navegador.${tokenMsg}`
+        );
         setShowTestBanner(true);
         setTimeout(() => {
           setShowTestBanner(false);
           setPrefsSuccess(false);
         }, 5000);
       } else if (permission === 'denied') {
-        setPrefsError('Permiso denegado. Para recibir notificaciones, debes habilitarlas desde la configuración de tu navegador.');
+        setPrefsError(isApp 
+          ? 'Permiso denegado. Para recibir notificaciones, debes habilitarlas desde los ajustes de la aplicación en tu celular.'
+          : 'Permiso denegado. Para recibir notificaciones, debes habilitarlas desde la configuración de tu navegador.'
+        );
       }
     } catch (err) {
       console.error('Error requesting notification permission:', err);
@@ -278,32 +346,28 @@ export default function MisDatos() {
 
   // Simulate or trigger real test push notification
   const handleTriggerTestPush = () => {
-    if (typeof window === 'undefined') return;
     setIsSimulatingPush(true);
     
-    setTimeout(() => {
+    setTimeout(async () => {
       setIsSimulatingPush(false);
       
-      const hasNotificationAPI = 'Notification' in window;
-      const isGranted = hasNotificationAPI && (window as any).Notification.permission === 'granted';
-
-      if (isGranted) {
-        // Trigger real HTML5 Notification
+      const perm = await getNotificationPermission();
+      
+      if (perm === 'granted') {
         try {
-          new (window as any).Notification("Mi Célula - Huelva Church", {
-            body: "¡Prueba de alerta exitosa! Tus canales de notificaciones han sido configurados correctamente.",
-            icon: "/images/LogoPWA.png",
-            tag: "test-notification"
-          });
+          await triggerLocalNotification(
+            "Mi Célula - Huelva Church", 
+            "¡Prueba de alerta exitosa! Tus canales de notificaciones han sido configurados correctamente."
+          );
         } catch (err) {
-          console.error("Native notification failed, falling back to in-app banner:", err);
-          setTestBannerMessage("🔔 Mi Célula: ¡Prueba de Alerta Exitosa! Preferences guardadas en tu cuenta de forma segura.");
+          console.error("Local notification service failed, falling back to in-app banner:", err);
+          setTestBannerMessage("🔔 Mi Célula: ¡Prueba de Alerta Exitosa! Preferencias guardadas de forma segura.");
           setShowTestBanner(true);
           setTimeout(() => setShowTestBanner(false), 5000);
         }
       } else {
         // Fallback banner for when standard desktop permission is denied/unsupported/inside iframe
-        setTestBannerMessage("🔔 Mi Célula: ¡Prueba de Alerta Exitosa! Preferences guardadas en tu cuenta de forma segura.");
+        setTestBannerMessage("🔔 Mi Célula: ¡Prueba de Alerta Exitosa! Preferencias guardadas de forma segura.");
         setShowTestBanner(true);
         setTimeout(() => setShowTestBanner(false), 5000);
       }
@@ -320,7 +384,9 @@ export default function MisDatos() {
     setErrorMsg('');
 
     try {
-      const fullDisplayName = `${nombre.trim()} ${apellidos.trim()}`.trim() || user.displayName || '';
+      const trimmedNombre = nombre.trim();
+      const trimmedApellidos = apellidos.trim();
+      const fullDisplayName = `${trimmedNombre} ${trimmedApellidos}`.trim() || user.displayName || '';
       
       // Update User Document with setDoc merge: true
       const userDocRef = doc(db, 'users', user.uid);
@@ -329,6 +395,8 @@ export default function MisDatos() {
         email: user.email || '',
         roles: roles || [],
         status: status || 'active',
+        nombre: trimmedNombre,
+        apellidos: trimmedApellidos,
         displayName: fullDisplayName,
         birthDate: fechaNacimiento,
         lugarResidencia: lugar,
@@ -337,25 +405,6 @@ export default function MisDatos() {
         lugarDetalle: lugar === 'Otro' ? lugarDetalle : '',
         updatedAt: serverTimestamp()
       }, { merge: true });
-
-      // Update Subscriptions Link
-      if (user.email) {
-        if (subscriberDocId) {
-          // Update active status
-          const subRef = doc(db, 'subscribers', subscriberDocId);
-          await updateDoc(subRef, {
-            active: newsletterSubscribed
-          });
-        } else if (newsletterSubscribed) {
-          // Create subscription doc
-          const newDocRef = await addDoc(collection(db, 'subscribers'), {
-            email: user.email,
-            subscribedAt: serverTimestamp(),
-            active: true
-          });
-          setSubscriberDocId(newDocRef.id);
-        }
-      }
 
       setSuccessMsg('¡Datos de perfil actualizados correctamente!');
       setTimeout(() => setSuccessMsg(''), 5000);
@@ -369,6 +418,40 @@ export default function MisDatos() {
       }
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Handle Save Newsletter Subscription
+  const handleSaveNewsletter = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !user.email) return;
+
+    setSavingNewsletter(true);
+    setNewsletterSuccess('');
+    setNewsletterError('');
+
+    try {
+      // Always save using user.uid as the subscriber document ID
+      const subRef = doc(db, 'subscribers', user.uid);
+      await setDoc(subRef, {
+        email: user.email,
+        subscribedAt: serverTimestamp(),
+        active: newsletterSubscribed
+      }, { merge: true });
+
+      setSubscriberDocId(user.uid);
+      setNewsletterSuccess('¡Suscripción al boletín actualizada correctamente!');
+      setTimeout(() => setNewsletterSuccess(''), 5000);
+    } catch (error) {
+      console.error("Error updating newsletter subscription:", error);
+      setNewsletterError("Error al guardar la preferencia del boletín. Inténtalo de nuevo.");
+      try {
+        handleFirestoreError(error, OperationType.WRITE, `subscribers/${user.uid}`);
+      } catch (fErr) {
+        // Log formatted details
+      }
+    } finally {
+      setSavingNewsletter(false);
     }
   };
 
@@ -652,29 +735,6 @@ export default function MisDatos() {
                   </motion.div>
                 )}
 
-                {/* Newsletter Subscription Toggle */}
-                <div className="pt-4 border-t border-slate-150">
-                  <div className="flex items-start gap-4">
-                    <div className="flex items-center h-5 mt-1">
-                      <input 
-                        type="checkbox" 
-                        id="newsletter" 
-                        checked={newsletterSubscribed}
-                        onChange={(e) => setNewsletterSubscribed(e.target.checked)}
-                        className="w-5 h-5 rounded border-slate-300 text-secondary focus:ring-secondary"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="newsletter" className="text-sm font-bold text-primary block cursor-pointer">
-                        Suscripción a Newsletter
-                      </label>
-                      <p className="text-primary/50 text-xs mt-1 leading-relaxed">
-                        Deseo suscribirme y recibir correos de resúmenes semanales, avisos especiales de sermones de domingos y actividades de Huelva Church.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
                 {/* Submit button */}
                 <div className="pt-4">
                   <button
@@ -689,6 +749,88 @@ export default function MisDatos() {
                       </>
                     ) : (
                       'Guardar Mi Perfil'
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Tarjeta Independiente de Suscripción a Boletines Informativos */}
+            <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none">
+                <Mail className="w-32 h-32 text-secondary" />
+              </div>
+
+              <h2 className="text-xl font-kenao text-primary mb-2 flex items-center gap-2 relative z-10">
+                <Mail className="w-5 h-5 text-secondary" />
+                Boletines Informativos
+              </h2>
+              <p className="text-primary/60 text-xs mb-6">
+                Suscríbete para recibir noticias, resúmenes de sermones dominicales, estudios bíblicos y actividades directamente en tu correo electrónico.
+              </p>
+
+              {/* Newsletter Alerts */}
+              <AnimatePresence>
+                {newsletterSuccess && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="mb-6 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl flex items-center gap-3 text-xs font-bold"
+                  >
+                    <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
+                    {newsletterSuccess}
+                  </motion.div>
+                )}
+
+                {newsletterError && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="mb-6 p-4 bg-red-50 border border-red-200 text-red-800 rounded-2xl flex items-center gap-3 text-xs font-bold"
+                  >
+                    <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+                    {newsletterError}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <form onSubmit={handleSaveNewsletter} className="space-y-6">
+                <div className="flex items-start gap-4 p-4 bg-slate-50/50 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-all">
+                  <div className="flex items-center h-5 mt-1">
+                    <input 
+                      type="checkbox" 
+                      id="newsletter" 
+                      checked={newsletterSubscribed}
+                      onChange={(e) => setNewsletterSubscribed(e.target.checked)}
+                      className="w-5 h-5 rounded border-slate-300 text-secondary focus:ring-secondary cursor-pointer"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="newsletter" className="text-sm font-bold text-primary block cursor-pointer">
+                      Suscripción al Boletín Mensual y Semanal
+                    </label>
+                    <p className="text-primary/50 text-xs mt-1 leading-relaxed">
+                      Deseo suscribirme y recibir correos de avisos de sermones, actividades y noticias especiales de Huelva Church.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Newsletter Submit button */}
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    disabled={savingNewsletter}
+                    className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-white font-bold py-4 px-8 rounded-xl transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 cursor-pointer text-sm"
+                  >
+                    {savingNewsletter ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Guardando suscripción...
+                      </>
+                    ) : (
+                      'Guardar Suscripción de Boletín'
                     )}
                   </button>
                 </div>

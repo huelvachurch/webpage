@@ -33,7 +33,7 @@ export const pt = {
       welcomeTag: 'Bem-vindo a Casa',
       welcomeTitle: 'Um lugar para crer, amar e pertencer.',
       welcomeDesc1: 'Somos uma igreja cristã evangélica apaixonada por Deus e pelas pessoas de Huelva.',
-      welcomeDesc2: 'Cremos que vivemos a igreja todos os dias e nossa forma de fazê-lo é através de nossos relacionamentos de amor e cuidado, ao que chamamos de <span class="italic font-bold font-kenao text-primary">Células</span>.',
+      welcomeDesc2: 'Cremos que vivemos a igreja todos os dias e nossa forma de fazê-lo é através de nossos relacionamentos de amor e cuidado, ao que chamamos de <span class="font-bold font-kenao text-primary">Células</span>.',
       welcomeDesc3: 'Convidamos você a se juntar a esta família, para viver de uma maneira mais profunda e próxima de Jesus junto conosco.',
       loveActionTitle: 'Amor através de relacionamentos',
       loveActionDesc: 'Buscamos abençoar nossa cidade.',

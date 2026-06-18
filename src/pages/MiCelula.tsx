@@ -59,6 +59,41 @@ interface StudyInteraction {
   lastUpdated: string;
 }
 
+function getStudyMonthAndYear(study: WeeklyStudy) {
+  const dateStr = study.startDate || '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    const parts = dateStr.split('-');
+    return {
+      year: parseInt(parts[0], 10),
+      month: parseInt(parts[1], 10) - 1
+    };
+  }
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+    const parts = dateStr.split('/');
+    return {
+      year: parseInt(parts[2], 10),
+      month: parseInt(parts[1], 10) - 1
+    };
+  }
+  if (study.createdAt && study.createdAt.seconds) {
+    const date = new Date(study.createdAt.seconds * 1000);
+    return {
+      year: date.getFullYear(),
+      month: date.getMonth()
+    };
+  }
+  try {
+    const date = new Date(dateStr);
+    if (!isNaN(date.getTime())) {
+      return {
+        year: date.getFullYear(),
+        month: date.getMonth()
+      };
+    }
+  } catch {}
+  return null;
+}
+
 export default function MiCelula() {
   const { user, isAuthReady } = useAuth();
   const navigate = useNavigate();
@@ -85,6 +120,9 @@ export default function MiCelula() {
   // Studies
   const [allStudies, setAllStudies] = useState<WeeklyStudy[]>([]);
   const [userInteractions, setUserInteractions] = useState<StudyInteraction[]>([]);
+  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [expandedNotesId, setExpandedNotesId] = useState<string | null>(null);
 
   // Cell Notifications state
   const [cellNotifications, setCellNotifications] = useState<any[]>([]);
@@ -517,7 +555,7 @@ export default function MiCelula() {
                 onChange={(e) => setActiveTab(e.target.value as TabType)}
                 className="w-full bg-white border border-slate-200 text-primary font-bold px-4 py-3.5 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-secondary/50 uppercase text-sm tracking-wide shadow-sm"
               >
-                <option value="notificaciones">Notificaciones ({activeCellNotificationsForBadge.length})</option>
+                <option value="notificaciones">Notificaciones</option>
                 <option value="estudios">Estudios</option>
                 <option value="peticiones">Peticiones</option>
                 <option value="info">Información</option>
@@ -650,80 +688,208 @@ export default function MiCelula() {
                   >
                     {/* Guardados */}
                     <div>
-                      <h3 className="text-xl font-kenao text-primary mb-4 flex items-center gap-2">
-                        <Check className="w-6 h-6 text-secondary" />
-                        Mis Estudios Guardados
-                      </h3>
-                      {userInteractions.length === 0 ? (
-                        <div className="bg-slate-50 border border-slate-200 border-dashed rounded-2xl p-8 text-center">
-                          <BookOpen className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                          <p className="text-slate-500 font-medium">Aún no tienes estudios guardados.</p>
-                          <p className="text-sm text-slate-400 mt-2">Visita un estudio de la biblioteca y pulsa "Guardar en Perfil".</p>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {[...userInteractions]
-                            .sort((a, b) => {
-                              const indexA = allStudies.findIndex(s => s.id === a.studyId);
-                              const indexB = allStudies.findIndex(s => s.id === b.studyId);
-                              const numA = indexA === -1 ? 999999 : indexA;
-                              const numB = indexB === -1 ? 999999 : indexB;
-                              return numA - numB;
-                            })
-                            .slice(0, 3)
-                            .map(interaction => {
-                            const relatedStudy = allStudies.find(s => s.id === interaction.studyId);
-                            return (
-                              <a
-                                key={interaction.id}
-                                href={(() => {
-                                  let urlStr = relatedStudy?.link || `https://estudios.huelvachurch.com/?id=${interaction.studyId}`;
-                                  if (user?.uid && urlStr.includes('estudios.huelvachurch.com')) {
-                                    urlStr += (urlStr.includes('?') ? '&' : '?') + `uid=${user.uid}`;
-                                  }
-                                  return urlStr;
-                                })()}
-                                target="_blank" rel="noopener noreferrer"
-                                className="group block bg-white border border-slate-200 rounded-xl p-5 hover:border-secondary hover:shadow-md transition-all"
-                              >
-                                <div className="flex justify-between items-start gap-4">
-                                  <div>
-                                    <span className="text-[10px] uppercase font-bold text-secondary bg-secondary/10 px-2 py-1 rounded-md mb-2 inline-block">
-                                      Guardado
-                                    </span>
-                                    <h4 className="font-bold text-primary group-hover:text-secondary transition-colors">
-                                      {interaction.studyTitle || relatedStudy?.studyTitle || relatedStudy?.title || `Estudio Guardado`}
-                                    </h4>
-                                    {relatedStudy?.yearTheme && (
-                                      <p className="text-xs text-slate-500 mt-1 mb-2">{relatedStudy.yearTheme}</p>
-                                    )}
-                                    <div className="flex flex-wrap gap-2 mt-3">
-                                      {interaction.petitions && interaction.petitions.length > 0 && (
-                                        <span className="text-xs text-slate-600 bg-slate-100 px-2 py-1 rounded-md flex items-center gap-1 border border-slate-200">
-                                          🙏 {interaction.petitions.length} Peticiones
-                                        </span>
-                                      )}
-                                      {interaction.notes && interaction.notes.length > 0 && (
-                                        <span className="text-xs text-slate-600 bg-slate-100 px-2 py-1 rounded-md flex items-center gap-1 border border-slate-200">
-                                          📝 {interaction.notes.length} Notas
-                                        </span>
-                                      )}
-                                      {interaction.highlightedElements && Object.keys(interaction.highlightedElements).length > 0 && (
-                                        <span className="text-xs text-slate-600 bg-slate-100 px-2 py-1 rounded-md flex items-center gap-1 border border-slate-200">
-                                          ✏️ {Object.keys(interaction.highlightedElements).length} Subrayados
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div className="w-8 h-8 rounded-full bg-slate-50 group-hover:bg-secondary/10 flex items-center justify-center shrink-0">
-                                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-secondary transition-colors" />
-                                  </div>
+                      {(() => {
+                        const savedStudiesWithDate = userInteractions.map(interaction => {
+                          const relatedStudy = allStudies.find(s => s.id === interaction.studyId);
+                          const dateInfo = relatedStudy ? getStudyMonthAndYear(relatedStudy) : null;
+                          return {
+                            interaction,
+                            relatedStudy,
+                            dateInfo
+                          };
+                        });
+
+                        const uniqueYears = Array.from(new Set(
+                          savedStudiesWithDate
+                            .map(item => item.dateInfo?.year)
+                            .filter((y): y is number => y !== undefined && y !== null)
+                        )).sort((a, b) => b - a);
+
+                        const yearsToRender = uniqueYears.length > 0 ? uniqueYears : [new Date().getFullYear()];
+                        const currentSelectedYear = yearsToRender.includes(selectedYear) ? selectedYear : yearsToRender[0];
+
+                        const uniqueMonths = Array.from(new Set(
+                          savedStudiesWithDate
+                            .filter(item => item.dateInfo?.year === currentSelectedYear)
+                            .map(item => item.dateInfo?.month)
+                            .filter((m): m is number => m !== undefined && m !== null)
+                        )).sort((a, b) => a - b);
+
+                        const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+                        const monthsToRender = uniqueMonths.length > 0 ? uniqueMonths : [new Date().getMonth()];
+                        const currentSelectedMonth = monthsToRender.includes(selectedMonth) ? selectedMonth : monthsToRender[0];
+
+                        const filteredInteractions = savedStudiesWithDate.filter(item => {
+                          return item.dateInfo?.year === currentSelectedYear && item.dateInfo?.month === currentSelectedMonth;
+                        });
+
+                        return (
+                          <>
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                              <h3 className="text-xl font-kenao text-primary flex items-center gap-2 text-left">
+                                <Check className="w-6 h-6 text-secondary" />
+                                Mis Estudios Guardados
+                              </h3>
+                              {userInteractions.length > 0 && (
+                                <div className="flex gap-2">
+                                  <select
+                                    value={currentSelectedMonth}
+                                    onChange={(e) => setSelectedMonth(parseInt(e.target.value, 10))}
+                                    className="px-3 py-2 bg-slate-50 border border-slate-200 outline-none text-xs font-semibold text-primary rounded-xl cursor-pointer"
+                                  >
+                                    {monthsToRender.map((mIdx) => (
+                                      <option key={mIdx} value={mIdx}>{monthNames[mIdx]}</option>
+                                    ))}
+                                  </select>
+                                  <select
+                                    value={currentSelectedYear}
+                                    onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
+                                    className="px-3 py-2 bg-slate-50 border border-slate-200 outline-none text-xs font-semibold text-primary rounded-xl cursor-pointer"
+                                  >
+                                    {yearsToRender.map((yr) => (
+                                      <option key={yr} value={yr}>{yr}</option>
+                                    ))}
+                                  </select>
                                 </div>
-                              </a>
-                            );
-                          })}
-                        </div>
-                      )}
+                              )}
+                            </div>
+
+                            {userInteractions.length === 0 ? (
+                              <div className="bg-slate-50 border border-slate-200 border-dashed rounded-2xl p-8 text-center animate-none">
+                                <BookOpen className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                                <p className="text-slate-500 font-medium">Aún no tienes estudios guardados.</p>
+                                <p className="text-sm text-slate-400 mt-2">Visita un estudio de la biblioteca y pulsa "Guardar en Perfil".</p>
+                              </div>
+                            ) : filteredInteractions.length === 0 ? (
+                              <div className="bg-slate-50 border border-slate-100 border-dashed rounded-2xl p-8 text-center animate-none text-slate-400">
+                                <BookOpen className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                                <p className="text-sm font-semibold">No se encontraron estudios guardados para {monthNames[currentSelectedMonth]} de {currentSelectedYear}.</p>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fadeIn">
+                                {filteredInteractions
+                                  .sort((a, b) => {
+                                    const indexA = allStudies.findIndex(s => s.id === a.interaction.studyId);
+                                    const indexB = allStudies.findIndex(s => s.id === b.interaction.studyId);
+                                    const numA = indexA === -1 ? 999999 : indexA;
+                                    const numB = indexB === -1 ? 999999 : indexB;
+                                    return numA - numB;
+                                  })
+                                  .map(({ interaction, relatedStudy }) => {
+                                    const isNotesExpanded = expandedNotesId === interaction.id;
+                                    const hasNotes = interaction.notes && interaction.notes.length > 0;
+                                    const hasPetitions = interaction.petitions && interaction.petitions.length > 0;
+                                    const hasHighlights = interaction.highlightedElements && Object.keys(interaction.highlightedElements).length > 0;
+
+                                    return (
+                                      <div
+                                        key={interaction.id}
+                                        className="group block bg-white border border-slate-200 rounded-xl p-5 hover:border-secondary hover:shadow-md transition-all text-left"
+                                      >
+                                        <div className="flex justify-between items-start gap-4">
+                                          <div className="flex-grow">
+                                            <a
+                                              href={(() => {
+                                                let urlStr = relatedStudy?.link || `https://estudios.huelvachurch.com/?id=${interaction.studyId}`;
+                                                if (user?.uid && urlStr.includes('estudios.huelvachurch.com')) {
+                                                  urlStr += (urlStr.includes('?') ? '&' : '?') + `uid=${user.uid}`;
+                                                }
+                                                return urlStr;
+                                              })()}
+                                              target="_blank" rel="noopener noreferrer"
+                                              className="block group"
+                                            >
+                                              <h4 className="font-bold text-primary group-hover:text-secondary transition-colors text-base leading-snug">
+                                                {interaction.studyTitle || relatedStudy?.studyTitle || relatedStudy?.title || `Estudio Guardado`}
+                                              </h4>
+                                            </a>
+
+                                            <div className="flex flex-wrap gap-2 mt-3">
+                                              {hasPetitions && (
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    setExpandedNotesId(isNotesExpanded ? null : interaction.id);
+                                                  }}
+                                                  className="text-[11px] font-bold text-slate-600 bg-slate-50 hover:bg-slate-100 hover:text-primary px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-slate-200 cursor-pointer"
+                                                >
+                                                  🙏 {interaction.petitions.length} Peticiones
+                                                </button>
+                                              )}
+                                              {hasNotes && (
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    setExpandedNotesId(isNotesExpanded ? null : interaction.id);
+                                                  }}
+                                                  className="text-[11px] font-bold text-slate-600 bg-slate-50 hover:bg-slate-100 hover:text-primary px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-slate-200 cursor-pointer"
+                                                >
+                                                  📝 {interaction.notes.length} Anotaciones / Notas
+                                                </button>
+                                              )}
+                                              {hasHighlights && (
+                                                <span className="text-[11px] font-bold text-slate-500 bg-slate-50 px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-slate-150">
+                                                  ✏️ {Object.keys(interaction.highlightedElements).length} Subrayados
+                                                </span>
+                                              )}
+                                            </div>
+
+                                            {isNotesExpanded && (
+                                              <motion.div
+                                                initial={{ opacity: 0, height: 0 }}
+                                                animate={{ opacity: 1, height: 'auto' }}
+                                                className="mt-4 pt-4 border-t border-slate-100 space-y-4 text-xs font-semibold text-slate-600"
+                                              >
+                                                {hasNotes && (
+                                                  <div>
+                                                    <p className="font-bold text-[10px] text-blue-600 uppercase tracking-wider mb-2">Anotaciones escritas:</p>
+                                                    <ul className="space-y-1.5 pl-4 list-disc text-primary bg-slate-50/50 border border-slate-100 rounded-xl p-3">
+                                                      {interaction.notes.map((note, nIdx) => (
+                                                        <li key={nIdx} className="leading-relaxed">{note}</li>
+                                                      ))}
+                                                    </ul>
+                                                  </div>
+                                                )}
+                                                {hasPetitions && (
+                                                  <div>
+                                                    <p className="font-bold text-[10px] text-amber-600 uppercase tracking-wider mb-2">Peticiones de Oración:</p>
+                                                    <ul className="space-y-1.5 pl-4 list-disc text-primary bg-slate-50/50 border border-slate-100 rounded-xl p-3">
+                                                      {interaction.petitions.map((pet, pIdx) => (
+                                                        <li key={pIdx} className="leading-relaxed">{pet}</li>
+                                                      ))}
+                                                    </ul>
+                                                  </div>
+                                                )}
+                                              </motion.div>
+                                            )}
+                                          </div>
+
+                                          <a
+                                            href={(() => {
+                                              let urlStr = relatedStudy?.link || `https://estudios.huelvachurch.com/?id=${interaction.studyId}`;
+                                              if (user?.uid && urlStr.includes('estudios.huelvachurch.com')) {
+                                                urlStr += (urlStr.includes('?') ? '&' : '?') + `uid=${user.uid}`;
+                                              }
+                                              return urlStr;
+                                            })()}
+                                            target="_blank" rel="noopener noreferrer"
+                                            className="w-8 h-8 rounded-full bg-slate-50 hover:bg-secondary/20 flex items-center justify-center shrink-0"
+                                          >
+                                            <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-primary transition-colors" />
+                                          </a>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
 
                     <div className="h-px bg-slate-100"></div>
@@ -889,30 +1055,32 @@ export default function MiCelula() {
                                            No hay peticiones registradas para este estudio.
                                          </div>
                                       ) : (
-                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                           {studyData.petitions.map((cp, idx) => (
-                                             <div key={idx} className="bg-secondary/5 border border-secondary/15 rounded-2xl p-5 shadow-sm flex flex-col items-start hover:shadow-md transition-shadow">
-                                                <div className="flex items-center gap-3 w-full mb-4 border-b border-secondary/10 pb-3">
-                                                  <div className="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center text-secondary shrink-0">
-                                                     <UserIcon className="w-5 h-5" />
-                                                  </div>
-                                                  <div className="text-left">
-                                                     <h4 className="font-bold text-slate-800 text-sm">{cp.user}</h4>
-                                                     <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold font-mono">
-                                                        {cp.date ? new Date(cp.date).toLocaleDateString('es-ES') : 'Sin fecha'}
-                                                     </p>
-                                                  </div>
+                                        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6 text-left">
+                                          {studyData.petitions.map((cp, idx) => (
+                                            <div key={idx} className="space-y-2 border-b last:border-0 border-slate-100 pb-4 last:pb-0">
+                                              <div className="flex items-center gap-2">
+                                                <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
+                                                  <UserIcon className="w-3.5 h-3.5" />
                                                 </div>
-                                                <ul className="space-y-3 w-full">
-                                                  {cp.petitions.map((pet, pidx) => (
-                                                    <li key={pidx} className="text-sm text-slate-700 text-left leading-relaxed bg-white rounded-xl p-3 border border-slate-150 shadow-sm relative before:absolute before:left-0 before:top-0 before:h-full before:w-1 before:bg-secondary before:rounded-l-xl pl-4">
-                                                      {pet}
-                                                    </li>
-                                                  ))}
-                                                </ul>
-                                             </div>
-                                           ))}
-                                         </div>
+                                                <div>
+                                                  <p className="font-bold text-slate-800 text-sm">{cp.user}</p>
+                                                  {cp.date && (
+                                                    <p className="text-[9px] text-slate-400 font-mono font-bold">
+                                                      {new Date(cp.date).toLocaleDateString('es-ES')}
+                                                    </p>
+                                                  )}
+                                                </div>
+                                              </div>
+                                              <ul className="space-y-1 bg-slate-50/50 rounded-xl p-3 border border-slate-100 pl-6 list-disc text-slate-700 text-sm">
+                                                {cp.petitions.map((pet, pidx) => (
+                                                  <li key={pidx} className="leading-relaxed">
+                                                    {pet}
+                                                  </li>
+                                                ))}
+                                              </ul>
+                                            </div>
+                                          ))}
+                                        </div>
                                       )}
                                    </div>
                                  ))}

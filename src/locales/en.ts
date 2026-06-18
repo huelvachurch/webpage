@@ -33,7 +33,7 @@ export const en = {
       welcomeTag: 'Welcome Home',
       welcomeTitle: 'A place to believe, love and belong.',
       welcomeDesc1: 'We are an evangelical Christian church passionate about God and the people of Huelva.',
-      welcomeDesc2: 'We believe that we live the church every day and our way of doing so is through our relationships of love and care, which we call <span class="italic font-bold font-kenao text-primary">Cells</span>.',
+      welcomeDesc2: 'We believe that we live the church every day and our way of doing so is through our relationships of love and care, which we call <span class="font-bold font-kenao text-primary">Cells</span>.',
       welcomeDesc3: 'We invite you to join this family, to live in a deeper and closer way with Jesus alongside us.',
       loveActionTitle: 'Love through relationships',
       loveActionDesc: 'We seek to bless our city.',

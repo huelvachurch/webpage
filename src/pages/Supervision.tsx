@@ -455,7 +455,7 @@ export default function Supervision() {
             >
               <option value="lideres">Líderes y Células</option>
               <option value="estadisticas">Estadísticas</option>
-              <option value="notificaciones">Notificaciones ({contactNotifications.length})</option>
+              <option value="notificaciones">Notificaciones</option>
             </select>
             <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400">
               <ChevronRight className="w-5 h-5 transform rotate-90" />
@@ -986,46 +986,46 @@ export default function Supervision() {
                   <p className="text-xs text-slate-400 mt-1">Crea alertas oficiales que verán todos los líderes bajo tu cargo.</p>
                 </div>
 
-                <div className="bg-secondary/5 p-6 rounded-[2rem] border border-secondary/20 shadow-sm relative text-left">
+                <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm relative text-left">
                   <form onSubmit={handlePostNotice} className="space-y-4">
                     <div>
-                      <label className="block text-xs uppercase font-extrabold text-secondary mb-2">Título de la Alerta</label>
+                      <label className="block text-sm font-bold text-primary mb-2">Título de la Alerta</label>
                       <input
                         type="text"
                         required
                         value={newNotice.title}
                         onChange={e => setNewNotice({...newNotice, title: e.target.value})}
-                        className="w-full px-4 py-3 bg-white border border-secondary/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary text-sm font-semibold text-primary"
+                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary text-sm font-semibold text-primary"
                         placeholder="Ej. Recordatorio: Entrega de Reportes"
                       />
                     </div>
                     
                     <div>
-                      <label className="block text-xs uppercase font-extrabold text-secondary mb-2">Mensaje o Comunicado</label>
+                      <label className="block text-sm font-bold text-primary mb-2">Mensaje o Comunicado</label>
                       <textarea
                         required
                         rows={4}
                         value={newNotice.message}
                         onChange={e => setNewNotice({...newNotice, message: e.target.value})}
-                        className="w-full px-4 py-3 bg-white border border-secondary/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary text-sm font-semibold text-primary leading-relaxed"
+                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary text-sm font-semibold text-primary leading-relaxed"
                         placeholder="Escribe el cuerpo del mensaje detalladamente..."
                       />
                     </div>
                     
                     <div>
-                      <label className="block text-xs uppercase font-extrabold text-secondary mb-2">Fecha Límite de Exposición (Obligatoria)</label>
+                      <label className="block text-sm font-bold text-primary mb-2">Fecha Límite de Exposición (Obligatoria)</label>
                       <input
                         type="date"
                         required
                         value={newNotice.expiry}
                         onChange={e => setNewNotice({...newNotice, expiry: e.target.value})}
-                        className="w-full px-4 py-3 bg-white border border-secondary/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary text-sm font-semibold text-primary"
+                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary text-sm font-semibold text-primary"
                       />
                     </div>
                     
                     <button 
                       type="submit" 
-                      className="w-full py-4 bg-secondary text-slate-900 font-extrabold rounded-xl shadow-md hover:bg-secondary/90 transition-all flex justify-center items-center gap-2 cursor-pointer uppercase tracking-wider"
+                      className="w-full py-4 bg-primary text-white font-bold rounded-xl shadow-md hover:bg-secondary hover:text-primary transition-all flex justify-center items-center gap-2 cursor-pointer uppercase tracking-wider"
                     >
                       <Send className="w-4 h-4"/> Difundir Alerta Oficial
                     </button>
