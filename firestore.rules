@@ -296,7 +296,7 @@ service cloud.firestore {
     }
 
     match /newsletters/{newsletterId} {
-      allow read: if isComunicador();
+      allow read: if true;
       allow create: if isComunicador() && isValidNewsletter(request.resource.data);
       allow update: if isComunicador() && isValidNewsletter(request.resource.data);
       allow delete: if isComunicador();

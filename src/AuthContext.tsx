@@ -44,10 +44,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
+      const isHcDomain = window.location.hostname.endsWith('huelvachurch.com');
+      const domainAttr = isHcDomain ? 'domain=.huelvachurch.com; ' : '';
       if (currentUser) {
-        document.cookie = `hc_user_uid=${currentUser.uid}; domain=.huelvachurch.com; path=/; max-age=2592000; SameSite=None; Secure`;
+        document.cookie = `hc_user_uid=${currentUser.uid}; ${domainAttr}path=/; max-age=2592000; SameSite=None; Secure`;
       } else {
-        document.cookie = `hc_user_uid=; domain=.huelvachurch.com; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=None; Secure`;
+        document.cookie = `hc_user_uid=; ${domainAttr}path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=None; Secure`;
         setRoles([]);
         setStatus(null);
         setShowWelcomePopup(false);

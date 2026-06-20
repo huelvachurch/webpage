@@ -3935,6 +3935,8 @@ export default function Lideres() {
                     <a
                       href="/Barriadas%20de%20Huelva.pdf"
                       download="Barriadas de Huelva.pdf"
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-50 hover:bg-secondary border border-slate-200 hover:border-transparent transition-all text-primary font-bold rounded-xl text-xs w-full text-center shadow-sm cursor-pointer"
                       title="Descargar plano PDF oficial de Barriadas"
                     >

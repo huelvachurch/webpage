@@ -28,6 +28,7 @@ import Legal from './pages/Legal';
 import AsistenciaCompartida from './pages/AsistenciaCompartida';
 import CursoDetalle from './pages/CursoDetalle';
 import Marca from './pages/Marca';
+import BoletinPublico from './pages/BoletinPublico';
 import CookieBanner from './components/CookieBanner';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { AuthProvider, ErrorBoundary, useAuth } from './AuthContext';
@@ -230,50 +231,63 @@ export default function App() {
         <Router>
           <ScrollToTop />
           <GlobalIframeAuth />
-          <div className="min-h-screen flex flex-col overflow-x-hidden">
-            <Navbar />
-            <main className="flex-grow">
-              <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/nosotros" element={<Nosotros />} />
-                <Route path="/celulas" element={<Celulas />} />
-                <Route path="/actividades" element={<Actividades />} />
-                <Route path="/actividades/:id" element={<ActividadDetalle />} />
-                <Route path="/dar" element={<Dar />} />
-                <Route path="/contacto" element={<Contacto />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/cursos" element={<Cursos />} />
-                <Route path="/cursos/:id" element={<CursoDetalle />} />
-                <Route path="/mis-cursos" element={<MisCursos />} />
-                <Route path="/mis-datos" element={<MisDatos />} />
-                <Route path="/mi-celula" element={<MiCelula />} />
-                <Route path="/lideres" element={<Lideres />} />
-                <Route path="/supervision" element={<Supervision />} />
-                <Route path="/presentacion" element={<Presentacion />} />
-                <Route path="/asistencia-compartida" element={<AsistenciaCompartida />} />
-                <Route path="/legal" element={<Legal />} />
-                <Route path="/marca" element={<Marca />} />
-                
-                {/* Admin Routes */}
-                <Route path="/admin/comunicaciones" element={<AdminComunicaciones />} />
-                <Route path="/admin/administracion" element={<AdminDashboard />}>
-                  <Route path="usuarios" element={<AdminUsuarios />} />
-                  <Route path="celulas" element={<AdminCelulas />} />
-                  <Route index element={<Navigate to="usuarios" replace />} />
-                </Route>
-                <Route path="/admin/cursos" element={<AdminCursos />} />
-                <Route path="/admin/newsletter" element={<AdminNewsletter />} />
-                <Route path="/admin/ajustes" element={<AdminSettings />} />
-              </Routes>
-            </main>
-            <Footer />
-            <WelcomePopup />
-            <ForegroundNotificationListener />
-            <CookieBanner />
-            <PWAInstallPrompt />
-          </div>
+          <AppContent />
         </Router>
       </AuthProvider>
     </ErrorBoundary>
+  );
+}
+
+function AppContent() {
+  const location = useLocation();
+  const isBoletin = location.pathname.startsWith('/boletin');
+
+  return (
+    <div className="min-h-screen flex flex-col overflow-x-hidden">
+      {!isBoletin && <Navbar />}
+      <main className="flex-grow">
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/nosotros" element={<Nosotros />} />
+          <Route path="/celulas" element={<Celulas />} />
+          <Route path="/actividades" element={<Actividades />} />
+          <Route path="/actividades/:id" element={<ActividadDetalle />} />
+          <Route path="/dar" element={<Dar />} />
+          <Route path="/contacto" element={<Contacto />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/cursos" element={<Cursos />} />
+          <Route path="/cursos/:id" element={<CursoDetalle />} />
+          <Route path="/mis-cursos" element={<MisCursos />} />
+          <Route path="/mis-datos" element={<MisDatos />} />
+          <Route path="/mi-celula" element={<MiCelula />} />
+          <Route path="/lideres" element={<Lideres />} />
+          <Route path="/supervision" element={<Supervision />} />
+          <Route path="/presentacion" element={<Presentacion />} />
+          <Route path="/asistencia-compartida" element={<AsistenciaCompartida />} />
+          <Route path="/legal" element={<Legal />} />
+          <Route path="/marca" element={<Marca />} />
+          
+          <Route path="/boletin/web/:date" element={<BoletinPublico forcedViewMode="web" />} />
+          <Route path="/boletin/folleto/:date" element={<BoletinPublico forcedViewMode="revista" />} />
+          <Route path="/boletin/:date" element={<BoletinPublico />} />
+          
+          {/* Admin Routes */}
+          <Route path="/admin/comunicaciones" element={<AdminComunicaciones />} />
+          <Route path="/admin/administracion" element={<AdminDashboard />}>
+            <Route path="usuarios" element={<AdminUsuarios />} />
+            <Route path="celulas" element={<AdminCelulas />} />
+            <Route index element={<Navigate to="usuarios" replace />} />
+          </Route>
+          <Route path="/admin/cursos" element={<AdminCursos />} />
+          <Route path="/admin/newsletter" element={<AdminNewsletter />} />
+          <Route path="/admin/ajustes" element={<AdminSettings />} />
+        </Routes>
+      </main>
+      {!isBoletin && <Footer />}
+      <WelcomePopup />
+      <ForegroundNotificationListener />
+      <CookieBanner />
+      <PWAInstallPrompt />
+    </div>
   );
 }

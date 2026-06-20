@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, Trash2, Mail, Users, History, Send, Eye, Image as ImageIcon, Check, AlertCircle, Sparkles, BookOpen, 
-  ExternalLink, Video, Radio, Youtube, Instagram, MessageCircle, FileText, Loader2, ArrowRight, Settings, Clock 
+  ExternalLink, Video, Radio, Youtube, Instagram, MessageCircle, FileText, Loader2, ArrowRight, Settings, Clock, Share2, Globe 
 } from 'lucide-react';
 import { 
   collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, 
@@ -69,6 +69,7 @@ export default function AdminNewsletter() {
 
   // Form State - Newsletter Builder
   const [campaignType, setCampaignType] = useState<'semanal' | 'especial'>('semanal');
+  const [coverImageUrl, setCoverImageUrl] = useState('');
   const [greetingText, setGreetingText] = useState('¡Hola familia! Qué gozo encontrarnos una vez más. Queremos animarte a sumarte con alegría a nuestra Celebración Principal del Fin de Semana.');
   const [sermonImageUrl, setSermonImageUrl] = useState('');
   const [sermonContext, setSermonContext] = useState('');
@@ -417,7 +418,8 @@ export default function AdminNewsletter() {
         sermonDescription,
         isCenaBanner,
         cenaDescription,
-        articles: activeArticles
+        articles: activeArticles,
+        coverImageUrl
       });
       setPreviewHtml(html);
     } else {
@@ -425,14 +427,15 @@ export default function AdminNewsletter() {
         subject: specialSubject,
         content: specialContent,
         btnText: specialButtonText,
-        btnUrl: specialButtonUrl
+        btnUrl: specialButtonUrl,
+        coverImageUrl
       });
       setPreviewHtml(html);
     }
-  }, [campaignType, greetingText, sermonImageUrl, sermonDescription, isCenaBanner, cenaDescription, selectedPostIds, posts, specialSubject, specialContent, specialButtonText, specialButtonUrl]);
+  }, [campaignType, greetingText, sermonImageUrl, sermonDescription, isCenaBanner, cenaDescription, selectedPostIds, posts, specialSubject, specialContent, specialButtonText, specialButtonUrl, coverImageUrl]);
 
   // HTML Compiler: Weekly Sunday Reminders
-  function compileWeeklyEmail(config: { greetingText: string; sermonImageUrl: string; sermonDescription: string; isCenaBanner: boolean; cenaDescription: string; articles: Post[] }) {
+  function compileWeeklyEmail(config: { greetingText: string; sermonImageUrl: string; sermonDescription: string; isCenaBanner: boolean; cenaDescription: string; articles: Post[]; coverImageUrl?: string }) {
     const articlesHtml = config.articles.map(p => `
       <div style="background-color: #ffffff; border-radius: 16px; border: 1px solid #f1f5f9; overflow: hidden; margin-bottom: 24px;">
         ${p.imageUrl ? `<img src="${getOptimizedImageUrl(p.imageUrl)}" alt="${p.title}" style="width: 100%; max-height: 200px; object-fit: cover; display: block;" />` : ''}
@@ -440,7 +443,7 @@ export default function AdminNewsletter() {
           <span style="background-color: #dfb23f; color: #162a45; font-size: 11px; font-weight: bold; padding: 4px 8px; border-radius: 99px; text-transform: uppercase;">${p.category || 'Anuncio'}</span>
           <h3 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 18px; color: #162a45; margin-top: 12px; margin-bottom: 8px;">${p.title}</h3>
           <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #475569; line-height: 1.5; margin: 0 0 16px 0;">${p.excerpt}</p>
-          <a href="https://huelvachurch.com/actividades/${p.id}" target="_blank" style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; font-weight: bold; color: #162a45; text-decoration: none;">Leer más e inscribirse &rarr;</a>
+          <a href="${window.location.origin}/actividades/${p.id}" target="_blank" style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; font-weight: bold; color: #162a45; text-decoration: none;">Leer más e inscribirse &rarr;</a>
         </div>
       </div>
     `).join('');
@@ -463,7 +466,7 @@ export default function AdminNewsletter() {
 
     const celulasBannerHTML = `
       <div style="margin-bottom: 24px;">
-        <a href="https://huelvachurch.com/celulas" target="_blank" style="text-decoration: none; display: block;">
+        <a href="${window.location.origin}/celulas" target="_blank" style="text-decoration: none; display: block;">
           <table width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color: #1e293b; background-image: url('${window.location.origin}/images/Banner%20Celulas.png'); background-size: cover; background-position: center; border-radius: 16px; overflow: hidden;">
             <tr>
               <td height="100" style="height: 100px;"></td>
@@ -565,6 +568,15 @@ export default function AdminNewsletter() {
                   </td>
                 </tr>
                 
+                ${config.coverImageUrl ? `
+                <!-- Boletin Cover Image -->
+                <tr>
+                  <td style="padding: 0; text-align: center; background-color: #ffffff;">
+                    <img src="${getOptimizedImageUrl(config.coverImageUrl)}" alt="Carátula" style="width: 100%; max-width: 600px; height: auto; display: block; margin: 0 auto;" />
+                  </td>
+                </tr>
+                ` : ''}
+                
                 <!-- Body Main -->
                 <tr>
                   <td style="padding: 32px 32px 0 32px;">
@@ -660,7 +672,7 @@ export default function AdminNewsletter() {
   }
 
   // HTML Compiler: Special Announcement on the Fly
-  function compileSpecialEmail(config: { subject: string; content: string; btnText?: string; btnUrl?: string }) {
+  function compileSpecialEmail(config: { subject: string; content: string; btnText?: string; btnUrl?: string; coverImageUrl?: string }) {
     // Basic Markdown to Mail html replacements
     let styledBody = config.content
       .replace(/\n\n/g, '</p><p style="font-family: \'Helvetica Neue\', Arial, sans-serif; font-size: 15px; color: #475569; line-height: 1.6; margin: 0 0 16px 0;">')
@@ -705,6 +717,15 @@ export default function AdminNewsletter() {
                     <img src="${window.location.origin}/images/Logotipo%20Blanco.png" alt="Huelva Church" style="max-height: 50px; display: block; margin-left: auto; margin-right: auto;" />
                   </td>
                 </tr>
+                
+                ${config.coverImageUrl ? `
+                <!-- Boletin Cover Image -->
+                <tr>
+                  <td style="padding: 0; text-align: center; background-color: #ffffff;">
+                    <img src="${getOptimizedImageUrl(config.coverImageUrl)}" alt="Carátula" style="width: 100%; max-width: 600px; height: auto; display: block; margin: 0 auto;" />
+                  </td>
+                </tr>
+                ` : ''}
                 
                 <!-- Body Main -->
                 <tr>
@@ -933,12 +954,14 @@ export default function AdminNewsletter() {
           sermonDescription,
           isCenaBanner,
           cenaDescription,
-          selectedPostIds
+          selectedPostIds,
+          coverImageUrl
         } : {
           specialSubject,
           specialContent,
           specialButtonText,
-          specialButtonUrl
+          specialButtonUrl,
+          coverImageUrl
         }
       });
 
@@ -999,12 +1022,14 @@ export default function AdminNewsletter() {
           sermonDescription,
           isCenaBanner,
           cenaDescription,
-          selectedPostIds
+          selectedPostIds,
+          coverImageUrl
         } : {
           specialSubject,
           specialContent,
           specialButtonText,
-          specialButtonUrl
+          specialButtonUrl,
+          coverImageUrl
         }
       });
 
@@ -1185,6 +1210,36 @@ export default function AdminNewsletter() {
                     >
                       Comunicado Especial
                     </button>
+                  </div>
+                </div>
+
+                {/* Cover Image Input Box */}
+                <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+                  <div>
+                    <h3 className="text-xs text-secondary font-bold uppercase tracking-wider mb-1">Imagen de Carátula del Boletín (Google Drive / Enlace)</h3>
+                    <p className="text-[11px] text-slate-500 leading-normal">Esta carátula se mostrará como encabezado en el email justo debajo del logotipo del encabezado, y como portada de los folletos digitales creados para compartir (/boletin/folleto/...)</p>
+                  </div>
+                  <div className="space-y-2">
+                    <input 
+                      type="url"
+                      className="w-full px-4 py-3 text-sm rounded-xl border border-slate-200 focus:ring-2 focus:ring-secondary outline-none transition-all"
+                      placeholder="https://drive.google.com/file/d/.../view?usp=sharing"
+                      value={coverImageUrl}
+                      onChange={(e) => setCoverImageUrl(e.target.value)}
+                    />
+                    {coverImageUrl && (
+                      <div className="mt-2 rounded-xl overflow-hidden border border-slate-100 max-h-40 bg-slate-50 relative flex items-center justify-center">
+                        <img 
+                          src={getOptimizedImageUrl(coverImageUrl)} 
+                          alt="Previsualización de Carátula" 
+                          className="max-h-40 object-contain w-full animate-fade-in"
+                          referrerPolicy="no-referrer"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = 'https://placehold.co/600x400/f8fafc/162a45?text=Cargando+Imagen+de+Drive...';
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1739,6 +1794,7 @@ export default function AdminNewsletter() {
                                       <button
                                         onClick={() => {
                                           setCampaignType(camp.type);
+                                          setCoverImageUrl(camp.config?.coverImageUrl || '');
                                           if (camp.type === 'semanal') {
                                             setGreetingText(camp.config?.greetingText || '¡Hola familia! Qué gozo encontrarnos una vez más. Queremos animarte a sumarte con alegría a nuestra Celebración Principal del Fin de Semana.');
                                             setSermonImageUrl(camp.config?.sermonImageUrl || '');
@@ -1782,6 +1838,58 @@ export default function AdminNewsletter() {
                                     >
                                       {isActionCampaignId === camp.id ? 'Reenviando...' : 'Reintentar fallidos'}
                                     </button>
+                                  )}
+
+                                  {(status === 'sent' || status === 'scheduled') && (
+                                    <>
+                                      <button
+                                        onClick={() => {
+                                          const ts = camp.createdAt || camp.sentAt;
+                                          if (!ts) {
+                                            alert('Este boletín no cuenta con una fecha de registro válida para compartir.');
+                                            return;
+                                          }
+                                          const d = ts.toDate ? ts.toDate() : new Date(ts);
+                                          const year = d.getFullYear();
+                                          const month = String(d.getMonth() + 1).padStart(2, '0');
+                                          const day = String(d.getDate()).padStart(2, '0');
+                                          const dateStr = `${year}-${month}-${day}`;
+                                          const shareUrl = `${window.location.origin}/boletin/web/${dateStr}`;
+                                          
+                                          navigator.clipboard.writeText(shareUrl);
+                                          alert(`🔗 ¡Enlace de Página Web copiado!\n\n${shareUrl}`);
+                                        }}
+                                        className="bg-sky-50 hover:bg-sky-100 text-[#2D4B73] border border-sky-200/50 text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
+                                        title="Copiar enlace en formato Página Web"
+                                      >
+                                        <Globe className="w-3.5 h-3.5 text-[#2D4B73]" />
+                                        Web
+                                      </button>
+
+                                      <button
+                                        onClick={() => {
+                                          const ts = camp.createdAt || camp.sentAt;
+                                          if (!ts) {
+                                            alert('Este boletín no cuenta con una fecha de registro válida para compartir.');
+                                            return;
+                                          }
+                                          const d = ts.toDate ? ts.toDate() : new Date(ts);
+                                          const year = d.getFullYear();
+                                          const month = String(d.getMonth() + 1).padStart(2, '0');
+                                          const day = String(d.getDate()).padStart(2, '0');
+                                          const dateStr = `${year}-${month}-${day}`;
+                                          const shareUrl = `${window.location.origin}/boletin/folleto/${dateStr}`;
+                                          
+                                          navigator.clipboard.writeText(shareUrl);
+                                          alert(`📖 ¡Enlace de Folleto Interactivo copiado!\n\n${shareUrl}`);
+                                        }}
+                                        className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/55 text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
+                                        title="Copiar enlace en formato Folleto Interactivo"
+                                      >
+                                        <BookOpen className="w-3.5 h-3.5 text-[#D9B70D]" />
+                                        Folleto
+                                      </button>
+                                    </>
                                   )}
 
                                   <button
