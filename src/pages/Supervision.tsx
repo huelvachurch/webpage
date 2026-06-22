@@ -262,6 +262,24 @@ export default function Supervision() {
         expiry: newNotice.expiry,
         createdAt: new Date().toISOString()
       });
+
+      // Dispatch push and email notifications to all connected leaders of the network
+      try {
+        await fetch('/api/notifications/send-cell-notice', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            leaderId: user.uid, // passing supervisor UID as leaderId to trigger linked users query
+            title: `Difusión de tu Supervisor: ${newNotice.title}`,
+            message: newNotice.message
+          })
+        });
+      } catch (fcmErr) {
+        console.warn("Fallo o advertencia al solicitar envío de notificación:", fcmErr);
+      }
+
       setNotificaciones([{
         id, supervisorId: user.uid, title: newNotice.title, message: newNotice.message, expiry: newNotice.expiry, createdAt: new Date().toISOString()
       }, ...notificaciones]);

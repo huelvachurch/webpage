@@ -21,7 +21,8 @@ export default function PWAInstallPrompt() {
     // 1. Detect if the app is already running in standalone mode (installed)
     const isStandalone = 
       window.matchMedia('(display-mode: standalone)').matches || 
-      (navigator as any).standalone === true;
+      (navigator as any).standalone === true ||
+      localStorage.getItem('huelvachurch_pwa_installed') === 'true';
 
     if (isStandalone) {
       setInstalled(true);
@@ -120,6 +121,12 @@ export default function PWAInstallPrompt() {
     localStorage.setItem('huelvachurch_pwa_dismissed', Date.now().toString());
   };
 
+  const handleInstalledForever = () => {
+    setShowPrompt(false);
+    localStorage.setItem('huelvachurch_pwa_installed', 'true');
+    setInstalled(true);
+  };
+
   if (installed || !showPrompt) return null;
 
   return (
@@ -195,29 +202,38 @@ export default function PWAInstallPrompt() {
           )}
 
           {/* Action buttons */}
-          <div className="flex items-center gap-3">
-            {!isIOS ? (
-              <button
-                onClick={handleInstallClick}
-                disabled={!deferredPrompt}
-                className="flex-grow flex items-center justify-center gap-2 bg-secondary hover:bg-secondary/90 disabled:bg-white/10 disabled:text-white/50 text-primary font-bold px-4 py-3 rounded-xl text-xs uppercase tracking-wider transition-colors cursor-pointer"
-              >
-                <Download className="w-4 h-4" />
-                <span>Instalar Ahora</span>
-              </button>
-            ) : (
+          <div className="flex flex-col gap-2.5">
+            <div className="flex items-center gap-3">
+              {!isIOS ? (
+                <button
+                  onClick={handleInstallClick}
+                  disabled={!deferredPrompt}
+                  className="flex-grow flex items-center justify-center gap-2 bg-secondary hover:bg-secondary/90 disabled:bg-white/10 disabled:text-white/50 text-primary font-bold px-4 py-3 rounded-xl text-xs uppercase tracking-wider transition-colors cursor-pointer text-center"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Instalar Ahora</span>
+                </button>
+              ) : (
+                <button
+                  onClick={handleInstalledForever}
+                  className="flex-grow flex items-center justify-center gap-2 bg-secondary text-primary font-bold px-4 py-3 rounded-xl text-xs uppercase tracking-wider transition-colors cursor-pointer hover:bg-secondary/90 text-center"
+                >
+                  <span>¡Ya la tengo!</span>
+                </button>
+              )}
               <button
                 onClick={handleDismiss}
-                className="flex-grow flex items-center justify-center gap-2 bg-secondary text-primary font-bold px-4 py-3 rounded-xl text-xs uppercase tracking-wider transition-colors cursor-pointer hover:bg-secondary/90"
+                className="px-4 py-3 bg-white/5 hover:bg-white/10 text-white font-medium rounded-xl text-xs uppercase tracking-wider transition-colors cursor-pointer text-center shrink-0"
               >
-                <span>¡Entendido!</span>
+                Más tarde
               </button>
-            )}
+            </div>
+            
             <button
-              onClick={handleDismiss}
-              className="px-4 py-3 bg-white/5 hover:bg-white/10 text-white font-medium rounded-xl text-xs uppercase tracking-wider transition-colors cursor-pointer"
+              onClick={handleInstalledForever}
+              className="text-[10.5px] text-white/40 hover:text-white/80 transition-colors pt-1 pb-0.5 hover:underline cursor-pointer text-center"
             >
-              Más tarde
+              Ya la tengo instalada / No volver a mostrar
             </button>
           </div>
         </motion.div>

@@ -197,6 +197,30 @@ export default function BoletinPublico({ forcedViewMode }: BoletinPublicoProps =
         if (targetCampaign) {
           setCampaign(targetCampaign);
 
+          let displayDate = "";
+          const ts = targetCampaign.createdAt || targetCampaign.sentAt;
+          if (ts) {
+            const d = ts.toDate ? ts.toDate() : new Date(ts);
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear();
+            displayDate = `${day}/${month}/${year}`;
+          } else if (date && date !== 'latest') {
+            const parts = date.split('-');
+            if (parts.length === 3) {
+              displayDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+            } else {
+              displayDate = date;
+            }
+          } else {
+            const d = new Date();
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear();
+            displayDate = `${day}/${month}/${year}`;
+          }
+          document.title = `Huelva Church - Boletín informativo del ${displayDate}`;
+
           // If it's a weekly newsletter, let's load selected articles
           if (targetCampaign.type === 'semanal' && targetCampaign.config?.selectedPostIds?.length) {
             const postsSnapshot = await getDocs(collection(db, 'posts'));
@@ -481,9 +505,9 @@ export default function BoletinPublico({ forcedViewMode }: BoletinPublicoProps =
                 />
               )}
               <div className="p-8">
-                <h3 className="font-kenao text-xl text-primary font-bold mb-1">Celebración Principal del Domingo</h3>
+                <h3 className="font-kenao text-xl text-primary font-bold mb-1">Celebración Dominical</h3>
                 <p className="text-xs font-bold text-[#D9B70D] mb-4 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5" /> Este Domingo a las 11:30h
+                  <Calendar className="w-3.5 h-3.5" /> {(meetingTime || 'Domingo a las 19:30H').replace(/Domingos/i, 'Domingo').replace(/hrs/i, 'h')}
                 </p>
                 <p className="text-sm text-slate-600 leading-relaxed">{campaign.config?.sermonDescription}</p>
               </div>
@@ -496,9 +520,9 @@ export default function BoletinPublico({ forcedViewMode }: BoletinPublicoProps =
                   <Sparkles className="w-5 h-5 text-secondary" />
                   <h2 className="font-kenao text-xl text-primary font-bold">Invitación Especial</h2>
                 </div>
-                <div className="bg-slate-900 rounded-3xl overflow-hidden relative shadow-md border border-slate-800 text-left">
-                  <div className="absolute inset-0 bg-cover bg-center opacity-40" style={{ backgroundImage: "url('/images/Banner%20Cena.png')" }}></div>
-                  <div className="relative p-8 md:p-10 bg-gradient-to-t from-black/90 via-black/50 to-transparent flex flex-col justify-end text-white min-h-[160px]">
+                <div className="bg-[#2D4B73] rounded-3xl overflow-hidden relative shadow-sm text-left">
+                  <div className="absolute inset-0 bg-cover bg-center opacity-30" style={{ backgroundImage: "url('/images/Banner%20Cena.png')" }}></div>
+                  <div className="relative p-8 md:p-10 flex flex-col justify-end text-white min-h-[160px] z-10">
                     <span className="text-secondary font-mono text-[10px] uppercase font-bold tracking-wider mb-2">Sacramento</span>
                     <h3 className="font-kenao text-xl font-bold mb-2">Cena del Señor</h3>
                     <p className="text-sm text-slate-200 leading-relaxed">{campaign.config.cenaDescription || 'Este domingo participaremos juntos en la mesa de comunión familiar.'}</p>
@@ -582,25 +606,25 @@ export default function BoletinPublico({ forcedViewMode }: BoletinPublicoProps =
                 <h2 className="font-kenao text-xl text-primary font-bold">Nuestra Vida como Iglesia</h2>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <a href="/celulas" target="_blank" className="bg-slate-900 rounded-2xl overflow-hidden relative block h-32 hover:opacity-95 transition-opacity text-left">
+                <a href="/celulas" target="_blank" className="bg-[#2D4B73] rounded-2xl overflow-hidden relative block h-32 hover:opacity-95 transition-opacity text-left shadow-sm">
                   <div className="absolute inset-0 bg-cover bg-center opacity-30" style={{ backgroundImage: "url('/images/Banner%20Celulas.png')" }}></div>
-                  <div className="relative p-6 bg-gradient-to-t from-black/80 to-transparent flex flex-col justify-end text-white h-full">
+                  <div className="relative p-6 flex flex-col justify-end text-white h-full z-10">
                     <h4 className="text-base font-kenao font-bold leading-tight">Células</h4>
                     <p className="text-xs text-slate-300">Conéctate en un hogar de fe cerca de ti</p>
                   </div>
                 </a>
 
-                <a href="https://meet.google.com/qhu-fktd-ejh" target="_blank" className="bg-slate-900 rounded-2xl overflow-hidden relative block h-32 hover:opacity-95 transition-opacity text-left">
+                <a href="https://meet.google.com/qhu-fktd-ejh" target="_blank" className="bg-[#2D4B73] rounded-2xl overflow-hidden relative block h-32 hover:opacity-95 transition-opacity text-left shadow-sm">
                   <div className="absolute inset-0 bg-cover bg-center opacity-30" style={{ backgroundImage: "url('/images/Banner%20Oracion.png')" }}></div>
-                  <div className="relative p-6 bg-gradient-to-t from-black/80 to-transparent flex flex-col justify-end text-white h-full">
+                  <div className="relative p-6 flex flex-col justify-end text-white h-full z-10">
                     <h4 className="text-base font-kenao font-bold leading-tight">Noches de Oración</h4>
                     <p className="text-xs text-slate-300">Lunes a Jueves 23:00h vía Meet</p>
                   </div>
                 </a>
 
-                <a href="https://www.radiohuelvachurch.com/" target="_blank" className="bg-slate-900 rounded-2xl overflow-hidden relative block h-32 hover:opacity-95 transition-opacity text-left md:col-span-2">
+                <a href="https://www.radiohuelvachurch.com/" target="_blank" className="bg-[#2D4B73] rounded-2xl overflow-hidden relative block h-32 hover:opacity-95 transition-opacity text-left md:col-span-2 shadow-sm">
                   <div className="absolute inset-0 bg-cover bg-center opacity-30" style={{ backgroundImage: "url('/images/Banner%20Radio.png')" }}></div>
-                  <div className="relative p-6 bg-gradient-to-t from-black/80 to-transparent flex flex-col justify-end text-white h-full">
+                  <div className="relative p-6 flex flex-col justify-end text-white h-full z-10">
                     <h4 className="text-base font-kenao font-bold leading-tight">Radio Online</h4>
                     <p className="text-xs text-slate-300">Sintoniza adoración fresca las 24 horas y descarga nuestra App</p>
                   </div>
@@ -677,10 +701,10 @@ export default function BoletinPublico({ forcedViewMode }: BoletinPublicoProps =
                   href={`${window.location.origin}/celulas`} 
                   target="_blank" 
                   rel="noopener noreferrer" 
-                  className="bg-slate-950 rounded-lg overflow-hidden relative block h-full hover:opacity-95 transition-opacity text-left shadow-xs"
+                  className="bg-[#2D4B73] rounded-lg overflow-hidden relative block h-full hover:opacity-95 transition-opacity text-left shadow-xs"
                 >
-                  <div className="absolute inset-0 bg-cover bg-center opacity-40 z-0" style={{ backgroundImage: "url('/images/Banner%20Celulas.png')" }}></div>
-                  <div className="relative px-2.5 z-10 bg-gradient-to-r from-[#1E314F]/95 via-[#1E314F]/60 to-transparent flex flex-col justify-center text-white h-full">
+                  <div className="absolute inset-0 bg-cover bg-center opacity-30 z-0" style={{ backgroundImage: "url('/images/Banner%20Celulas.png')" }}></div>
+                  <div className="relative px-2.5 z-10 flex flex-col justify-center text-white h-full">
                     <h5 className="font-kenao text-[7.5px] font-bold leading-none uppercase tracking-wider text-white">Células</h5>
                     <p className="text-[6.5px] text-slate-200 leading-none mt-0.5">Hogares de fe por todo Huelva</p>
                   </div>
@@ -691,10 +715,10 @@ export default function BoletinPublico({ forcedViewMode }: BoletinPublicoProps =
                   href="https://meet.google.com/qhu-fktd-ejh" 
                   target="_blank" 
                   rel="noopener noreferrer" 
-                  className="bg-slate-950 rounded-lg overflow-hidden relative block h-full hover:opacity-95 transition-opacity text-left shadow-xs"
+                  className="bg-[#2D4B73] rounded-lg overflow-hidden relative block h-full hover:opacity-95 transition-opacity text-left shadow-xs"
                 >
-                  <div className="absolute inset-0 bg-cover bg-center opacity-40 z-0" style={{ backgroundImage: "url('/images/Banner%20Oracion.png')" }}></div>
-                  <div className="relative px-2.5 z-10 bg-gradient-to-r from-[#1E314F]/95 via-[#1E314F]/60 to-transparent flex flex-col justify-center text-white h-full">
+                  <div className="absolute inset-0 bg-cover bg-center opacity-30 z-0" style={{ backgroundImage: "url('/images/Banner%20Oracion.png')" }}></div>
+                  <div className="relative px-2.5 z-10 flex flex-col justify-center text-white h-full">
                     <h5 className="font-kenao text-[7.5px] font-bold leading-none uppercase tracking-wider text-white">Noches de Oración</h5>
                     <p className="text-[6.5px] text-slate-200 leading-none mt-0.5">Lunes a Jueves a las 23:00h vía Meet</p>
                   </div>
@@ -705,10 +729,10 @@ export default function BoletinPublico({ forcedViewMode }: BoletinPublicoProps =
                   href="https://www.radiohuelvachurch.com/" 
                   target="_blank" 
                   rel="noopener noreferrer" 
-                  className="bg-slate-950 rounded-lg overflow-hidden relative block h-full hover:opacity-95 transition-opacity text-left shadow-xs"
+                  className="bg-[#2D4B73] rounded-lg overflow-hidden relative block h-full hover:opacity-95 transition-opacity text-left shadow-xs"
                 >
-                  <div className="absolute inset-0 bg-cover bg-center opacity-40 z-0" style={{ backgroundImage: "url('/images/Banner%20Radio.png')" }}></div>
-                  <div className="relative px-2.5 z-10 bg-gradient-to-r from-[#1E314F]/95 via-[#1E314F]/60 to-transparent flex flex-col justify-center text-white h-full">
+                  <div className="absolute inset-0 bg-cover bg-center opacity-30 z-0" style={{ backgroundImage: "url('/images/Banner%20Radio.png')" }}></div>
+                  <div className="relative px-2.5 z-10 flex flex-col justify-center text-white h-full">
                     <h5 className="font-kenao text-[7.5px] font-bold leading-none uppercase tracking-wider text-white">Radio Online</h5>
                     <p className="text-[6.5px] text-slate-200 leading-none mt-0.5">Música y edificación las 24 horas</p>
                   </div>
@@ -923,7 +947,7 @@ export default function BoletinPublico({ forcedViewMode }: BoletinPublicoProps =
                             <span className="w-1.5 h-1.5 bg-[#D9B70D] rounded-full"></span>
                             <h4 className="font-kenao text-[8px] text-[#2D4B73] font-bold uppercase tracking-wider">Invitación Especial</h4>
                           </div>
-                          <div className="bg-slate-900 rounded-lg p-2.5 overflow-hidden relative shadow-xs text-white flex-grow flex flex-col justify-end text-left h-full min-h-0 pb-2.5">
+                          <div className="bg-[#2D4B73] rounded-lg p-2.5 overflow-hidden relative shadow-xs text-white flex-grow flex flex-col justify-end text-left h-full min-h-0 pb-2.5">
                             <div className="absolute inset-0 bg-cover bg-center opacity-30" style={{ backgroundImage: "url('/images/Banner%20Cena.png')" }}></div>
                             <div className="relative z-10 w-full text-left flex flex-col justify-end max-h-full min-h-0">
                               <span className="text-[7.5px] font-mono text-[#D9B70D] uppercase font-bold tracking-widest block mb-0.5">Cena del Señor</span>

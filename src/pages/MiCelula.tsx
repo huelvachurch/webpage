@@ -453,21 +453,26 @@ export default function MiCelula() {
     e.stopPropagation();
     const title = study.studyTitle || study.title || 'Estudio';
     const url = getStudyUrl(study, false);
-    const text = `Mira este estudio de la Célula: "${title}" - ${url}`;
+    const textPrefix = `Estudio de la Célula: "${title}"`;
+    const fullTextAndUrl = `${textPrefix} - ${url}`;
     
     if (navigator.share) {
       navigator.share({
         title: title,
-        text: text,
+        text: textPrefix,
         url: url
-      }).catch(err => console.log(err));
+      }).catch(err => {
+        console.log(err);
+        // Fallback share with just full text if the full payload fails
+        navigator.share({ text: fullTextAndUrl }).catch(e => console.log(e));
+      });
     } else {
       navigator.clipboard.writeText(url).then(() => {
         alert("¡Enlace del estudio copiado al portapapeles!");
-        const encodedText = encodeURIComponent(text);
+        const encodedText = encodeURIComponent(fullTextAndUrl);
         window.open(`https://api.whatsapp.com/send?text=${encodedText}`, '_blank');
       }).catch(() => {
-        const encodedText = encodeURIComponent(text);
+        const encodedText = encodeURIComponent(fullTextAndUrl);
         window.open(`https://api.whatsapp.com/send?text=${encodedText}`, '_blank');
       });
     }

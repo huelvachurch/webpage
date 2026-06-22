@@ -67,6 +67,7 @@ async function sendSingleEmail(to: string, subject: string, contentHtml: string)
 async function startServer() {
   const app = express();
   const PORT = 3000;
+  let vite: any = null;
 
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ extended: true, limit: "50mb" }));
@@ -570,7 +571,7 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
     }
   }
 
-  // API Route to dispatch push notifications to cell members
+  // API Route to dispatch push notifications and SMTP emails to cell members, leaders, and supervisors
   app.post("/api/notifications/send-cell-notice", async (req, res) => {
     try {
       const { leaderId, celulaId, title, message } = req.body;
@@ -586,8 +587,9 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
       console.log(`[FCM API] Procesando notificación de célula. Leader: ${leaderId} | Célula: ${celulaId}`);
 
       const tokens: string[] = [];
+      const recipientEmails: string[] = [];
 
-      // 1. Buscar tokens de usuarios asociados a la Célula
+      // 1. Buscar tokens y emails de usuarios asociados a la Célula
       if (celulaId) {
         const q1 = query(collection(db, 'users'), where('celulaId', '==', celulaId));
         const snap1 = await getDocs(q1);
@@ -596,10 +598,13 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
           if (Array.isArray(u.fcmTokens)) {
             tokens.push(...u.fcmTokens);
           }
+          if (u.email && typeof u.email === 'string' && u.email.trim() !== '') {
+            recipientEmails.push(u.email.trim());
+          }
         });
       }
 
-      // 2. Buscar tokens de usuarios asociados al Líder
+      // 2. Buscar tokens y emails de usuarios asociados al Líder
       if (leaderId) {
         const q2 = query(collection(db, 'users'), where('leaderId', '==', leaderId));
         const snap2 = await getDocs(q2);
@@ -608,10 +613,26 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
           if (Array.isArray(u.fcmTokens)) {
             tokens.push(...u.fcmTokens);
           }
+          if (u.email && typeof u.email === 'string' && u.email.trim() !== '') {
+            recipientEmails.push(u.email.trim());
+          }
+        });
+
+        // TAMBIÉN: Buscar usuarios asociados a este ID como Supervisor (en caso de que leaderId sea un Supervisor)
+        const q3 = query(collection(db, 'users'), where('supervisorId', '==', leaderId));
+        const snap3 = await getDocs(q3);
+        snap3.forEach(docSnap => {
+          const u = docSnap.data();
+          if (Array.isArray(u.fcmTokens)) {
+            tokens.push(...u.fcmTokens);
+          }
+          if (u.email && typeof u.email === 'string' && u.email.trim() !== '') {
+            recipientEmails.push(u.email.trim());
+          }
         });
       }
 
-      // 3. Buscar tokens del propio Líder y de IDs de usuario directos pasados en la petición (como supervisores o administradores)
+      // 3. Buscar del propio Líder y de IDs de usuario directos pasados en la petición (como supervisores o administradores)
       const directUserIds: string[] = [];
       if (leaderId) directUserIds.push(leaderId);
       if (req.body.userIds && Array.isArray(req.body.userIds)) {
@@ -634,7 +655,10 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
             if (Array.isArray(u.fcmTokens)) {
               tokens.push(...u.fcmTokens);
             }
-            // Descubrir automáticamente el supervisor del líder e incluir sus tokens en la cola de envío
+            if (u.email && typeof u.email === 'string' && u.email.trim() !== '') {
+              recipientEmails.push(u.email.trim());
+            }
+            // Descubrir automáticamente el supervisor del líder e incluir sus tokens y email
             if (u.supervisorId && typeof u.supervisorId === 'string' && u.supervisorId.trim() !== '') {
               const supervisorId = u.supervisorId.trim();
               if (!processedUids.has(supervisorId) && !uidsToProcess.includes(supervisorId)) {
@@ -643,34 +667,87 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
             }
           }
         } catch (docErr) {
-          console.error(`Error buscando tokens directos de usuario ${uidVal}:`, docErr);
+          console.error(`Error buscando info de usuario directo ${uidVal}:`, docErr);
         }
       }
 
       // Filtrar tokens nulos, duplicados y vacíos
       const uniqueTokens = Array.from(new Set(tokens.filter(t => typeof t === 'string' && t.trim() !== '')));
+      // Filtrar correos válidos y únicos
+      const uniqueEmails = Array.from(new Set(recipientEmails.filter(e => typeof e === 'string' && e.trim() !== '' && e.includes('@'))));
 
-      if (uniqueTokens.length === 0) {
-        console.log("[FCM API] No se encontraron dispositivos (FCM tokens) registrados y enlazados para esta célula.");
-        return res.json({
-          success: true,
-          fcmSent: false,
-          details: "No hay tokens de dispositivos registrados. Los mensajes se guardaron en la base de datos pero no se enviaron notificaciones push offline."
-        });
-      }
+      console.log(`[FCM/SMTP API] Destinatarios resueltos: ${uniqueTokens.length} tokens push | ${uniqueEmails.length} correos electrónicos`);
 
-      // Enviar la notificación real
       const clickUrl = process.env.APP_URL 
         ? `${process.env.APP_URL}/micelula`
         : "https://ais-dev-iwia4pkyasjkhe7kc3tvni-295341840360.europe-west2.run.app/micelula";
 
-      const fcmResult = await sendFcmNotification(uniqueTokens, title, message, clickUrl);
+      // 1. Enviar NOTIFICACIÓN PUSH
+      let fcmSent = false;
+      let fcmResult = null;
+      if (uniqueTokens.length > 0) {
+        try {
+          fcmResult = await sendFcmNotification(uniqueTokens, title, message, clickUrl);
+          fcmSent = true;
+        } catch (fcmErr) {
+          console.error("[FCM API Error al enviar Push]:", fcmErr);
+        }
+      }
+
+      // 2. Enviar NOTIFICACIÓN POR EMAIL (SMTP real o simulado)
+      let emailsSentCount = 0;
+      if (uniqueEmails.length > 0) {
+        const emailSubject = `🔔 Notificación Huelva Church: ${title}`;
+        const contentHtml = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #f1f5f9; border-radius: 16px;">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <h1 style="color: #0c1a30; font-size: 24px; margin: 0;">Huelva Church</h1>
+              <p style="color: #b59410; font-size: 14px; margin: 4px 0 0 0; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">Notificación del Portal</p>
+            </div>
+            
+            <div style="background-color: #f8fafc; padding: 24px; border-radius: 12px; margin-bottom: 24px; border-left: 4px solid #b59410;">
+              <p style="font-size: 16px; color: #0c1a30; margin-top: 0; font-weight: bold;">
+                ${title}
+              </p>
+              <p style="font-size: 14px; color: #475569; line-height: 1.6; white-space: pre-wrap; margin-bottom: 0;">
+                ${message}
+              </p>
+            </div>
+
+            <p style="font-size: 14px; color: #475569; line-height: 1.6;">
+              Hemos enviado esta notificación para asegurarnos de que estés al día con tus avisos semanales, solicitudes de célula o actualizaciones pastorales incluso si no tienes abierta la aplicación de Huelva Church.
+            </p>
+            
+            <div style="text-align: center; margin-top: 32px; border-top: 1px solid #f1f5f9; padding-top: 24px;">
+              <a href="${clickUrl}" style="background-color: #0c1a30; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: bold; display: inline-block;">
+                Abrir Portal de Células
+              </a>
+              <p style="color: #94a3b8; font-size: 11px; margin-top: 20px;">
+                Este es un correo electrónico enviado automáticamente por el portal de Huelva Church.
+              </p>
+            </div>
+          </div>
+        `;
+
+        try {
+          await Promise.allSettled(uniqueEmails.map(async (email) => {
+            const resEmail = await sendSingleEmail(email, emailSubject, contentHtml);
+            if (resEmail.success) {
+              emailsSentCount++;
+            }
+          }));
+        } catch (emailErr) {
+          console.error("Error enviando notificaciones por email:", emailErr);
+        }
+      }
 
       res.json({
         success: true,
-        fcmSent: true,
+        fcmSent,
         tokensCount: uniqueTokens.length,
-        results: fcmResult
+        results: fcmResult,
+        emailsSentCount,
+        uniqueEmailsCount: uniqueEmails.length
       });
 
     } catch (error: any) {
@@ -955,9 +1032,213 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
     next();
   });
 
+  // Dynamic Open Graph Tags for Newsletter/Bulletin Social Sharing
+  app.get(["/boletin", "/boletin/:date", "/boletin/web", "/boletin/web/:date", "/boletin/folleto", "/boletin/folleto/:date"], async (req, res, next) => {
+    if (!db) {
+      return next();
+    }
+
+    try {
+      const newslettersCol = collection(db, "newsletters");
+      const querySnapshot = await getDocs(newslettersCol);
+      const campaignsList = querySnapshot.docs.map(docSnap => ({
+        id: docSnap.id,
+        ...docSnap.data()
+      })) as any[];
+
+      // Sort by date (createdAt or sentAt) descending
+      campaignsList.sort((a, b) => {
+        const tA = a.createdAt || a.sentAt;
+        const tB = b.createdAt || b.sentAt;
+        if (!tA) return 1;
+        if (!tB) return -1;
+        const dA = tA.toDate ? tA.toDate().getTime() : new Date(tA).getTime();
+        const dB = tB.toDate ? tB.toDate().getTime() : new Date(tB).getTime();
+        return dB - dA;
+      });
+
+      let targetCampaign: any | null = null;
+      const date = req.params.date;
+
+      if (date && date !== "latest") {
+        targetCampaign = campaignsList.find(camp => {
+          const ts = camp.createdAt || camp.sentAt;
+          if (!ts) return false;
+          const d = ts.toDate ? ts.toDate() : new Date(ts);
+          
+          // Format 1: UTC / general iso string
+          const year = d.getFullYear();
+          const month = String(d.getMonth() + 1).padStart(2, "0");
+          const day = String(d.getDate()).padStart(2, "0");
+          const campDateStr = `${year}-${month}-${day}`;
+          if (campDateStr === date) return true;
+
+          // Format 2: UTC timezone
+          const uYear = d.getUTCFullYear();
+          const uMonth = String(d.getUTCMonth() + 1).padStart(2, "0");
+          const uDay = String(d.getUTCDate()).padStart(2, "0");
+          const campDateStrUTC = `${uYear}-${uMonth}-${uDay}`;
+          if (campDateStrUTC === date) return true;
+
+          // Format 3: Spain Timezone (Madrid) offset-based
+          try {
+            const formatter = new Intl.DateTimeFormat("en-US", {
+              timeZone: "Europe/Madrid",
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit"
+            });
+            const parts = formatter.formatToParts(d);
+            const mPart = parts.find(p => p.type === "month")?.value;
+            const dPart = parts.find(p => p.type === "day")?.value;
+            const yPart = parts.find(p => p.type === "year")?.value;
+            if (mPart && dPart && yPart) {
+              const campDateStrMadrid = `${yPart}-${mPart}-${dPart}`;
+              if (campDateStrMadrid === date) return true;
+            }
+          } catch (e) {
+            console.error("Madrid formatter error", e);
+          }
+
+          // Format 4: Check if it is within 36 hours of the target date start
+          try {
+            const targetTime = new Date(`${date}T00:00:00`).getTime();
+            const campTime = d.getTime();
+            const diffHours = Math.abs(campTime - targetTime) / (1000 * 60 * 60);
+            if (diffHours <= 36) {
+              return true;
+            }
+          } catch (e) {
+            console.error("Date diff calculation error", e);
+          }
+
+          return false;
+        }) || null;
+      }
+
+      // Fallback: Use the latest sent/scheduled/draft if no specific date is matched or if date param is "latest"
+      if (!targetCampaign && campaignsList.length > 0) {
+        targetCampaign = campaignsList[0];
+      }
+
+      if (targetCampaign) {
+        let displayDate = "";
+        const ts = targetCampaign.createdAt || targetCampaign.sentAt;
+        if (ts) {
+          const d = ts.toDate ? ts.toDate() : new Date(ts);
+          const day = String(d.getDate()).padStart(2, "0");
+          const month = String(d.getMonth() + 1).padStart(2, "0");
+          const year = d.getFullYear();
+          displayDate = `${day}/${month}/${year}`;
+        } else if (date && date !== "latest") {
+          const parts = date.split("-");
+          if (parts.length === 3) {
+            displayDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+          } else {
+            displayDate = date;
+          }
+        } else {
+          const d = new Date();
+          const day = String(d.getDate()).padStart(2, "0");
+          const month = String(d.getMonth() + 1).padStart(2, "0");
+          const year = d.getFullYear();
+          displayDate = `${day}/${month}/${year}`;
+        }
+
+        const title = `Huelva Church - Boletín informativo del ${displayDate}`;
+        const description = targetCampaign.config?.greetingText || "Somos Huelva Church, una Iglesia Cristiana Evangélica en Huelva dedicada a compartir el amor de Jesús.";
+        
+        const protocol = "https"; // Force HTTPS for stable public social sharing previews
+        const host = req.get("host");
+        
+        let imageUrl = "";
+        const coverUrl = targetCampaign.config?.coverImageUrl;
+        if (coverUrl && typeof coverUrl === "string" && coverUrl.trim() !== "" && coverUrl !== "null" && coverUrl !== "undefined") {
+          imageUrl = coverUrl.trim();
+          
+          if (imageUrl.includes("drive.google.com")) {
+            const match = imageUrl.match(/id=(.*?)(?:&|$)/) || imageUrl.match(/\/d\/(.*?)\//) || imageUrl.match(/\/d\/(.*?)$/);
+            if (match && match[1]) {
+              const driveId = match[1].split("&")[0];
+              imageUrl = `https://lh3.googleusercontent.com/d/${driveId}`;
+            }
+          } else if (imageUrl.startsWith("/public/")) {
+            imageUrl = imageUrl.replace("/public/", "/");
+          } else if (imageUrl.startsWith("public/")) {
+            imageUrl = imageUrl.replace("public/", "/");
+          }
+
+          if (imageUrl.startsWith("/")) {
+            imageUrl = `${protocol}://${host}${imageUrl}`;
+          } else if (!imageUrl.startsWith("http") && !imageUrl.includes("drive.google.com")) {
+            if (/^[a-zA-Z0-9_-]{25,48}$/.test(imageUrl)) {
+              imageUrl = `https://lh3.googleusercontent.com/d/${imageUrl}`;
+            }
+          }
+
+          // Constrain Google Drive images to 1000px max width for optimal file size (typically <150KB)
+          // This avoids exceeding WhatsApp's strict 300KB image limit for link previews.
+          if (imageUrl.includes("lh3.googleusercontent.com/d/") && !imageUrl.includes("=")) {
+            imageUrl = `${imageUrl}=w1000`;
+          }
+        } else {
+          imageUrl = `${protocol}://${host}/images/Boletin%20Caratula%20Generica.png`;
+        }
+
+        // Ensure spaces are properly URL-encoded for social network crawlers
+        imageUrl = imageUrl.replace(/ /g, "%20");
+
+        // Read SPA index.html to inject values
+        const isProd = process.env.NODE_ENV === "production";
+        const htmlPath = isProd 
+          ? path.join(process.cwd(), "dist", "index.html")
+          : path.join(process.cwd(), "index.html");
+
+        if (fs.existsSync(htmlPath)) {
+          let html = fs.readFileSync(htmlPath, "utf8");
+
+          // Safely replace title & meta variables avoiding regex substitution wildcards
+          html = html.replace(/<title>.*?<\/title>/, () => `<title>${title}</title>`);
+          html = html.replace(/<meta name="description"[\s\S]*?\/>/, () => `<meta name="description" content="${description}" />`);
+          html = html.replace(/<meta property="og:title"[\s\S]*?\/>/, () => `<meta property="og:title" content="${title}" />`);
+          html = html.replace(/<meta property="og:description"[\s\S]*?\/>/, () => `<meta property="og:description" content="${description}" />`);
+          html = html.replace(/<meta property="og:type"[\s\S]*?\/>/, () => `<meta property="og:type" content="article" />`);
+
+          const extraTags = `
+    <meta property="og:url" content="${protocol}://${host}${req.originalUrl || req.url}" />
+    <meta property="og:image" content="${imageUrl}" />
+    <meta property="og:image:secure_url" content="${imageUrl}" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${title}" />
+    <meta name="twitter:description" content="${description}" />
+    <meta name="twitter:image" content="${imageUrl}" />
+          `;
+
+          html = html.replace("</head>", () => `${extraTags}\n  </head>`);
+
+          // Apply Vite HMR transforms if in development
+          if (!isProd && vite) {
+            html = await vite.transformIndexHtml(req.originalUrl || req.url, html);
+          }
+
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          return res.send(html);
+        }
+      }
+    } catch (err) {
+      console.error("Error generating dynamic tags newsletter preview:", err);
+    }
+
+    // Default SPA fallback if anything fails
+    next();
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
+    vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });

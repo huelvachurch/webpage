@@ -438,12 +438,12 @@ export default function AdminNewsletter() {
   function compileWeeklyEmail(config: { greetingText: string; sermonImageUrl: string; sermonDescription: string; isCenaBanner: boolean; cenaDescription: string; articles: Post[]; coverImageUrl?: string }) {
     const articlesHtml = config.articles.map(p => `
       <div style="background-color: #ffffff; border-radius: 16px; border: 1px solid #f1f5f9; overflow: hidden; margin-bottom: 24px;">
-        ${p.imageUrl ? `<img src="${getOptimizedImageUrl(p.imageUrl)}" alt="${p.title}" style="width: 100%; max-height: 200px; object-fit: cover; display: block;" />` : ''}
+        ${p.imageUrl ? `<img src="${getOptimizedImageUrl(p.imageUrl)}" alt="${p.title}" style="width: 100%; height: 280px; object-fit: cover; display: block;" />` : ''}
         <div style="padding: 20px;">
           <span style="background-color: #dfb23f; color: #162a45; font-size: 11px; font-weight: bold; padding: 4px 8px; border-radius: 99px; text-transform: uppercase;">${p.category || 'Anuncio'}</span>
           <h3 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 18px; color: #162a45; margin-top: 12px; margin-bottom: 8px;">${p.title}</h3>
           <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #475569; line-height: 1.5; margin: 0 0 16px 0;">${p.excerpt}</p>
-          <a href="${window.location.origin}/actividades/${p.id}" target="_blank" style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; font-weight: bold; color: #162a45; text-decoration: none;">Leer más e inscribirse &rarr;</a>
+          <a href="${window.location.origin}/actividades/${p.id}" target="_blank" style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; font-weight: bold; color: #162a45; text-decoration: none;">Leer más &rarr;</a>
         </div>
       </div>
     `).join('');
@@ -563,8 +563,7 @@ export default function AdminNewsletter() {
                 <tr>
                   <td style="background-color: #162a45; padding: 40px; text-align: center; color: #ffffff;">
                     <!-- Logo Header -->
-                    <img src="${window.location.origin}/images/Logotipo%20Blanco.png" alt="Huelva Church" style="max-height: 50px; margin-bottom: 8px; display: block; margin-left: auto; margin-right: auto;" />
-                    <p style="font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; color: rgba(255,255,255,0.6); margin: 0; font-family: 'Helvetica Neue', Arial, sans-serif;">Boletín de Fin de Semana</p>
+                    <img src="${window.location.origin}/images/Logotipo%20Blanco.png" alt="Huelva Church" style="max-height: 50px; display: block; margin-left: auto; margin-right: auto;" />
                   </td>
                 </tr>
                 
@@ -580,14 +579,14 @@ export default function AdminNewsletter() {
                 <!-- Body Main -->
                 <tr>
                   <td style="padding: 32px 32px 0 32px;">
-                    <h2 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 20px; color: #162a45; margin-top: 0; margin-bottom: 12px; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px;">Te Esperamos Este Domingo</h2>
+                    <h2 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 20px; color: #162a45; margin-top: 0; margin-bottom: 12px; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px;">¡Bienvenidos!</h2>
                     <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 15px; color: #475569; line-height: 1.6; margin: 0 0 24px 0;">${config.greetingText}</p>
                     
                     <!-- Reunion Card -->
                     <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden; margin-bottom: 28px;">
                       ${config.sermonImageUrl ? `<img src="${getOptimizedImageUrl(config.sermonImageUrl)}" alt="Reunión del Domingo" style="width: 100%; height: auto; display: block;" />` : ''}
                       <div style="padding: 24px;">
-                        <h3 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 18px; color: #162a45; margin-top: 0; margin-bottom: 8px;">Reunión General Familiar</h3>
+                        <h3 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 18px; color: #162a45; margin-top: 0; margin-bottom: 8px;">Celebración Dominical</h3>
                         <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-weight: bold; font-size: 14px; color: #dfb23f; margin-top: 0; margin-bottom: 12px;">📅 ${meetingTime}</p>
                         <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #475569; line-height: 1.6; margin: 0;">${config.sermonDescription}</p>
                       </div>
@@ -1844,7 +1843,7 @@ export default function AdminNewsletter() {
                                     <>
                                       <button
                                         onClick={() => {
-                                          const ts = camp.createdAt || camp.sentAt;
+                                          const ts = camp.scheduledAt || camp.sentAt || camp.createdAt;
                                           if (!ts) {
                                             alert('Este boletín no cuenta con una fecha de registro válida para compartir.');
                                             return;
@@ -1868,7 +1867,7 @@ export default function AdminNewsletter() {
 
                                       <button
                                         onClick={() => {
-                                          const ts = camp.createdAt || camp.sentAt;
+                                          const ts = camp.scheduledAt || camp.sentAt || camp.createdAt;
                                           if (!ts) {
                                             alert('Este boletín no cuenta con una fecha de registro válida para compartir.');
                                             return;
