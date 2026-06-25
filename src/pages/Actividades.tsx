@@ -169,7 +169,7 @@ export default function Actividades() {
                     </span>
                   ))}
                 </div>
-                <Link to={`/actividades/${post.id}`} className="flex items-center text-primary font-bold hover:text-secondary transition-colors group/btn">
+                <Link to={`/avisos/${post.id}`} className="flex items-center text-primary font-bold hover:text-secondary transition-colors group/btn">
                   {t('common.readMore')} <ArrowRight className="w-5 h-5 ml-2 transform group-hover/btn:translate-x-1 transition-transform" />
                 </Link>
               </div>

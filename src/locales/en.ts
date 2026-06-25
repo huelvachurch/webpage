@@ -6,6 +6,7 @@ export const en = {
       activities: 'Activities',
       courses: 'Courses',
       give: 'Give',
+      radio: 'Radio',
       contact: 'Contact',
       login: 'Login',
       logout: 'Logout',

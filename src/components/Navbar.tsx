@@ -30,9 +30,10 @@ export default function Navbar() {
 
   const baseNavLinks = [
     { name: t('nav.about'), path: '/nosotros' },
-    { name: t('nav.activities'), path: '/actividades' },
+    { name: t('nav.activities'), path: '/avisos' },
     { name: t('nav.courses'), path: '/cursos' },
     { name: t('nav.give'), path: '/dar' },
+    { name: t('nav.radio'), path: '/radio' },
     { name: t('nav.contact'), path: '/contacto' },
   ];
 
@@ -182,7 +183,7 @@ export default function Navbar() {
 
                           <Link 
                             onClick={() => setIsUserMenuOpen(false)}
-                            to="/mi-celula" 
+                            to="/micelula" 
                             className="flex items-center gap-3 px-4 py-2.5 text-left text-sm rounded-lg hover:bg-slate-50 text-primary font-medium transition-colors"
                           >
                             <Users className="w-5 h-5 text-primary/60" />
@@ -356,7 +357,7 @@ export default function Navbar() {
                     <UserIcon className="w-5 h-5 shrink-0" />
                     Perfil
                   </Link>
-                  <Link to="/mi-celula" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
+                  <Link to="/micelula" className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
                     <Users className="w-5 h-5 shrink-0" />
                     Mi Célula
                   </Link>

@@ -585,7 +585,7 @@ export default function BoletinPublico({ forcedViewMode }: BoletinPublicoProps =
                           <p className="text-slate-600 text-xs line-clamp-3 leading-relaxed mb-4">{p.excerpt}</p>
                         </div>
                         <a 
-                          href={`/actividades/${p.id}`} 
+                          href={`/avisos/${p.id}`} 
                           target="_blank" 
                           rel="noopener noreferrer" 
                           className="inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:text-[#D9B70D] transition-colors uppercase tracking-wider mt-auto"
@@ -1032,7 +1032,7 @@ export default function BoletinPublico({ forcedViewMode }: BoletinPublicoProps =
                       </h5>
                       <div className="flex items-center justify-between shrink-0 pt-1 mt-auto">
                         <a 
-                          href={`/actividades/${article.id}`}
+                          href={`/avisos/${article.id}`}
                           target="_blank" 
                           rel="noopener noreferrer"
                           onClick={(e) => {
@@ -1066,7 +1066,7 @@ export default function BoletinPublico({ forcedViewMode }: BoletinPublicoProps =
                 <Sparkles className="w-3 h-3 text-[#D9B70D] mb-0.5 shrink-0" />
                 <h5 className="font-kenao text-[7.5px] text-[#2D4B73] font-bold leading-none">Tenemos más avisos en nuestra página web</h5>
                 <p className="text-[6.5px] text-slate-450 leading-normal max-w-[240px] mt-0.5">
-                  Consulta de manera interactiva todas las actividades y novedades semanales en la web.
+                  Consulta de manera interactiva todos los avisos y novedades semanales en la web.
                 </p>
               </div>
             );

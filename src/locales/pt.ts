@@ -6,6 +6,7 @@ export const pt = {
       activities: 'Atividades',
       courses: 'Cursos',
       give: 'Doar',
+      radio: 'Rádio',
       contact: 'Contato',
       login: 'Entrar',
       logout: 'Sair',

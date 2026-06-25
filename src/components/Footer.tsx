@@ -24,7 +24,7 @@ export default function Footer() {
             <ul className="space-y-2 text-sm">
               <li><Link to="/" className="hover:text-secondary transition-colors">{t('footer.links.home')}</Link></li>
               <li><Link to="/nosotros" className="hover:text-secondary transition-colors">{t('nav.about')}</Link></li>
-              <li><Link to="/actividades" className="hover:text-secondary transition-colors">{t('footer.links.activities')}</Link></li>
+              <li><Link to="/avisos" className="hover:text-secondary transition-colors">{t('footer.links.activities')}</Link></li>
               <li><Link to="/dar" className="hover:text-secondary transition-colors">{t('footer.links.give')}</Link></li>
               <li><Link to="/contacto" className="hover:text-secondary transition-colors">{t('footer.sections.contact')}</Link></li>
             </ul>

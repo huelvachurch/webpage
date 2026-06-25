@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { motion } from 'motion/react';
 import axios from 'axios';
@@ -22,6 +22,9 @@ import {
   MessageCircle,
   ExternalLink,
   Play,
+  Pause,
+  Volume2,
+  VolumeX,
   ArrowRight,
   Video
 } from 'lucide-react';
@@ -53,6 +56,69 @@ export default function Home() {
   const [subscribing, setSubscribing] = useState(false);
   const [subSuccess, setSubSuccess] = useState(false);
   const [subError, setSubError] = useState('');
+
+  // Audio state for native live streaming
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [volume, setVolume] = useState(0.8);
+  const [playerError, setPlayerError] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const streamUrl = "https://servidor36-2.brlogic.com:7028/live?identifier=Streaming%20del%20sitio%20web&source=6408";
+
+  const handlePlayPause = () => {
+    if (!audioRef.current) {
+      audioRef.current = new Audio(streamUrl);
+      audioRef.current.crossOrigin = "anonymous";
+    }
+
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      setPlayerError(false);
+      audioRef.current.volume = isMuted ? 0 : volume;
+      audioRef.current.play()
+        .then(() => {
+          setIsPlaying(true);
+        })
+        .catch((err) => {
+          console.error("Audio playback error:", err);
+          setPlayerError(true);
+          setIsPlaying(false);
+        });
+    }
+  };
+
+  const handleMuteToggle = () => {
+    if (audioRef.current) {
+      const nextMuted = !isMuted;
+      audioRef.current.muted = nextMuted;
+      setIsMuted(nextMuted);
+    } else {
+      setIsMuted(!isMuted);
+    }
+  };
+
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    setVolume(val);
+    if (audioRef.current) {
+      audioRef.current.volume = val;
+      if (val > 0 && isMuted) {
+        audioRef.current.muted = false;
+        setIsMuted(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
 
   const handleNewsletterSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -510,7 +576,7 @@ export default function Home() {
               <h2 className="text-secondary tracking-wider uppercase text-sm mb-3">{t('home.activitiesTag')}</h2>
               <h3 className="text-4xl font-kenao text-primary">{t('home.activitiesTitle')}</h3>
             </div>
-            <Link to="/actividades" className="hidden md:flex items-center text-secondary hover:text-primary transition-colors font-medium">
+            <Link to="/avisos" className="hidden md:flex items-center text-secondary hover:text-primary transition-colors font-medium">
               {t('home.activitiesViewAll')} <ChevronRight className="w-5 h-5 ml-1" />
             </Link>
           </div>
@@ -551,7 +617,7 @@ export default function Home() {
                   <p className="text-primary/70 leading-relaxed mb-6 flex-grow">
                     {(post as any)[`excerpt_${currentLang}`] || post.excerpt}
                   </p>
-                  <Link to={`/actividades/${post.id}`} className="flex items-center text-primary font-semibold hover:text-secondary transition-colors group/btn">
+                  <Link to={`/avisos/${post.id}`} className="flex items-center text-primary font-semibold hover:text-secondary transition-colors group/btn">
                     {t('common.readMore')} <ArrowRight className="w-4 h-4 ml-2 transform group-hover/btn:translate-x-1 transition-transform" />
                   </Link>
                 </div>
@@ -559,7 +625,7 @@ export default function Home() {
             ))}
           </div>
           <div className="mt-12 text-center md:hidden">
-            <Link to="/actividades" className="inline-flex items-center text-secondary font-medium">
+            <Link to="/avisos" className="inline-flex items-center text-secondary font-medium">
               {t('home.activitiesViewAll')} <ChevronRight className="w-5 h-5 ml-1" />
             </Link>
           </div>
@@ -636,32 +702,118 @@ export default function Home() {
       </section>
 
       {/* Radio & App Section */}
-      <section id="radio" className="py-24 bg-slate-50">
+      <section id="radio" className="py-24 bg-slate-50 font-gordita">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+            
+            {/* Live Streaming Deck */}
             <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
+              initial={{ opacity: 0, scale: 0.95 }}
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}
-              className="order-2 lg:order-1"
+              className="order-2 lg:order-1 bg-[#2D4B73] text-white rounded-[2.5rem] p-8 relative overflow-hidden flex flex-col justify-between shadow-2xl border border-[#2D4B73]/10 min-h-[420px]"
             >
-              <div className="relative mx-auto max-w-[300px]">
-                <div className="absolute -inset-4 bg-secondary/20 rounded-[3rem] blur-2xl"></div>
-                <div className="relative bg-primary rounded-[2.5rem] p-4 shadow-2xl border-8 border-slate-800">
-                  <div className="aspect-[9/19] rounded-[1.5rem] overflow-hidden bg-slate-900 relative">
-                    <img 
-                      src="/images/Imagen Radio.png" 
-                      alt="Radio App" 
-                      className="w-full h-full object-cover opacity-80"
-                      referrerPolicy="no-referrer"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-primary via-transparent to-transparent"></div>
-                    <div className="absolute bottom-8 left-0 right-0 text-center px-6">
-                      <Radio className="w-12 h-12 text-secondary mx-auto mb-4 animate-pulse" />
-                      <p className="text-white font-kenao text-2xl mb-2">Radio Huelva Church</p>
-                      <p className="text-white/60 text-sm">Sintoniza la esperanza 24/7</p>
+              {/* Ambient Background Glow */}
+              <div className="absolute -right-16 -top-16 w-48 h-48 rounded-full bg-[#D9B70D]/10 blur-2xl pointer-events-none" />
+              
+              <div>
+                <div className="flex justify-between items-center mb-6">
+                  <span className="text-[10px] uppercase font-mono tracking-wider text-slate-300 font-bold bg-white/10 px-3 py-1 rounded-full flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full bg-emerald-400 ${isPlaying ? 'animate-ping' : ''}`} />
+                    {isPlaying ? 'AL AIRE' : 'CONECTAR SEÑAL'}
+                  </span>
+                  <span className="text-xs text-[#D9B70D] font-mono font-semibold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#D9B70D]" /> Directo
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-5 my-6">
+                  <div className="relative">
+                    <div className="w-16 h-16 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center shadow-inner">
+                      <Radio className={`w-8 h-8 text-[#D9B70D] ${isPlaying ? 'scale-110 rotate-3' : ''} transition-all`} />
                     </div>
+                    {isPlaying && (
+                      <span className="absolute -bottom-1 -right-1 flex h-4 w-4">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#D9B70D] opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-4 w-4 bg-[#D9B70D]"></span>
+                      </span>
+                    )}
                   </div>
+
+                  <div>
+                    <h4 className="font-gordita font-bold text-2xl text-white">Reproductor en Vivo</h4>
+                    <p className="text-xs text-slate-300 font-gordita mt-0.5">Señal de alta fidelidad 128kbps</p>
+                  </div>
+                </div>
+
+                {/* Sound Wave Animation if playing */}
+                <div className="h-12 flex items-end justify-center gap-1 my-6 px-4">
+                  {Array.from({ length: 16 }).map((_, idx) => (
+                    <motion.div
+                      key={idx}
+                      className="w-1 bg-[#D9B70D] rounded-full"
+                      animate={{
+                        height: isPlaying 
+                          ? [12, Math.floor(Math.random() * 32) + 12, 12] 
+                          : 8
+                      }}
+                      transition={{
+                        duration: isPlaying ? (0.5 + idx * 0.05) : 0,
+                        repeat: Infinity,
+                        ease: "easeInOut"
+                      }}
+                    />
+                  ))}
+                </div>
+
+                {playerError && (
+                  <div className="bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs p-3 rounded-xl flex items-center gap-2 mb-4">
+                    <span className="text-rose-400">⚠️</span>
+                    <span>Error al cargar el streaming. Intenta de nuevo.</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-6">
+                {/* Controls */}
+                <div className="flex items-center justify-between gap-4">
+                  <button
+                    onClick={handlePlayPause}
+                    className="w-16 h-16 rounded-full bg-[#D9B70D] text-[#2D4B73] flex items-center justify-center hover:scale-105 active:scale-95 cursor-pointer shadow-lg transition-all focus:outline-none shrink-0"
+                  >
+                    {isPlaying ? (
+                      <Pause className="w-7 h-7 text-[#2D4B73] fill-[#2D4B73]" />
+                    ) : (
+                      <Play className="w-7 h-7 text-[#2D4B73] fill-[#2D4B73] translate-x-0.5" />
+                    )}
+                  </button>
+
+                  <div className="flex-grow flex items-center gap-3 bg-white/5 border border-white/10 p-3 rounded-2xl">
+                    <button
+                      onClick={handleMuteToggle}
+                      className="text-slate-300 hover:text-white transition-colors cursor-pointer"
+                    >
+                      {isMuted || volume === 0 ? (
+                        <VolumeX className="w-5 h-5" />
+                      ) : (
+                        <Volume2 className="w-5 h-5" />
+                      )}
+                    </button>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={volume}
+                      onChange={handleVolumeChange}
+                      className="w-full accent-[#D9B70D] bg-white/20 h-1.5 rounded-lg appearance-none cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-slate-400 font-mono flex items-center justify-between">
+                  <span>FORMAT: MP3 STREAM</span>
+                  <span>BITRATE: 128KBPS</span>
                 </div>
               </div>
             </motion.div>
@@ -672,24 +824,24 @@ export default function Home() {
               viewport={{ once: true }}
               className="order-1 lg:order-2"
             >
-              <h2 className="text-secondary tracking-wider uppercase text-sm font-bold mb-4">{t('home.radioTag')}</h2>
-              <h3 className="text-4xl font-kenao text-primary mb-6">{t('home.radioMainTitle')}</h3>
-              <p className="text-primary/80 text-lg mb-8 leading-relaxed">
+              <h2 className="text-[#D9B70D] tracking-wider uppercase text-sm font-bold mb-4">{t('home.radioTag')}</h2>
+              <h3 className="text-4xl font-gordita font-bold text-[#2D4B73] mb-6">{t('home.radioMainTitle')}</h3>
+              <p className="text-[#2D4B73]/80 text-lg mb-8 leading-relaxed font-gordita">
                 {t('home.radioDesc')}
               </p>
-              <div className="space-y-6">
+              <div className="space-y-6 font-gordita">
                 <a 
                   href="https://www.radiohuelvachurch.com/" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="flex items-center gap-4 p-4 bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow border border-slate-100 group"
                 >
-                  <div className="w-12 h-12 bg-secondary/10 rounded-xl flex items-center justify-center text-secondary group-hover:bg-secondary group-hover:text-white transition-colors">
+                  <div className="w-12 h-12 bg-[#2D4B73]/10 rounded-xl flex items-center justify-center text-[#2D4B73] group-hover:bg-[#2D4B73] group-hover:text-white transition-colors">
                     <Radio className="w-6 h-6" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-primary">{t('home.listenOnline')}</h4>
-                    <p className="text-primary/60 text-sm">radiohuelvachurch.com</p>
+                    <h4 className="font-bold text-[#2D4B73]">{t('home.listenOnline')}</h4>
+                    <p className="text-[#2D4B73]/60 text-sm">radiohuelvachurch.com</p>
                   </div>
                   <ExternalLink className="w-5 h-5 ml-auto text-slate-300" />
                 </a>
@@ -703,8 +855,8 @@ export default function Home() {
                     <Play className="w-6 h-6" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-primary">{t('home.downloadApp')}</h4>
-                    <p className="text-primary/60 text-sm">{t('home.availablePlay')}</p>
+                    <h4 className="font-bold text-[#2D4B73]">{t('home.downloadApp')}</h4>
+                    <p className="text-[#2D4B73]/60 text-sm">{t('home.availablePlay')}</p>
                   </div>
                   <ExternalLink className="w-5 h-5 ml-auto text-slate-300" />
                 </a>

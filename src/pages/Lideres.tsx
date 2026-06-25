@@ -1398,7 +1398,8 @@ export default function Lideres() {
             leaderId: parentLeaderId,
             celulaId: cellProfile?.id || '',
             title: titleText,
-            message: messageText
+            message: messageText,
+            targetPath: '/micelula'
           })
         });
       } catch (fcmErr) {

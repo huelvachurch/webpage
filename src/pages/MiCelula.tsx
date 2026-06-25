@@ -422,8 +422,35 @@ export default function MiCelula() {
       setCelulaStatus('pending');
       
       const celulaDoc = await getDoc(doc(db, 'celulas', selectedCelulaId));
+      let cellName = 'tu célula';
+      let cellLeaderId = '';
       if (celulaDoc.exists()) {
-        setMyCelula({ id: celulaDoc.id, ...celulaDoc.data() } as Celula);
+        const cData = celulaDoc.data();
+        cellName = cData.name || 'tu célula';
+        cellLeaderId = cData.leaderId || '';
+        setMyCelula({ id: celulaDoc.id, ...cData } as Celula);
+      }
+
+      // Enviar notificación Push y Email en tiempo real al líder de la célula seleccionada
+      if (cellLeaderId) {
+        try {
+          const userName = user.displayName || user.email || 'Un feligrés';
+          await fetch('/api/notifications/send-cell-notice', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              leaderId: cellLeaderId,
+              title: "Nueva Solicitud de Célula en 'Mi Célula' 📢",
+              message: `¡Hola! ${userName} ha solicitado unirse a tu célula "${cellName}" desde la app para vincular su cuenta. Por favor, accede al Portal de Líderes para responder a esta solicitud.`,
+              targetPath: '/lideres',
+              onlyDirectUsers: true
+            })
+          });
+        } catch (pushErr) {
+          console.warn("No se pudo disparar el envío de push FCM / email al líder:", pushErr);
+        }
       }
     } catch (err) {
       console.error("Error saving celula selection:", err);

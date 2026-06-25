@@ -29,6 +29,7 @@ import AsistenciaCompartida from './pages/AsistenciaCompartida';
 import CursoDetalle from './pages/CursoDetalle';
 import Marca from './pages/Marca';
 import BoletinPublico from './pages/BoletinPublico';
+import RadioPage from './pages/RadioPage';
 import CookieBanner from './components/CookieBanner';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { AuthProvider, ErrorBoundary, useAuth } from './AuthContext';
@@ -49,7 +50,19 @@ function ForegroundNotificationListener() {
         console.log('Foreground Push recibido:', payload);
         const title = payload.notification?.title || payload.data?.title || 'Huelva Church';
         const body = payload.notification?.body || payload.data?.body || payload.data?.message || '';
-        const clickUrl = payload.data?.link || (payload as any).fcm_options?.link || (payload as any).fcmOptions?.link || '/mi-celula';
+        
+        // Resolver de forma sumamente robusta la redirección del click
+        let clickUrl = payload.data?.targetPath || payload.data?.link || (payload as any).fcm_options?.link || (payload as any).fcmOptions?.link || '/micelula';
+        if (clickUrl === '/micelula' || clickUrl === '/mi-celula') {
+          if (
+            title.toLowerCase().includes('solicitud') || 
+            title.toLowerCase().includes('supervisor') || 
+            title.toLowerCase().includes('difusión') ||
+            title.toLowerCase().includes('liderazgo')
+          ) {
+            clickUrl = '/lideres';
+          }
+        }
         
         setActiveNotification({ title, body, clickUrl });
         
@@ -101,7 +114,7 @@ function ForegroundNotificationListener() {
               <p className="text-xs text-primary/70 mt-1 leading-relaxed">{activeNotification.body}</p>
               <div className="mt-3 flex gap-2 animate-none">
                 <a
-                  href={activeNotification.clickUrl || '/mi-celula'}
+                  href={activeNotification.clickUrl || '/micelula'}
                   onClick={() => setActiveNotification(null)}
                   className="bg-primary hover:bg-primary/95 text-white font-bold py-1.5 px-3.5 rounded-lg text-[10px] uppercase tracking-wide cursor-pointer transition-all inline-block"
                 >
@@ -250,16 +263,17 @@ function AppContent() {
           <Route path="/" element={<Home />} />
           <Route path="/nosotros" element={<Nosotros />} />
           <Route path="/celulas" element={<Celulas />} />
-          <Route path="/actividades" element={<Actividades />} />
-          <Route path="/actividades/:id" element={<ActividadDetalle />} />
+          <Route path="/avisos" element={<Actividades />} />
+          <Route path="/avisos/:id" element={<ActividadDetalle />} />
           <Route path="/dar" element={<Dar />} />
+          <Route path="/radio" element={<RadioPage />} />
           <Route path="/contacto" element={<Contacto />} />
           <Route path="/login" element={<Login />} />
           <Route path="/cursos" element={<Cursos />} />
           <Route path="/cursos/:id" element={<CursoDetalle />} />
           <Route path="/mis-cursos" element={<MisCursos />} />
           <Route path="/mis-datos" element={<MisDatos />} />
-          <Route path="/mi-celula" element={<MiCelula />} />
+          <Route path="/micelula" element={<MiCelula />} />
           <Route path="/lideres" element={<Lideres />} />
           <Route path="/supervision" element={<Supervision />} />
           <Route path="/presentacion" element={<Presentacion />} />

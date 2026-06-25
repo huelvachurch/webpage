@@ -1,4 +1,4 @@
-const CACHE_NAME = 'huelvachurch-v2';
+const CACHE_NAME = 'huelvachurch-v3';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -72,76 +72,60 @@ self.addEventListener('fetch', (event) => {
 });
 
 // Handling basic push notifications or manual reminders
+// Handling basic push notifications or manual reminders
 self.addEventListener('push', (event) => {
-  let title = 'Huelva Church';
-  let body = 'Tienes una nueva actualización.';
-  let icon = '/images/LogoPWA.png';
-  let clickUrl = '/micelula';
-
-  if (event.data) {
-    try {
-      const payload = event.data.json();
-      console.log('Push recibido:', payload);
-      
-      // Intentar extraer de payload.notification (FCM estándar), payload.data.notification, o la raíz
-      const notif = payload.notification || 
-                    (payload.data && payload.data.notification) || 
-                    (payload.data && typeof payload.data === 'object' ? payload.data : null) || 
-                    payload;
-                    
-      if (notif) {
-        title = notif.title || title;
-        body = notif.body || notif.message || body;
-        icon = notif.icon || icon;
-      }
-
-      // Buscar enlaces personalizados para redirigir al pulsar
-      if (payload.data && payload.data.link) {
-        clickUrl = payload.data.link;
-      } else if (payload.fcm_options && payload.fcm_options.link) {
-        clickUrl = payload.fcm_options.link;
-      } else if (payload.notification && payload.notification.click_action) {
-        clickUrl = payload.notification.click_action;
-      }
-    } catch (e) {
-      body = event.data.text() || body;
-    }
-  }
-
-  const options = {
-    body: body,
-    icon: icon,
-    badge: '/images/LogoPWA.png',
-    vibrate: [100, 50, 100],
-    data: {
-      dateOfArrival: Date.now(),
-      primaryKey: '1',
-      clickUrl: clickUrl
-    }
-  };
-
-  event.waitUntil(
-    self.registration.showNotification(title, options)
-  );
+  // Las notificaciones son gestionadas automáticamente por el SDK de Firebase FCM.
+  // Silenciamos este listener para evitar notificaciones duplicadas en el dispositivo de destino.
+  console.log('[sw.js] Evento push detectado de forma nativa. Delegado a Firebase FCM SDK.');
 });
 
 // Click action to open or bring focus to the app
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const clickUrl = event.notification.data?.clickUrl || '/micelula';
+  
+  // Extraemos de forma sumamente robusta la dirección de redirección
+  let clickUrl = '/micelula';
+  if (event.notification.data) {
+    const data = event.notification.data;
+    if (data.clickUrl) {
+      clickUrl = data.clickUrl;
+    } else if (data.link) {
+      clickUrl = data.link;
+    } else if (data.FCM_MSG) {
+      const fcmMsg = data.FCM_MSG;
+      clickUrl = fcmMsg.notification?.click_action || fcmMsg.data?.link || fcmMsg.fcm_options?.link || clickUrl;
+    }
+  }
+
+  // Convertir clickUrl absoluta a relativa al dominio actual para maximizar la compatibilidad en PWA (iOS/Safari, Android/Chrome)
+  let relativeUrl = clickUrl;
+  if (clickUrl.startsWith('http://') || clickUrl.startsWith('https://')) {
+    try {
+      const parsed = new URL(clickUrl);
+      relativeUrl = parsed.pathname + parsed.search + parsed.hash;
+    } catch (e) {
+      relativeUrl = clickUrl;
+    }
+  }
   
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // Si hay una ventana del portal abierta, la enfocamos
+      // 1. Intentar enfocar una pestaña existente de la app abierta
       for (const client of clientList) {
         if ('focus' in client) {
-          // Si el cliente ya está en la URL adecuada o cerca, lo enfocamos
+          if ('navigate' in client && relativeUrl) {
+            try {
+              client.navigate(relativeUrl);
+            } catch (err) {
+              console.warn('[sw.js] client.navigate falló, reintentando solo con focus:', err);
+            }
+          }
           return client.focus();
         }
       }
-      // Si no hay ventana abierta, abrimos una nueva
+      // 2. Si no hay ventana de la PWA abierta en primer/segundo plano, la abrimos
       if (self.clients.openWindow) {
-        return self.clients.openWindow(clickUrl);
+        return self.clients.openWindow(relativeUrl);
       }
     })
   );

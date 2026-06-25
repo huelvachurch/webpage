@@ -32,6 +32,7 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "firebase": "^12.11.0",
+    "firebase-admin": "^14.0.0",
     "google-auth-library": "^10.7.0",
     "i18next": "^26.3.0",
     "i18next-browser-languagedetector": "^8.2.1",

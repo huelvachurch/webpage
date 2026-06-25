@@ -330,7 +330,7 @@ export default function AdminNewsletter() {
         if (!specialButtonUrl) {
           const firstPost = posts.find(p => p.id === selectedPostIds[0]);
           if (firstPost) {
-             setSpecialButtonUrl(`${window.location.origin}/actividades/${firstPost.id}`);
+             setSpecialButtonUrl(`${window.location.origin}/avisos/${firstPost.id}`);
              if (!specialButtonText) setSpecialButtonText('Leer más');
           }
         }
@@ -443,7 +443,7 @@ export default function AdminNewsletter() {
           <span style="background-color: #dfb23f; color: #162a45; font-size: 11px; font-weight: bold; padding: 4px 8px; border-radius: 99px; text-transform: uppercase;">${p.category || 'Anuncio'}</span>
           <h3 style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 18px; color: #162a45; margin-top: 12px; margin-bottom: 8px;">${p.title}</h3>
           <p style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 14px; color: #475569; line-height: 1.5; margin: 0 0 16px 0;">${p.excerpt}</p>
-          <a href="${window.location.origin}/actividades/${p.id}" target="_blank" style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; font-weight: bold; color: #162a45; text-decoration: none;">Leer más &rarr;</a>
+          <a href="${window.location.origin}/avisos/${p.id}" target="_blank" style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; font-weight: bold; color: #162a45; text-decoration: none;">Leer más &rarr;</a>
         </div>
       </div>
     `).join('');
@@ -992,7 +992,7 @@ export default function AdminNewsletter() {
       setSpecialSubject(`Novedad: ${post.title}`);
       setSpecialContent(`¡Hola familia Huelva Church!\n\nQueremos compartir con vosotros esta interesante publicación:\n\n### ${post.title}\n\n${post.excerpt || ''}\n\nPara ver vuestra participación, horarios o más detalles, pulsad el botón de abajo.\n\n¡Os enviamos un fuerte abrazo!`);
       setSpecialButtonText('Leer Publicación');
-      setSpecialButtonUrl(`${window.location.origin}/actividades/${post.id}`);
+      setSpecialButtonUrl(`${window.location.origin}/avisos/${post.id}`);
       setSelectedPostToImport('');
       alert('Se han importado los campos desde la publicación correctamente.');
     }

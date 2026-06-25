@@ -228,7 +228,8 @@ export default function Celulas() {
             leaderId: leaderId || 'admin',
             userIds: supervisorId ? [supervisorId] : [],
             title: "Nueva Solicitud de Célula 📢",
-            message: `¡Hola! ${formData.nombre} ${formData.apellidos || ''} ha solicitado unirse a la célula ${selectedCell ? selectedCell.name : (formData.zona || 'seleccionada')}.`
+            message: `¡Hola! ${formData.nombre} ${formData.apellidos || ''} ha solicitado unirse a la célula ${selectedCell ? selectedCell.name : (formData.zona || 'seleccionada')}.`,
+            targetPath: '/lideres'
           })
         });
       } catch (pushErr) {

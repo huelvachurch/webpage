@@ -3,9 +3,10 @@ export const es = {
     nav: {
       home: 'Inicio',
       about: 'Nosotros',
-      activities: 'Actividades',
+      activities: 'Avisos',
       courses: 'Cursos',
       give: 'Dar',
+      radio: 'Radio',
       contact: 'Contacto',
       login: 'Acceso',
       logout: 'Cerrar Sesión',
@@ -247,7 +248,7 @@ export const es = {
       },
       links: {
         home: 'Inicio',
-        activities: 'Actividades',
+        activities: 'Avisos',
         courses: 'Cursos',
         cells: 'Células',
         give: 'Donaciones',

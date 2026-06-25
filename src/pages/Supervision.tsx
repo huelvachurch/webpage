@@ -273,7 +273,8 @@ export default function Supervision() {
           body: JSON.stringify({
             leaderId: user.uid, // passing supervisor UID as leaderId to trigger linked users query
             title: `Difusión de tu Supervisor: ${newNotice.title}`,
-            message: newNotice.message
+            message: newNotice.message,
+            targetPath: '/lideres'
           })
         });
       } catch (fcmErr) {

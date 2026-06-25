@@ -519,6 +519,16 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
 
       const results = await Promise.all(tokens.map(async (token) => {
         try {
+          let resolvedClickUrl = clickActionUrl || "https://huelvachurch.com/micelula";
+          if (resolvedClickUrl.includes("run.app") || resolvedClickUrl.includes("localhost") || resolvedClickUrl.includes("ais-dev")) {
+            try {
+              const parsedUrl = new URL(resolvedClickUrl);
+              resolvedClickUrl = `https://huelvachurch.com${parsedUrl.pathname}${parsedUrl.search}`;
+            } catch (e) {
+              resolvedClickUrl = "https://huelvachurch.com/micelula";
+            }
+          }
+
           const payload = {
             message: {
               token: token,
@@ -530,14 +540,8 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
                 headers: {
                   Urgency: "high"
                 },
-                notification: {
-                  title: title,
-                  body: body,
-                  icon: "/images/LogoPWA.png",
-                  badge: "/images/LogoPWA.png"
-                },
                 fcm_options: {
-                  link: clickActionUrl || "https://ais-dev-iwia4pkyasjkhe7kc3tvni-295341840360.europe-west2.run.app/micelula"
+                  link: resolvedClickUrl
                 }
               }
             }
@@ -571,6 +575,156 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
     }
   }
 
+  // Helper to parse Firestore REST fields representation recursively
+  function parseFirestoreFields(fields: any): any {
+    if (!fields) return {};
+    const result: any = {};
+    for (const key of Object.keys(fields)) {
+      const valObj = fields[key];
+      if (!valObj) continue;
+      const type = Object.keys(valObj)[0];
+      const rawVal = valObj[type];
+      
+      if (type === 'stringValue') {
+        result[key] = rawVal;
+      } else if (type === 'integerValue') {
+        result[key] = parseInt(rawVal, 10);
+      } else if (type === 'doubleValue') {
+        result[key] = parseFloat(rawVal);
+      } else if (type === 'booleanValue') {
+        result[key] = rawVal;
+      } else if (type === 'arrayValue') {
+        const arr = rawVal.values || [];
+        result[key] = arr.map((item: any) => {
+          const itemType = Object.keys(item)[0];
+          const itemVal = item[itemType];
+          if (itemType === 'integerValue' || itemType === 'doubleValue') {
+            return Number(itemVal);
+          } else if (itemType === 'mapValue') {
+            return parseFirestoreFields(itemVal.fields);
+          } else {
+            return itemVal;
+          }
+        });
+      } else if (type === 'mapValue') {
+        result[key] = parseFirestoreFields(rawVal.fields);
+      } else {
+        result[key] = rawVal;
+      }
+    }
+    return result;
+  }
+
+  // Reusable admin helper to fetch a single user document bypassing security rules using REST + ADC
+  async function adminGetDoc(collectionName: string, docId: string): Promise<any | null> {
+    if (!firebaseConfig || !firebaseConfig.projectId) return null;
+    const projectId = firebaseConfig.projectId;
+    const dbId = firebaseConfig.firestoreDatabaseId || "(default)";
+
+    try {
+      const auth = new GoogleAuth({
+        scopes: ['https://www.googleapis.com/auth/cloud-platform']
+      });
+      const client = await auth.getClient();
+      const tokenResponse = await client.getAccessToken();
+      const accessToken = tokenResponse.token;
+
+      if (!accessToken) {
+        throw new Error("No access token found");
+      }
+
+      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${dbId}/documents/${collectionName}/${docId}`;
+      const res = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+
+      if (!res.ok) {
+        if (res.status === 404) return null;
+        console.error(`[adminGetDoc] REST API Error for ${collectionName}/${docId} (${res.status})`);
+        return null;
+      }
+
+      const docData = await res.json();
+      return {
+        id: docId,
+        ...parseFirestoreFields(docData.fields)
+      };
+    } catch (err) {
+      console.error(`[adminGetDoc] Error:`, err);
+      return null;
+    }
+  }
+
+  // Reusable admin helper to query a collection bypassing security rules using REST + ADC
+  async function adminQueryUsers(filterField: string, filterValue: string): Promise<any[]> {
+    if (!firebaseConfig || !firebaseConfig.projectId) return [];
+    const projectId = firebaseConfig.projectId;
+    const dbId = firebaseConfig.firestoreDatabaseId || "(default)";
+
+    try {
+      const auth = new GoogleAuth({
+        scopes: ['https://www.googleapis.com/auth/cloud-platform']
+      });
+      const client = await auth.getClient();
+      const tokenResponse = await client.getAccessToken();
+      const accessToken = tokenResponse.token;
+
+      if (!accessToken) {
+        throw new Error("No access token found");
+      }
+
+      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${dbId}/documents:runQuery`;
+      const queryPayload = {
+        structuredQuery: {
+          from: [{ collectionId: "users" }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: filterField },
+              op: "EQUAL",
+              value: { stringValue: filterValue }
+            }
+          }
+        }
+      };
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(queryPayload)
+      });
+
+      if (!res.ok) {
+        console.error(`[adminQueryUsers] REST runQuery Error for ${filterField}=${filterValue} (${res.status})`);
+        return [];
+      }
+
+      const rawResults = await res.json();
+      const list: any[] = [];
+      if (Array.isArray(rawResults)) {
+        for (const item of rawResults) {
+          if (item && item.document && item.document.fields) {
+            const documentPath = item.document.name || "";
+            const matches = documentPath.match(/\/documents\/users\/([^/]+)$/);
+            const docId = matches ? matches[1] : "";
+            list.push({
+              id: docId,
+              ...parseFirestoreFields(item.document.fields)
+            });
+          }
+        }
+      }
+      return list;
+    } catch (err) {
+      console.error(`[adminQueryUsers] Error:`, err);
+      return [];
+    }
+  }
+
   // API Route to dispatch push notifications and SMTP emails to cell members, leaders, and supervisors
   app.post("/api/notifications/send-cell-notice", async (req, res) => {
     try {
@@ -589,47 +743,48 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
       const tokens: string[] = [];
       const recipientEmails: string[] = [];
 
-      // 1. Buscar tokens y emails de usuarios asociados a la Célula
-      if (celulaId) {
-        const q1 = query(collection(db, 'users'), where('celulaId', '==', celulaId));
-        const snap1 = await getDocs(q1);
-        snap1.forEach(docSnap => {
-          const u = docSnap.data();
-          if (Array.isArray(u.fcmTokens)) {
-            tokens.push(...u.fcmTokens);
-          }
-          if (u.email && typeof u.email === 'string' && u.email.trim() !== '') {
-            recipientEmails.push(u.email.trim());
-          }
-        });
-      }
+      const onlyDirectUsers = req.body.onlyDirectUsers === true;
 
-      // 2. Buscar tokens y emails de usuarios asociados al Líder
-      if (leaderId) {
-        const q2 = query(collection(db, 'users'), where('leaderId', '==', leaderId));
-        const snap2 = await getDocs(q2);
-        snap2.forEach(docSnap => {
-          const u = docSnap.data();
-          if (Array.isArray(u.fcmTokens)) {
-            tokens.push(...u.fcmTokens);
-          }
-          if (u.email && typeof u.email === 'string' && u.email.trim() !== '') {
-            recipientEmails.push(u.email.trim());
-          }
-        });
+      if (!onlyDirectUsers) {
+        // 1. Buscar tokens y emails de usuarios asociados a la Célula (Administrativamente)
+        if (celulaId) {
+          console.log(`[FCM/SMTP API] Consultando usuarios de celulaId: ${celulaId}`);
+          const cellUsers = await adminQueryUsers('celulaId', celulaId);
+          cellUsers.forEach(u => {
+            if (Array.isArray(u.fcmTokens)) {
+              tokens.push(...u.fcmTokens);
+            }
+            if (u.email && typeof u.email === 'string' && u.email.trim() !== '') {
+              recipientEmails.push(u.email.trim());
+            }
+          });
+        }
 
-        // TAMBIÉN: Buscar usuarios asociados a este ID como Supervisor (en caso de que leaderId sea un Supervisor)
-        const q3 = query(collection(db, 'users'), where('supervisorId', '==', leaderId));
-        const snap3 = await getDocs(q3);
-        snap3.forEach(docSnap => {
-          const u = docSnap.data();
-          if (Array.isArray(u.fcmTokens)) {
-            tokens.push(...u.fcmTokens);
-          }
-          if (u.email && typeof u.email === 'string' && u.email.trim() !== '') {
-            recipientEmails.push(u.email.trim());
-          }
-        });
+        // 2. Buscar tokens y emails de usuarios asociados al Líder (Administrativamente)
+        if (leaderId) {
+          console.log(`[FCM/SMTP API] Consultando usuarios asociados al leaderId: ${leaderId}`);
+          const leaderUsers = await adminQueryUsers('leaderId', leaderId);
+          leaderUsers.forEach(u => {
+            if (Array.isArray(u.fcmTokens)) {
+              tokens.push(...u.fcmTokens);
+            }
+            if (u.email && typeof u.email === 'string' && u.email.trim() !== '') {
+              recipientEmails.push(u.email.trim());
+            }
+          });
+
+          // TAMBIÉN: Buscar usuarios asociados a este ID como Supervisor (en caso de que leaderId sea un Supervisor)
+          console.log(`[FCM/SMTP API] Consultando usuarios asociados al supervisorId: ${leaderId}`);
+          const supervisorUsers = await adminQueryUsers('supervisorId', leaderId);
+          supervisorUsers.forEach(u => {
+            if (Array.isArray(u.fcmTokens)) {
+              tokens.push(...u.fcmTokens);
+            }
+            if (u.email && typeof u.email === 'string' && u.email.trim() !== '') {
+              recipientEmails.push(u.email.trim());
+            }
+          });
+        }
       }
 
       // 3. Buscar del propio Líder y de IDs de usuario directos pasados en la petición (como supervisores o administradores)
@@ -648,10 +803,9 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
         processedUids.add(uidVal);
 
         try {
-          const userDocRef = doc(db, 'users', uidVal);
-          const userDoc = await getDoc(userDocRef);
-          if (userDoc.exists()) {
-            const u = userDoc.data();
+          console.log(`[FCM/SMTP API] Consultando información del usuario directo: ${uidVal}`);
+          const u = await adminGetDoc('users', uidVal);
+          if (u) {
             if (Array.isArray(u.fcmTokens)) {
               tokens.push(...u.fcmTokens);
             }
@@ -678,9 +832,20 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
 
       console.log(`[FCM/SMTP API] Destinatarios resueltos: ${uniqueTokens.length} tokens push | ${uniqueEmails.length} correos electrónicos`);
 
-      const clickUrl = process.env.APP_URL 
-        ? `${process.env.APP_URL}/micelula`
-        : "https://ais-dev-iwia4pkyasjkhe7kc3tvni-295341840360.europe-west2.run.app/micelula";
+      // Determinar la redirección óptima basada en el remitente o título de la notificación
+      let redirectPath = "/micelula";
+      if (req.body.targetPath) {
+        redirectPath = req.body.targetPath;
+      } else if (
+        title.toLowerCase().includes("solicitud") || 
+        title.toLowerCase().includes("supervisor") || 
+        title.toLowerCase().includes("difusión") || 
+        title.toLowerCase().includes("liderazgo")
+      ) {
+        redirectPath = "/lideres";
+      }
+
+      const clickUrl = `https://huelvachurch.com${redirectPath}`;
 
       // 1. Enviar NOTIFICACIÓN PUSH
       let fcmSent = false;
@@ -720,7 +885,7 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
             
             <div style="text-align: center; margin-top: 32px; border-top: 1px solid #f1f5f9; padding-top: 24px;">
               <a href="${clickUrl}" style="background-color: #0c1a30; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: bold; display: inline-block;">
-                Abrir Portal de Células
+                ${redirectPath.includes('/lideres') ? 'Abrir Portal de Líderes' : (redirectPath.includes('/micelula') ? 'Abrir Mi Célula' : 'Abrir Portal')}
               </a>
               <p style="color: #94a3b8; font-size: 11px; margin-top: 20px;">
                 Este es un correo electrónico enviado automáticamente por el portal de Huelva Church.

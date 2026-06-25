@@ -46,7 +46,7 @@ export default function ActividadDetalle() {
   if (!post) return (
     <div className="pt-48 text-center">
       <h1 className="text-4xl font-kenao text-primary mb-4">Publicación no encontrada</h1>
-      <Link to="/actividades" className="text-secondary font-bold hover:underline">Volver a actividades</Link>
+      <Link to="/avisos" className="text-secondary font-bold hover:underline">Volver a avisos</Link>
     </div>
   );
 
@@ -61,9 +61,9 @@ export default function ActividadDetalle() {
         <meta property="og:type" content="article" />
       </Helmet>
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <Link to="/actividades" className="inline-flex items-center text-primary/40 hover:text-secondary font-bold mb-12 transition-colors group">
+        <Link to="/avisos" className="inline-flex items-center text-primary/40 hover:text-secondary font-bold mb-12 transition-colors group">
           <ArrowLeft className="w-5 h-5 mr-2 transform group-hover:-translate-x-1 transition-transform" />
-          Volver a actividades
+          Volver a avisos
         </Link>
 
         <motion.div
