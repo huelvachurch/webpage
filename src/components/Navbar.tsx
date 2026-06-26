@@ -30,10 +30,10 @@ export default function Navbar() {
 
   const baseNavLinks = [
     { name: t('nav.about'), path: '/nosotros' },
+    { name: t('nav.radio'), path: '/radio' },
     { name: t('nav.activities'), path: '/avisos' },
     { name: t('nav.courses'), path: '/cursos' },
     { name: t('nav.give'), path: '/dar' },
-    { name: t('nav.radio'), path: '/radio' },
     { name: t('nav.contact'), path: '/contacto' },
   ];
 

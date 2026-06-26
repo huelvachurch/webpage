@@ -135,12 +135,12 @@ export default function Actividades() {
               transition={{ duration: 0.5, delay: index * 0.1 }}
               className="bg-white rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 group border border-slate-100 flex flex-col h-full"
             >
-              <div className="h-64 overflow-hidden relative bg-slate-100">
+              <div className="h-64 overflow-hidden relative bg-slate-100 flex items-center justify-center">
                 {post.imageUrl ? (
                   <img 
                     src={getOptimizedImageUrl(post.imageUrl)} 
                     alt={getPostTitle(post)} 
-                    className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
+                    className="w-full h-full object-contain transform group-hover:scale-105 transition-transform duration-500"
                     referrerPolicy="no-referrer"
                   />
                 ) : (

@@ -92,9 +92,9 @@ export default function ActividadDetalle() {
             {post.excerpt}
           </p>
 
-          <div className="aspect-video rounded-[3rem] overflow-hidden mb-16 shadow-2xl bg-slate-100">
+          <div className="aspect-video rounded-[3rem] overflow-hidden mb-16 shadow-2xl bg-slate-100 flex items-center justify-center">
             {post.imageUrl ? (
-              <img src={getOptimizedImageUrl(post.imageUrl)} alt={post.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              <img src={getOptimizedImageUrl(post.imageUrl)} alt={post.title} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-primary/10">
                 <Tag className="w-24 h-24" />
@@ -104,7 +104,23 @@ export default function ActividadDetalle() {
 
           <div className="prose prose-xl max-w-none mb-16 prose-headings:text-primary prose-a:text-secondary prose-blockquote:text-primary prose-blockquote:border-l-primary prose-strong:text-primary prose-p:text-primary/90 prose-li:text-primary/90">
             <div className="markdown-body">
-              <Markdown>{post.content}</Markdown>
+              <Markdown
+                components={{
+                  img: ({ node, ...props }) => {
+                    const src = props.src ? getOptimizedImageUrl(props.src) : '';
+                    return (
+                      <img 
+                        src={src} 
+                        alt={props.alt || ''} 
+                        className="rounded-3xl shadow-lg mx-auto my-8 max-h-[500px] object-contain block border border-slate-100" 
+                        referrerPolicy="no-referrer" 
+                      />
+                    );
+                  }
+                }}
+              >
+                {post.content}
+              </Markdown>
             </div>
           </div>
 

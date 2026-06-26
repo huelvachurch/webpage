@@ -68,6 +68,10 @@ export default function AdminComunicaciones() {
     content_pt: '',
   });
 
+  const [isImgModalOpen, setIsImgModalOpen] = useState(false);
+  const [imgUrl, setImgUrl] = useState('');
+  const [imgDesc, setImgDesc] = useState('imagen');
+
   const intentRef = React.useRef<'published' | 'draft'>('published');
 
   const isSuperAdmin = roles.includes('superadmin');
@@ -291,6 +295,19 @@ export default function AdminComunicaciones() {
       textarea.focus();
       textarea.setSelectionRange(start + prefix.length, end + prefix.length);
     }, 0);
+  };
+
+  const handleInsertImage = () => {
+    setImgUrl('');
+    setImgDesc('imagen');
+    setIsImgModalOpen(true);
+  };
+
+  const handleConfirmInsertImage = () => {
+    if (!imgUrl) return;
+    const optimizedUrl = getOptimizedImageUrl(imgUrl);
+    insertTextAtCursor(`![${imgDesc || 'imagen'}](${optimizedUrl})`, '');
+    setIsImgModalOpen(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -735,6 +752,9 @@ export default function AdminComunicaciones() {
                           <button type="button" onClick={() => insertTextAtCursor('[', '](url)')} className="p-2 hover:bg-slate-200 rounded text-slate-600 transition-colors" title="Enlace">
                             <LinkIcon className="w-4 h-4" />
                           </button>
+                          <button type="button" onClick={handleInsertImage} className="p-2 hover:bg-slate-200 rounded text-slate-600 transition-colors" title="Insertar Imagen">
+                            <ImageIcon className="w-4 h-4" />
+                          </button>
                         </div>
 
                         <textarea 
@@ -806,11 +826,96 @@ export default function AdminComunicaciones() {
                         </div>
                       )}
                       <div className="prose max-w-none text-primary/80 leading-relaxed prose-headings:text-primary prose-a:text-secondary prose-blockquote:text-primary prose-blockquote:border-l-primary prose-strong:text-primary">
-                        <Markdown>{currentContent || '*Sin contenido aún*'}</Markdown>
+                        <Markdown
+                          components={{
+                            img: ({ node, ...props }) => {
+                              const src = props.src ? getOptimizedImageUrl(props.src) : '';
+                              return (
+                                <img 
+                                  src={src} 
+                                  alt={props.alt || ''} 
+                                  className="rounded-3xl shadow-lg mx-auto my-8 max-h-[500px] object-contain block border border-slate-100" 
+                                  referrerPolicy="no-referrer" 
+                                />
+                              );
+                            }
+                          }}
+                        >
+                          {currentContent || '*Sin contenido aún*'}
+                        </Markdown>
                       </div>
                     </div>
                   </div>
                 )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal para insertar imágenes */}
+      <AnimatePresence>
+        {isImgModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white rounded-[2rem] p-6 md:p-8 max-w-md w-full shadow-2xl border border-slate-100 flex flex-col gap-6"
+            >
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-bold font-gordita text-primary">Insertar Imagen</h3>
+                <button
+                  type="button"
+                  onClick={() => setIsImgModalOpen(false)}
+                  className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-primary/60 uppercase tracking-wider mb-2">URL de la Imagen</label>
+                  <input
+                    type="url"
+                    required
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary transition-all text-sm"
+                    placeholder="https://ejemplo.com/imagen.jpg o enlace de Google Drive"
+                    value={imgUrl}
+                    onChange={(e) => setImgUrl(e.target.value)}
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1.5">Puedes pegar un enlace directo o un enlace de compartir de Google Drive.</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-primary/60 uppercase tracking-wider mb-2">Descripción (texto alternativo)</label>
+                  <input
+                    type="text"
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary transition-all text-sm"
+                    placeholder="Descripción breve"
+                    value={imgDesc}
+                    onChange={(e) => setImgDesc(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsImgModalOpen(false)}
+                  className="flex-1 py-3 px-4 bg-slate-100 text-primary font-bold rounded-xl hover:bg-slate-200 transition-colors text-sm"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={!imgUrl.trim()}
+                  onClick={handleConfirmInsertImage}
+                  className="flex-1 py-3 px-4 bg-secondary text-primary font-bold rounded-xl hover:bg-secondary/95 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Insertar
+                </button>
               </div>
             </motion.div>
           </div>
