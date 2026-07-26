@@ -5,6 +5,7 @@ import Footer from './components/Footer';
 import Home from './pages/Home';
 import Nosotros from './pages/Nosotros';
 import Celulas from './pages/Celulas';
+import Obras from './pages/Obras';
 import AdminCelulas from './pages/admin/AdminCelulas';
 import Actividades from './pages/Actividades';
 import ActividadDetalle from './pages/ActividadDetalle';
@@ -30,6 +31,12 @@ import CursoDetalle from './pages/CursoDetalle';
 import Marca from './pages/Marca';
 import BoletinPublico from './pages/BoletinPublico';
 import RadioPage from './pages/RadioPage';
+import DonacionRadioCancelada from './pages/DonacionRadioCancelada';
+import DonacionRadioCompletada from './pages/DonacionRadioCompletada';
+import DonacionDarCancelada from './pages/DonacionDarCancelada';
+import DonacionDarCompletada from './pages/DonacionDarCompletada';
+import Ninos from './pages/Ninos';
+import Infantil from './pages/Infantil';
 import CookieBanner from './components/CookieBanner';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { AuthProvider, ErrorBoundary, useAuth } from './AuthContext';
@@ -262,17 +269,31 @@ function AppContent() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/nosotros" element={<Nosotros />} />
-          <Route path="/celulas" element={<Celulas />} />
+          <Route path="/nosotros/celulas" element={<Celulas />} />
+          <Route path="/nosotros/obras" element={<Obras />} />
+          <Route path="/celulas" element={<Navigate to="/nosotros/celulas" replace />} />
+          <Route path="/obras" element={<Navigate to="/nosotros/obras" replace />} />
           <Route path="/avisos" element={<Actividades />} />
           <Route path="/avisos/:id" element={<ActividadDetalle />} />
           <Route path="/dar" element={<Dar />} />
           <Route path="/radio" element={<RadioPage />} />
+          <Route path="/donar/radio/cancelado" element={<DonacionRadioCancelada />} />
+          <Route path="/donar/radio/completado" element={<DonacionRadioCompletada />} />
+          <Route path="/radio/donacion-cancelada" element={<DonacionRadioCancelada />} />
+          <Route path="/radio/donacion-completada" element={<DonacionRadioCompletada />} />
+          <Route path="/donar/dar/cancelado" element={<DonacionDarCancelada />} />
+          <Route path="/donar/dar/completado" element={<DonacionDarCompletada />} />
+          <Route path="/dar/cancelado" element={<DonacionDarCancelada />} />
+          <Route path="/dar/completado" element={<DonacionDarCompletada />} />
+          <Route path="/donar/cancelado" element={<DonacionRadioCancelada />} />
+          <Route path="/donar/completado" element={<DonacionRadioCompletada />} />
           <Route path="/contacto" element={<Contacto />} />
           <Route path="/login" element={<Login />} />
           <Route path="/cursos" element={<Cursos />} />
           <Route path="/cursos/:id" element={<CursoDetalle />} />
           <Route path="/mis-cursos" element={<MisCursos />} />
-          <Route path="/mis-datos" element={<MisDatos />} />
+          <Route path="/mis-datos" element={<Navigate to="/miperfil" replace />} />
+          <Route path="/miperfil" element={<MisDatos />} />
           <Route path="/micelula" element={<MiCelula />} />
           <Route path="/lideres" element={<Lideres />} />
           <Route path="/supervision" element={<Supervision />} />
@@ -280,20 +301,25 @@ function AppContent() {
           <Route path="/asistencia-compartida" element={<AsistenciaCompartida />} />
           <Route path="/legal" element={<Legal />} />
           <Route path="/marca" element={<Marca />} />
+          <Route path="/ninos" element={<Ninos />} />
+          <Route path="/infantil" element={<Infantil />} />
           
           <Route path="/boletin/web/:date" element={<BoletinPublico forcedViewMode="web" />} />
           <Route path="/boletin/folleto/:date" element={<BoletinPublico forcedViewMode="revista" />} />
           <Route path="/boletin/:date" element={<BoletinPublico />} />
           
           {/* Admin Routes */}
-          <Route path="/admin/comunicaciones" element={<AdminComunicaciones />} />
+          <Route path="/admin/comunicaciones" element={<Navigate to="/admin/anuncios" replace />} />
+          <Route path="/admin/anuncios" element={<AdminComunicaciones />} />
           <Route path="/admin/administracion" element={<AdminDashboard />}>
             <Route path="usuarios" element={<AdminUsuarios />} />
             <Route path="celulas" element={<AdminCelulas />} />
             <Route index element={<Navigate to="usuarios" replace />} />
           </Route>
-          <Route path="/admin/cursos" element={<AdminCursos />} />
-          <Route path="/admin/newsletter" element={<AdminNewsletter />} />
+          <Route path="/admin/cursos" element={<Navigate to="/admin/docencia" replace />} />
+          <Route path="/admin/docencia" element={<AdminCursos />} />
+          <Route path="/admin/newsletter" element={<Navigate to="/admin/boletines" replace />} />
+          <Route path="/admin/boletines" element={<AdminNewsletter />} />
           <Route path="/admin/ajustes" element={<AdminSettings />} />
         </Routes>
       </main>

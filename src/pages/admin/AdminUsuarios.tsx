@@ -11,7 +11,7 @@ interface UserProfile {
   email: string;
   displayName: string;
   photoURL: string;
-  roles: ('admin' | 'comunicador' | 'profesor' | 'alumno' | 'lider' | 'supervisor')[];
+  roles: ('admin' | 'comunicador' | 'profesor' | 'alumno' | 'lider' | 'supervisor' | 'maestro')[];
   status: 'pending' | 'active' | 'blocked';
   createdAt: any;
   requestedAlumnoRole?: boolean;
@@ -54,7 +54,7 @@ export default function AdminUsuarios() {
 
   // Local drafts for accumulated changes (so we don't spam emails on single button presses)
   interface UserDraft {
-    roles?: ('admin' | 'comunicador' | 'profesor' | 'alumno' | 'lider' | 'supervisor')[];
+    roles?: ('admin' | 'comunicador' | 'profesor' | 'alumno' | 'lider' | 'supervisor' | 'maestro')[];
     status?: 'pending' | 'active' | 'blocked';
   }
   const [drafts, setDrafts] = useState<Record<string, UserDraft>>({});
@@ -238,6 +238,7 @@ export default function AdminUsuarios() {
       case 'alumno': return 'bg-emerald-100 text-emerald-600 border-emerald-200';
       case 'lider': return 'bg-amber-100 text-amber-600 border-amber-200';
       case 'supervisor': return 'bg-orange-100 text-orange-600 border-orange-200';
+      case 'maestro': return 'bg-pink-100 text-pink-600 border-pink-200';
       default: return 'bg-slate-100 text-slate-600 border-slate-200';
     }
   };
@@ -258,12 +259,13 @@ export default function AdminUsuarios() {
     profesores: users.filter(u => u.roles?.includes('profesor')).length,
     alumnos: users.filter(u => u.roles?.includes('alumno')).length,
     lideres: users.filter(u => u.roles?.includes('lider')).length,
+    maestros: users.filter(u => u.roles?.includes('maestro')).length,
     pending: users.filter(u => u.status === 'pending').length,
   };
 
   if (loading || !isAuthReady) return <div className="pt-32 text-center">Cargando...</div>;
 
-  const availableRoles: UserProfile['roles'][number][] = ['admin', 'comunicador', 'profesor', 'alumno', 'lider', 'supervisor'];
+  const availableRoles: UserProfile['roles'][number][] = ['admin', 'comunicador', 'profesor', 'alumno', 'lider', 'supervisor', 'maestro'];
 
   return (
     <div className="">
@@ -358,6 +360,7 @@ export default function AdminUsuarios() {
             <option value="alumno">Alumnos</option>
             <option value="lider">Líderes</option>
             <option value="supervisor">Supervisores</option>
+            <option value="maestro">Maestros</option>
           </select>
           <select 
             className="px-6 py-3 rounded-xl border border-slate-100 text-primary/60 outline-none focus:ring-2 focus:ring-secondary appearance-none bg-white"

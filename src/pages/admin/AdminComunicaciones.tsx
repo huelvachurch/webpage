@@ -18,6 +18,7 @@ interface Post {
   imageUrl: string;
   category: string;
   featured: boolean;
+  isInfantil?: boolean;
   tags: string[];
   publishedAt: any;
   status?: 'published' | 'draft';
@@ -58,6 +59,7 @@ export default function AdminComunicaciones() {
     imageUrl: '',
     category: 'Noticias',
     featured: false,
+    isInfantil: false,
     status: 'published' as 'published' | 'draft',
     tags: '',
     title_en: '',
@@ -118,6 +120,7 @@ export default function AdminComunicaciones() {
         imageUrl: post.imageUrl || '',
         category: post.category,
         featured: post.featured || false,
+        isInfantil: post.isInfantil || false,
         status: post.status || 'published',
         tags: post.tags?.join(', ') || '',
         title_en: post.title_en || '',
@@ -139,6 +142,7 @@ export default function AdminComunicaciones() {
         imageUrl: '',
         category: 'Noticias',
         featured: false,
+        isInfantil: false,
         status: 'published',
         tags: '',
         title_en: '',
@@ -774,15 +778,27 @@ export default function AdminComunicaciones() {
                     </div>
 
                     {activeLang === 'es' && (
-                      <div className="flex items-center gap-3 ml-2">
-                        <input 
-                          type="checkbox" 
-                          id="featured"
-                          className="w-5 h-5 rounded border-slate-200 text-secondary focus:ring-secondary"
-                          checked={formData.featured}
-                          onChange={(e) => setFormData({...formData, featured: e.target.checked})}
-                        />
-                        <label htmlFor="featured" className="text-sm font-bold text-primary/60">Marcar como contenido destacado</label>
+                      <div className="flex flex-col gap-4 ml-2">
+                        <div className="flex items-center gap-3">
+                          <input 
+                            type="checkbox" 
+                            id="featured"
+                            className="w-5 h-5 rounded border-slate-200 text-secondary focus:ring-secondary cursor-pointer"
+                            checked={formData.featured}
+                            onChange={(e) => setFormData({...formData, featured: e.target.checked})}
+                          />
+                          <label htmlFor="featured" className="text-sm font-bold text-primary/60 cursor-pointer select-none">Marcar como contenido destacado</label>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <input 
+                            type="checkbox" 
+                            id="isInfantil"
+                            className="w-5 h-5 rounded border-slate-200 text-secondary focus:ring-secondary cursor-pointer"
+                            checked={formData.isInfantil}
+                            onChange={(e) => setFormData({...formData, isInfantil: e.target.checked})}
+                          />
+                          <label htmlFor="isInfantil" className="text-sm font-bold text-primary/60 cursor-pointer select-none">Marcar como contenido de Ministerio Infantil (Niños)</label>
+                        </div>
                       </div>
                     )}
 

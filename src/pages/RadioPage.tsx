@@ -10,7 +10,8 @@ import {
   Share2, 
   Sparkles,
   ExternalLink,
-  Info
+  Info,
+  Heart
 } from 'lucide-react';
 
 export default function RadioPage() {
@@ -90,7 +91,7 @@ export default function RadioPage() {
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-12"
+          className="text-center mb-10"
         >
           <div className="inline-flex items-center gap-2 bg-[#2D4B73]/10 text-[#2D4B73] font-mono text-[11px] uppercase tracking-widest px-4 py-1.5 rounded-full font-bold mb-4 shadow-sm">
             <Radio className="w-3.5 h-3.5 text-secondary animate-pulse" />
@@ -100,6 +101,37 @@ export default function RadioPage() {
           <p className="text-[#2D4B73]/70 text-lg max-w-3xl mx-auto leading-relaxed">
             {text.subtitle}
           </p>
+        </motion.div>
+
+        {/* Donation Banner for Radio */}
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="mb-10 bg-gradient-to-r from-secondary/15 via-secondary/25 to-secondary/15 border border-secondary/40 rounded-3xl p-6 sm:p-8 text-center sm:text-left flex flex-col sm:flex-row items-center justify-between gap-6 shadow-sm"
+        >
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 bg-secondary text-primary rounded-2xl flex items-center justify-center shrink-0 shadow-md">
+              <Heart className="w-7 h-7 fill-primary" />
+            </div>
+            <div>
+              <h3 className="font-gordita font-bold text-xl text-[#2D4B73]">
+                ¿Te bendice Radio Huelva Church?
+              </h3>
+              <p className="text-sm text-[#2D4B73]/80 mt-1 max-w-2xl leading-relaxed">
+                Tu donativo nos ayuda a mantener las transmisiones las 24 horas y llevar el mensaje de bendición a más hogares en Huelva y todo el mundo.
+              </p>
+            </div>
+          </div>
+          <a
+            href="https://www.paypal.com/donate/?hosted_button_id=XM4W9FR6A8DDL"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 bg-[#0070BA] hover:bg-[#005ea6] text-white font-bold py-3.5 px-7 rounded-2xl shadow-lg transition-all text-sm shrink-0 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <Heart className="w-4 h-4 text-secondary fill-secondary" />
+            <span>Apoyar la Radio vía PayPal</span>
+          </a>
         </motion.div>
 
         {/* ROW 1: Reproductor en Vivo + Locutor al Aire */}

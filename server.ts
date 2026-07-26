@@ -921,6 +921,209 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
     }
   });
 
+  // API Route to dispatch push notifications, SMTP emails, and Firestore documents to all Kids Ministry teachers (Maestros)
+  app.post("/api/notifications/send-kids-notice", async (req, res) => {
+    try {
+      const { title, message, authorId, authorName } = req.body;
+
+      if (!title || !message) {
+        return res.status(400).json({ error: "Faltan campos obligatorios (title, message)" });
+      }
+
+      if (!db) {
+        return res.status(500).json({ error: "Base de datos Firestore no inicializada" });
+      }
+
+      console.log(`[FCM API] Procesando notificación para Maestros de Infantil. Remitente: ${authorName}`);
+
+      const tokens: string[] = [];
+      const recipientEmails: string[] = [];
+      const teachersList: any[] = [];
+
+      // 1. Query users with role 'maestro' or 'superadmin'
+      if (firebaseConfig && firebaseConfig.projectId) {
+        const projectId = firebaseConfig.projectId;
+        const dbId = firebaseConfig.firestoreDatabaseId || "(default)";
+        
+        try {
+          const auth = new GoogleAuth({
+            scopes: ['https://www.googleapis.com/auth/cloud-platform']
+          });
+          const client = await auth.getClient();
+          const tokenResponse = await client.getAccessToken();
+          const accessToken = tokenResponse.token;
+
+          if (accessToken) {
+            const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${dbId}/documents:runQuery`;
+            const queryPayload = {
+              structuredQuery: {
+                from: [{ collectionId: "users" }]
+              }
+            };
+
+            const resFetch = await fetch(url, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(queryPayload)
+            });
+
+            if (resFetch.ok) {
+              const rawResults = await resFetch.json();
+              if (Array.isArray(rawResults)) {
+                for (const item of rawResults) {
+                  if (item && item.document && item.document.fields) {
+                    const fields = parseFirestoreFields(item.document.fields);
+                    const documentPath = item.document.name || "";
+                    const matches = documentPath.match(/\/documents\/users\/([^/]+)$/);
+                    const docId = matches ? matches[1] : "";
+                    
+                    const rolesArray = fields.roles || [];
+                    if (rolesArray.includes('maestro') || rolesArray.includes('superadmin')) {
+                      teachersList.push({
+                        id: docId,
+                        ...fields
+                      });
+                      if (Array.isArray(fields.fcmTokens)) {
+                        tokens.push(...fields.fcmTokens);
+                      }
+                      if (fields.email && typeof fields.email === 'string' && fields.email.trim() !== '') {
+                        recipientEmails.push(fields.email.trim());
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch (fetchErr) {
+          console.error("Error fetching teachers via admin REST API:", fetchErr);
+        }
+      }
+
+      // Filter tokens and emails
+      const uniqueTokens = Array.from(new Set(tokens.filter(t => typeof t === 'string' && t.trim() !== '')));
+      const uniqueEmails = Array.from(new Set(recipientEmails.filter(e => typeof e === 'string' && e.trim() !== '' && e.includes('@'))));
+
+      console.log(`[Kids FCM API] Destinatarios: ${teachersList.length} maestros | ${uniqueTokens.length} tokens push | ${uniqueEmails.length} correos`);
+
+      const redirectPath = "/infantil";
+      const clickUrl = `https://huelvachurch.com${redirectPath}`;
+
+      // 2. Write KidsNotification records in Firestore for each teacher
+      if (firebaseConfig && firebaseConfig.projectId && teachersList.length > 0) {
+        const projectId = firebaseConfig.projectId;
+        const dbId = firebaseConfig.firestoreDatabaseId || "(default)";
+        try {
+          const auth = new GoogleAuth({
+            scopes: ['https://www.googleapis.com/auth/cloud-platform']
+          });
+          const client = await auth.getClient();
+          const tokenResponse = await client.getAccessToken();
+          const accessToken = tokenResponse.token;
+
+          if (accessToken) {
+            await Promise.allSettled(teachersList.map(async (teacher) => {
+              const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${dbId}/documents/kids_notifications`;
+              const payload = {
+                fields: {
+                  userId: { stringValue: teacher.id },
+                  title: { stringValue: title },
+                  body: { stringValue: message },
+                  read: { booleanValue: false },
+                  createdAt: { timestampValue: new Date().toISOString() },
+                  actionUrl: { stringValue: redirectPath }
+                }
+              };
+
+              await fetch(url, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+              });
+            }));
+          }
+        } catch (writeErr) {
+          console.error("Error writing kids notifications to Firestore:", writeErr);
+        }
+      }
+
+      // 3. Send PUSH
+      let fcmSent = false;
+      let fcmResult = null;
+      if (uniqueTokens.length > 0) {
+        try {
+          fcmResult = await sendFcmNotification(uniqueTokens, title, message, clickUrl);
+          fcmSent = true;
+        } catch (fcmErr) {
+          console.error("[Kids FCM Error]:", fcmErr);
+        }
+      }
+
+      // 4. Send EMAILS
+      let emailsSentCount = 0;
+      if (uniqueEmails.length > 0) {
+        const emailSubject = `🔔 Kids Ministry: ${title}`;
+        const contentHtml = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #f1f5f9; border-radius: 16px;">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <h1 style="color: #4f46e5; font-size: 24px; margin: 0;">HC Kids</h1>
+              <p style="color: #b59410; font-size: 14px; margin: 4px 0 0 0; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">Ministerio Infantil</p>
+            </div>
+            
+            <div style="background-color: #f5f3ff; padding: 24px; border-radius: 12px; margin-bottom: 24px; border-left: 4px solid #4f46e5;">
+              <p style="font-size: 16px; color: #1e1b4b; margin-top: 0; font-weight: bold;">
+                ${title}
+              </p>
+              <p style="font-size: 14px; color: #312e81; line-height: 1.6; white-space: pre-wrap; margin-bottom: 0;">
+                ${message}
+              </p>
+            </div>
+
+            <p style="font-size: 14px; color: #475569; line-height: 1.6;">
+              Notificación enviada por: <strong>${authorName || 'Coordinador'}</strong> para todo el equipo de maestros de HC Kids.
+            </p>
+            
+            <div style="text-align: center; margin-top: 32px; border-top: 1px solid #f1f5f9; padding-top: 24px;">
+              <a href="${clickUrl}" style="background-color: #4f46e5; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: bold; display: inline-block;">
+                Abrir Portal Infantil
+              </a>
+            </div>
+          </div>
+        `;
+
+        try {
+          await Promise.allSettled(uniqueEmails.map(async (email) => {
+            const resEmail = await sendSingleEmail(email, emailSubject, contentHtml);
+            if (resEmail.success) {
+              emailsSentCount++;
+            }
+          }));
+        } catch (emailErr) {
+          console.error("Error sending emails to teachers:", emailErr);
+        }
+      }
+
+      res.json({
+        success: true,
+        fcmSent,
+        tokensCount: uniqueTokens.length,
+        results: fcmResult,
+        emailsSentCount,
+        uniqueEmailsCount: uniqueEmails.length
+      });
+
+    } catch (error: any) {
+      console.error("[Kids FCM Root API Error]:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // YouTube Latest Video Endpoint
   app.get("/api/youtube/latest", async (req, res) => {
     try {

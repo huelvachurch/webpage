@@ -23,8 +23,13 @@ export default function AdminDashboard() {
   return (
     <div className="pt-32 pb-24 bg-slate-50 min-h-screen">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h1 className="text-5xl font-kenao text-primary mb-2 uppercase tracking-wide">Administración</h1>
-        <p className="text-lg text-primary/60 mb-8 max-w-3xl">Panel de administración general del sistema.</p>
+        {/* Page Header */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6">
+          <div>
+            <h1 className="text-4xl font-kenao text-primary mb-2">Administración</h1>
+            <p className="text-primary/60 text-sm">Panel de administración general del sistema.</p>
+          </div>
+        </div>
         
         {/* Header Tabs for SuperAdmin */}
         <div className="bg-white p-2 rounded-2xl shadow-sm inline-flex mb-8 overflow-x-auto max-w-full">

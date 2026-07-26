@@ -17,9 +17,9 @@ export default function Login() {
       } else if (roles.includes('admin')) {
         navigate('/admin/ajustes');
       } else if (roles.includes('comunicador')) {
-        navigate('/admin/comunicaciones');
+        navigate('/admin/anuncios');
       } else if (roles.includes('profesor')) {
-        navigate('/admin/cursos');
+        navigate('/admin/docencia');
       } else {
         navigate('/');
       }

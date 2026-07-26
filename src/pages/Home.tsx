@@ -26,7 +26,8 @@ import {
   Volume2,
   VolumeX,
   ArrowRight,
-  Video
+  Video,
+  Smile
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { collection, query, where, orderBy, limit, onSnapshot, addDoc, getDocs, serverTimestamp } from 'firebase/firestore';
@@ -632,6 +633,40 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Kids Ministry Promotional Banner */}
+      <section className="py-16 bg-white border-t border-slate-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="bg-gradient-to-br from-slate-50 via-secondary/10 to-slate-50/50 rounded-[2.5rem] p-8 md:p-12 border border-secondary/20 flex flex-col lg:flex-row items-center justify-between gap-10 relative overflow-hidden shadow-xs">
+            {/* Decorative blobs */}
+            <div className="absolute -left-12 -top-12 w-40 h-40 rounded-full bg-secondary/10 blur-2xl pointer-events-none" />
+            <div className="absolute -right-12 -bottom-12 w-48 h-48 rounded-full bg-primary/5 blur-2xl pointer-events-none" />
+
+            <div className="max-w-2xl relative z-10 text-center lg:text-left">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-secondary/20 text-primary uppercase tracking-widest mb-4">
+                <Smile className="w-4 h-4 text-primary" />
+                {t('home.kidsPromoTag')}
+              </span>
+              <h3 className="text-3xl md:text-4xl font-kenao text-primary font-bold tracking-tight mb-4">
+                {t('home.kidsPromoTitle')}
+              </h3>
+              <p className="text-primary/75 text-sm md:text-base leading-relaxed">
+                {t('home.kidsPromoDesc')}
+              </p>
+            </div>
+
+            <div className="relative z-10 shrink-0 w-full lg:w-auto text-center">
+              <Link 
+                to="/ninos"
+                className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl bg-primary text-white hover:bg-primary/95 font-bold text-sm tracking-wider uppercase shadow-md hover:shadow-lg transition-all duration-300 w-full sm:w-auto"
+              >
+                {t('home.kidsPromoBtn')}
+                <ArrowRight className="w-4 h-4 text-secondary" />
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Newsletter Subscription Section */}
       <section className="py-20 bg-primary relative overflow-hidden">
         {/* Decorative elements */}
@@ -648,13 +683,13 @@ export default function Home() {
           >
             <div className="inline-flex items-center gap-2.5 bg-secondary/20 border border-secondary/30 px-4 py-1.5 rounded-full text-secondary text-xs font-bold uppercase tracking-wider">
               <Mail className="w-4 h-4" />
-              <span>Boletín de Noticias</span>
+              <span>{t('home.newsletterTag')}</span>
             </div>
             
             <div className="space-y-4">
-              <h2 className="text-3xl sm:text-4xl font-kenao text-white">Únete a nuestro boletín semanal</h2>
+              <h2 className="text-3xl sm:text-4xl font-kenao text-white">{t('home.newsletterTitle')}</h2>
               <p className="text-white/70 max-w-xl mx-auto text-sm sm:text-base leading-relaxed">
-                Recibe semanalmente los avisos destacados, recordatorios de la reunión de domingo, actividades especiales y la vida de nuestra iglesia directamente en tu buzón de correo.
+                {t('home.newsletterDesc')}
               </p>
             </div>
 
@@ -665,8 +700,8 @@ export default function Home() {
                 className="bg-secondary/10 border border-secondary/20 p-6 rounded-2xl max-w-md mx-auto"
               >
                 <span className="text-2xl">🎉</span>
-                <h4 className="text-white font-bold text-lg mt-2 font-kenao">¡Suscrito con éxito!</h4>
-                <p className="text-white/60 text-xs mt-1">Gracias por unirte a nuestro boletín. Te mantendremos informado.</p>
+                <h4 className="text-white font-bold text-lg mt-2 font-kenao">{t('home.newsletterSuccessTitle')}</h4>
+                <p className="text-white/60 text-xs mt-1">{t('home.newsletterSuccessDesc')}</p>
               </motion.div>
             ) : (
               <form onSubmit={handleNewsletterSubscribe} className="max-w-md mx-auto">
@@ -676,7 +711,7 @@ export default function Home() {
                     required
                     value={subEmail}
                     onChange={(e) => setSubEmail(e.target.value)}
-                    placeholder="Introduce tu correo electrónico" 
+                    placeholder={t('home.newsletterPh')} 
                     className="flex-grow px-5 py-4 rounded-xl bg-white/10 text-white placeholder-white/40 border border-white/20 outline-none focus:ring-2 focus:ring-secondary focus:border-transparent text-sm transition-all"
                   />
                   <button 
@@ -687,13 +722,13 @@ export default function Home() {
                     {subscribing ? (
                       <span className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></span>
                     ) : (
-                      <span>Suscribirme</span>
+                      <span>{t('home.newsletterBtn')}</span>
                     )}
                   </button>
                 </div>
                 {subError && <p className="text-red-400 text-xs mt-3 text-left">{subError}</p>}
                 <p className="text-[10px] text-white/40 mt-3 leading-tight">
-                  Al suscribirte, aceptas recibir comunicaciones de Huelva Church. Tu privacidad es sagrada y puedes darte de baja en cualquier momento.
+                  {t('home.newsletterTerms')}
                 </p>
               </form>
             )}
@@ -720,10 +755,10 @@ export default function Home() {
                 <div className="flex justify-between items-center mb-6">
                   <span className="text-[10px] uppercase font-mono tracking-wider text-slate-300 font-bold bg-white/10 px-3 py-1 rounded-full flex items-center gap-1.5">
                     <span className={`w-2 h-2 rounded-full bg-emerald-400 ${isPlaying ? 'animate-ping' : ''}`} />
-                    {isPlaying ? 'AL AIRE' : 'CONECTAR SEÑAL'}
+                    {isPlaying ? t('home.radioOnAir') : t('home.radioConnect')}
                   </span>
                   <span className="text-xs text-[#D9B70D] font-mono font-semibold flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#D9B70D]" /> Directo
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#D9B70D]" /> {t('home.radioDirect')}
                   </span>
                 </div>
 
@@ -741,8 +776,8 @@ export default function Home() {
                   </div>
 
                   <div>
-                    <h4 className="font-gordita font-bold text-2xl text-white">Reproductor en Vivo</h4>
-                    <p className="text-xs text-slate-300 font-gordita mt-0.5">Señal de alta fidelidad 128kbps</p>
+                    <h4 className="font-gordita font-bold text-2xl text-white">{t('home.radioLivePlayer')}</h4>
+                    <p className="text-xs text-slate-300 font-gordita mt-0.5">{t('home.radioFidelity')}</p>
                   </div>
                 </div>
 
@@ -754,8 +789,8 @@ export default function Home() {
                       className="w-1 bg-[#D9B70D] rounded-full"
                       animate={{
                         height: isPlaying 
-                          ? [12, Math.floor(Math.random() * 32) + 12, 12] 
-                          : 8
+                           ? [12, Math.floor(Math.random() * 32) + 12, 12] 
+                           : 8
                       }}
                       transition={{
                         duration: isPlaying ? (0.5 + idx * 0.05) : 0,
@@ -769,7 +804,7 @@ export default function Home() {
                 {playerError && (
                   <div className="bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs p-3 rounded-xl flex items-center gap-2 mb-4">
                     <span className="text-rose-400">⚠️</span>
-                    <span>Error al cargar el streaming. Intenta de nuevo.</span>
+                    <span>{t('home.radioError')}</span>
                   </div>
                 )}
               </div>

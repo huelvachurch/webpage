@@ -81,6 +81,13 @@ service cloud.firestore {
       );
     }
 
+    function isMaestro() {
+      return isAuthenticated() && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 'maestro' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles)
+      );
+    }
+
     function isCoLeaderOf(leaderId) {
       return isAuthenticated() && (
         exists(/databases/$(database)/documents/celulas/$(leaderId)) &&
@@ -194,6 +201,38 @@ service cloud.firestore {
              data.zona is string && 
              data.leaderId is string &&
              data.createdAt is string;
+    }
+
+    function isValidKidsProgram(data) {
+      return data.keys().hasAll(['teachingTitle', 'teachingLink', 'teacherId', 'teacherName', 'date']) &&
+             data.teachingTitle is string && data.teachingTitle.size() < 300 &&
+             data.teachingLink is string && data.teachingLink.size() < 1000 &&
+             data.teacherId is string &&
+             data.teacherName is string &&
+             data.date is string;
+    }
+
+    function isValidKidsComment(data) {
+      return data.keys().hasAll(['content', 'authorId', 'authorName']) &&
+             data.content is string && data.content.size() < 5000 &&
+             data.authorId is string &&
+             data.authorName is string;
+    }
+
+    function isValidKidsPhoto(data) {
+      return data.keys().hasAll(['url', 'dateTaken', 'uploadedById', 'uploadedByName']) &&
+             data.url is string && data.url.size() < 1000 &&
+             data.dateTaken is string &&
+             data.uploadedById is string &&
+             data.uploadedByName is string;
+    }
+
+    function isValidKidsNotification(data) {
+      return data.keys().hasAll(['userId', 'title', 'body', 'read']) &&
+             data.userId is string &&
+             data.title is string && data.title.size() < 300 &&
+             data.body is string && data.body.size() < 1000 &&
+             data.read is bool;
     }
 
     // ===============================================================
@@ -379,6 +418,33 @@ service cloud.firestore {
         (isLider() && resource.data.leaderId == request.auth.uid) ||
         (isSupervisor() && resource.data.supervisorId == request.auth.uid)
       );
+    }
+
+    match /kids_programs/{programId} {
+      allow read: if true;
+      allow create, update: if isMaestro() && isValidKidsProgram(request.resource.data);
+      allow delete: if isMaestro();
+    }
+
+    match /kids_comments/{commentId} {
+      allow read: if isMaestro();
+      allow create: if isMaestro() && isValidKidsComment(request.resource.data);
+      allow update: if isMaestro() && isValidKidsComment(request.resource.data) && resource.data.authorId == request.auth.uid;
+      allow delete: if isMaestro() && (resource.data.authorId == request.auth.uid || isAdmin());
+    }
+
+    match /kids_photos/{photoId} {
+      allow read: if true;
+      allow create: if isMaestro() && isValidKidsPhoto(request.resource.data);
+      allow update: if isMaestro() && isValidKidsPhoto(request.resource.data) && resource.data.uploadedById == request.auth.uid;
+      allow delete: if isMaestro() && (resource.data.uploadedById == request.auth.uid || isAdmin());
+    }
+
+    match /kids_notifications/{notificationId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isMaestro() && isValidKidsNotification(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
   }
 }

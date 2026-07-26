@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, Trash2, Mail, Users, History, Send, Eye, Image as ImageIcon, Check, AlertCircle, Sparkles, BookOpen, 
-  ExternalLink, Video, Radio, Youtube, Instagram, MessageCircle, FileText, Loader2, ArrowRight, Settings, Clock, Share2, Globe 
+  ExternalLink, Video, Radio, Youtube, Instagram, MessageCircle, FileText, Loader2, ArrowRight, Settings, Clock, Share2, Globe,
+  Pencil, RefreshCw, X
 } from 'lucide-react';
 import { 
   collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, 
@@ -157,13 +158,7 @@ export default function AdminNewsletter() {
           ...doc.data()
         })) as Subscriber[];
         
-        const uniqueSubsMap = new Map<string, Subscriber>();
-        for (const sub of subsRaw) {
-          if (!uniqueSubsMap.has(sub.email)) {
-            uniqueSubsMap.set(sub.email, sub);
-          }
-        }
-        setSubscribers(Array.from(uniqueSubsMap.values()));
+        setSubscribers(subsRaw);
       }, (error) => {
         handleFirestoreError(error, OperationType.LIST, 'subscribers');
       });
@@ -915,7 +910,16 @@ export default function AdminNewsletter() {
 
   // Broadcast campaign to all subscribers
   const handleBroadcast = async () => {
-    const activeSubs = subscribers.filter(s => s.active);
+    const activeSubsUniqueMap = new Map<string, Subscriber>();
+    for (const s of subscribers) {
+      if (s.active && s.email) {
+        const key = s.email.toLowerCase().trim();
+        if (!activeSubsUniqueMap.has(key)) {
+          activeSubsUniqueMap.set(key, s);
+        }
+      }
+    }
+    const activeSubs = Array.from(activeSubsUniqueMap.values());
     if (activeSubs.length === 0) {
       alert('No tienes ningún suscriptor activo en la base de datos.');
       return;
@@ -1049,7 +1053,16 @@ export default function AdminNewsletter() {
 
   // Dispatch sending of an existing saved draft campaign immediately
   const handleDirectSend = async (campaign: NewsletterCampaign) => {
-    const activeSubs = subscribers.filter(s => s.active);
+    const activeSubsUniqueMap = new Map<string, Subscriber>();
+    for (const s of subscribers) {
+      if (s.active && s.email) {
+        const key = s.email.toLowerCase().trim();
+        if (!activeSubsUniqueMap.has(key)) {
+          activeSubsUniqueMap.set(key, s);
+        }
+      }
+    }
+    const activeSubs = Array.from(activeSubsUniqueMap.values());
     if (activeSubs.length === 0) {
       alert('No hay suscriptores habilitados en la base de datos.');
       return;
@@ -1072,9 +1085,18 @@ export default function AdminNewsletter() {
   };
 
   const handleRetryFailedSend = async (campaign: NewsletterCampaign) => {
-    const sentTo = campaign.sentTo || [];
-    const activeSubs = subscribers.filter(s => s.active);
-    const failedSubs = activeSubs.filter(s => !sentTo.includes(s.email));
+    const sentTo = (campaign.sentTo || []).map(e => e.toLowerCase().trim());
+    const activeSubsUniqueMap = new Map<string, Subscriber>();
+    for (const s of subscribers) {
+      if (s.active && s.email) {
+        const key = s.email.toLowerCase().trim();
+        if (!activeSubsUniqueMap.has(key)) {
+          activeSubsUniqueMap.set(key, s);
+        }
+      }
+    }
+    const activeSubs = Array.from(activeSubsUniqueMap.values());
+    const failedSubs = activeSubs.filter(s => !sentTo.includes(s.email.toLowerCase().trim()));
 
     if (failedSubs.length === 0) {
       alert('¡Todos los suscriptores activos ya han recibido este boletín!');
@@ -1145,7 +1167,7 @@ export default function AdminNewsletter() {
         {/* Header Title */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6">
           <div>
-            <h1 className="text-4xl font-kenao text-primary mb-2">Newsletter</h1>
+            <h1 className="text-4xl font-kenao text-primary mb-2">Boletines</h1>
             <p className="text-primary/60">Gestiona tus suscriptores, diseña correos semanales o comunicados especiales y envíalos con formato profesional.</p>
           </div>
         </div>
@@ -1157,7 +1179,7 @@ export default function AdminNewsletter() {
             className={`flex items-center gap-2 py-4 px-6 border-b-2 font-bold text-sm tracking-wide uppercase transition-all whitespace-nowrap ${activeTab === 'build' ? 'border-secondary text-secondary' : 'border-transparent text-primary/50 hover:text-primary'}`}
           >
             <Sparkles className="w-4 h-4" />
-            Diseñar Boletín
+            Diseñar
           </button>
           
           <button 
@@ -1173,7 +1195,7 @@ export default function AdminNewsletter() {
             className={`flex items-center gap-2 py-4 px-6 border-b-2 font-bold text-sm tracking-wide uppercase transition-all whitespace-nowrap ${activeTab === 'history' ? 'border-secondary text-secondary' : 'border-transparent text-primary/50 hover:text-primary'}`}
           >
             <History className="w-4 h-4" />
-            Historial de Envíos
+            Historial
           </button>
         </div>
 
@@ -1215,10 +1237,10 @@ export default function AdminNewsletter() {
                 {/* Cover Image Input Box */}
                 <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
                   <div>
-                    <h3 className="text-xs text-secondary font-bold uppercase tracking-wider mb-1">Imagen de Carátula del Boletín (Google Drive / Enlace)</h3>
-                    <p className="text-[11px] text-slate-500 leading-normal">Esta carátula se mostrará como encabezado en el email justo debajo del logotipo del encabezado, y como portada de los folletos digitales creados para compartir (/boletin/folleto/...)</p>
+                    <h3 className="text-xs text-secondary font-bold uppercase tracking-wider mb-1">Carátula</h3>
                   </div>
                   <div className="space-y-2">
+                    <label className="text-xs font-bold text-primary/60 block">Enlace de imagen de carátula</label>
                     <input 
                       type="url"
                       className="w-full px-4 py-3 text-sm rounded-xl border border-slate-200 focus:ring-2 focus:ring-secondary outline-none transition-all"
@@ -1273,7 +1295,7 @@ export default function AdminNewsletter() {
                     </div>
                     
                     <div className="space-y-2">
-                      <label className="text-xs font-bold text-primary/60 block">Imagen Carátula de la Prédica (URL)</label>
+                      <label className="text-xs font-bold text-primary/60 block">Enlace de imágen de celebración</label>
                       <input 
                         type="url"
                         className="w-full px-4 py-3 text-sm rounded-xl border border-slate-200 focus:ring-2 focus:ring-secondary outline-none transition-all"
@@ -1325,7 +1347,7 @@ export default function AdminNewsletter() {
                           onChange={(e) => setIsCenaBanner(e.target.checked)}
                         />
                         <label htmlFor="form-cena" className="text-xs font-bold text-amber-900 cursor-pointer">
-                          ¿Cena del Señor este Domingo?
+                          Cena del Señor
                         </label>
                       </div>
                       
@@ -1342,7 +1364,7 @@ export default function AdminNewsletter() {
                               {isGeneratingCena ? (
                                  <span className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></span>
                               ) : (
-                                 <span>✨ Generar</span>
+                                 <span>✨ Generar con IA</span>
                               )}
                             </button>
                           </div>
@@ -1360,7 +1382,7 @@ export default function AdminNewsletter() {
                     {/* Featured Posts Selector */}
                     <div className="space-y-3 pt-4 border-t border-slate-100">
                       <div className="flex justify-between items-center">
-                        <label className="text-xs font-bold text-primary/60 uppercase tracking-wide">Incluir Avisos Destacados</label>
+                        <label className="text-xs font-bold text-primary/60 uppercase tracking-wide">Avisos</label>
                         <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-primary/40 font-bold">Actividades Destacadas</span>
                       </div>
                       
@@ -1544,7 +1566,7 @@ export default function AdminNewsletter() {
                         className="bg-slate-100 hover:bg-slate-200 text-primary border border-slate-200/50 py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2"
                       >
                         {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-                        Guardar Borrador
+                        Guardar
                       </button>
 
                       <button
@@ -1554,7 +1576,7 @@ export default function AdminNewsletter() {
                         className={`text-white font-bold py-3.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 uppercase text-xs tracking-wider ${shouldSchedule ? 'bg-[#dfb23f] hover:bg-[#c99e32] text-primary' : 'bg-emerald-600 hover:bg-emerald-700'}`}
                       >
                         {(isSaving || isBroadcasting) && <Loader2 className="w-4 h-4 animate-spin" />}
-                        {shouldSchedule ? 'Programar Envío' : `Enviar Ahora (${subscribers.filter(s => s.active).length})`}
+                        {shouldSchedule ? 'Programar Envío' : 'Enviar'}
                       </button>
                     </div>
                   </div>
@@ -1625,7 +1647,7 @@ export default function AdminNewsletter() {
               {/* Subscribers list details Table */}
               <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-                  <h3 className="font-kenao text-lg text-primary">Listado de Emails de Suscriptores</h3>
+                  <h3 className="font-kenao text-lg text-primary">Listado de Suscriptores</h3>
                   <span className="bg-secondary/10 text-secondary text-xs font-bold px-3 py-1 rounded-full">{subscribers.length} en total</span>
                 </div>
                 
@@ -1646,36 +1668,54 @@ export default function AdminNewsletter() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {subscribers.map(sub => (
-                          <tr key={sub.id} className="hover:bg-slate-50/50 transition-colors">
-                            <td className="p-6 font-bold text-primary font-mono">{sub.email}</td>
-                            <td className="p-6 text-primary/60 font-medium">
-                              {sub.subscribedAt?.toDate 
-                                ? sub.subscribedAt.toDate().toLocaleString() 
-                                : 'Recién incorporado'}
-                            </td>
-                            <td className="p-6">
-                              {sub.active ? (
-                                <span className="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider border border-emerald-100">
-                                  Activo
-                                </span>
-                              ) : (
-                                <span className="bg-red-50 text-red-700 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider border border-red-100">
-                                  Inactivo
-                                </span>
-                              )}
-                            </td>
-                            <td className="p-6 text-right">
-                              <button
-                                onClick={() => handleDeleteSubscriber(sub.id, sub.email)}
-                                className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2.5 rounded-lg transition-all inline-flex items-center"
-                                title="Eliminar suscriptor"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                        {(() => {
+                          const emailCounts = subscribers.reduce((acc, s) => {
+                            const email = (s.email || '').toLowerCase().trim();
+                            acc[email] = (acc[email] || 0) + 1;
+                            return acc;
+                          }, {} as Record<string, number>);
+
+                          return subscribers.map(sub => {
+                            const isDuplicate = emailCounts[(sub.email || '').toLowerCase().trim()] > 1;
+                            return (
+                              <tr key={sub.id} className={`hover:bg-slate-50/50 transition-colors ${isDuplicate ? 'bg-amber-50/50' : ''}`}>
+                                <td className="p-6 font-bold text-primary font-mono flex items-center gap-2">
+                                  {sub.email}
+                                  {isDuplicate && (
+                                    <span className="bg-amber-100 text-amber-800 text-[9px] font-bold px-2 py-0.5 rounded-full border border-amber-200 uppercase tracking-wide">
+                                      Repetido
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="p-6 text-primary/60 font-medium">
+                                  {sub.subscribedAt?.toDate 
+                                    ? sub.subscribedAt.toDate().toLocaleString() 
+                                    : 'Recién incorporado'}
+                                </td>
+                                <td className="p-6">
+                                  {sub.active ? (
+                                    <span className="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider border border-emerald-100">
+                                      Activo
+                                    </span>
+                                  ) : (
+                                    <span className="bg-red-50 text-red-700 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider border border-red-100">
+                                      Inactivo
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="p-6 text-right">
+                                  <button
+                                    onClick={() => handleDeleteSubscriber(sub.id, sub.email)}
+                                    className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2.5 rounded-lg transition-all inline-flex items-center"
+                                    title="Eliminar suscriptor"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          });
+                        })()}
                       </tbody>
                     </table>
                   </div>
@@ -1779,15 +1819,14 @@ export default function AdminNewsletter() {
                                       <button
                                         onClick={() => handleDirectSend(camp)}
                                         disabled={isActionCampaignId === camp.id}
-                                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all shadow-sm flex items-center gap-1 disabled:opacity-50"
+                                        className="border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 p-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center disabled:opacity-50"
                                         title={status === 'sending' ? "Forzar envío (puede duplicar)" : "Enviar inmediatamente"}
                                       >
                                         {isActionCampaignId === camp.id ? (
-                                          <Loader2 className="w-3 h-3 animate-spin" />
+                                          <Loader2 className="w-4 h-4 animate-spin" />
                                         ) : (
-                                          <Send className="w-3 h-3" />
+                                          <Send className="w-4 h-4" />
                                         )}
-                                        Enviar Ya
                                       </button>
                                       
                                       <button
@@ -1810,10 +1849,10 @@ export default function AdminNewsletter() {
                                           setActiveTab('build');
                                           alert('Datos del borrador cargados con éxito en la sección Diseñar Boletín.');
                                         }}
-                                        className="bg-slate-50 hover:bg-slate-100 text-primary border border-slate-200/50 text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all"
+                                        className="border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 p-2.5 rounded-xl transition-all flex items-center justify-center"
                                         title="Cargar borrador en el editor"
                                       >
-                                        Editar
+                                        <Pencil className="w-4 h-4" />
                                       </button>
                                     </>
                                   )}
@@ -1821,10 +1860,10 @@ export default function AdminNewsletter() {
                                   {(status === 'scheduled' || status === 'sending') && (
                                     <button
                                       onClick={() => handleCancelScheduled(camp.id)}
-                                      className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-200/50 text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all"
+                                      className="border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 p-2.5 rounded-xl transition-all flex items-center justify-center"
                                       title="Desprogramar / Cancelar envío"
                                     >
-                                      Cancelar
+                                      <X className="w-4 h-4" />
                                     </button>
                                   )}
 
@@ -1832,10 +1871,14 @@ export default function AdminNewsletter() {
                                     <button
                                       onClick={() => handleRetryFailedSend(camp)}
                                       disabled={isActionCampaignId === camp.id}
-                                      className="bg-blue-100 hover:bg-blue-200 text-blue-900 border border-blue-200/50 text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
-                                      title={`Faltan ${subscribers.filter(s => s.active).length - (camp.sentTo?.length || camp.sentCount)} por enviar`}
+                                      className="border border-orange-200 bg-orange-50 text-orange-600 hover:bg-orange-100 p-2.5 rounded-xl transition-all flex items-center justify-center disabled:opacity-50"
+                                      title={`Faltan ${subscribers.filter(s => s.active).length - (camp.sentTo?.length || camp.sentCount)} por enviar. Reintentar fallidos.`}
                                     >
-                                      {isActionCampaignId === camp.id ? 'Reenviando...' : 'Reintentar fallidos'}
+                                      {isActionCampaignId === camp.id ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                      ) : (
+                                        <RefreshCw className="w-4 h-4" />
+                                      )}
                                     </button>
                                   )}
 
@@ -1858,11 +1901,10 @@ export default function AdminNewsletter() {
                                           navigator.clipboard.writeText(shareUrl);
                                           alert(`🔗 ¡Enlace de Página Web copiado!\n\n${shareUrl}`);
                                         }}
-                                        className="bg-sky-50 hover:bg-sky-100 text-[#2D4B73] border border-sky-200/50 text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
+                                        className="border border-sky-200 bg-sky-50 text-[#2D4B73] hover:bg-sky-100 p-2.5 rounded-xl transition-all flex items-center justify-center"
                                         title="Copiar enlace en formato Página Web"
                                       >
-                                        <Globe className="w-3.5 h-3.5 text-[#2D4B73]" />
-                                        Web
+                                        <Globe className="w-4 h-4 text-[#2D4B73]" />
                                       </button>
 
                                       <button
@@ -1882,21 +1924,20 @@ export default function AdminNewsletter() {
                                           navigator.clipboard.writeText(shareUrl);
                                           alert(`📖 ¡Enlace de Folleto Interactivo copiado!\n\n${shareUrl}`);
                                         }}
-                                        className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/55 text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
+                                        className="border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 p-2.5 rounded-xl transition-all flex items-center justify-center"
                                         title="Copiar enlace en formato Folleto Interactivo"
                                       >
-                                        <BookOpen className="w-3.5 h-3.5 text-[#D9B70D]" />
-                                        Folleto
+                                        <BookOpen className="w-4 h-4 text-[#D9B70D]" />
                                       </button>
                                     </>
                                   )}
 
                                   <button
                                     onClick={() => handleDeleteCampaign(camp.id)}
-                                    className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-all inline-flex items-center"
+                                    className="border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 p-2.5 rounded-xl transition-all flex items-center justify-center"
                                     title="Eliminar borrador o registro definitivo"
                                   >
-                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <Trash2 className="w-4 h-4" />
                                   </button>
                                 </div>
                               </td>

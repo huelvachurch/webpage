@@ -13,7 +13,7 @@
           "type": "array", 
           "items": {
             "type": "string", 
-            "enum": ["admin", "comunicador", "profesor", "alumno", "lider"]
+            "enum": ["admin", "comunicador", "profesor", "alumno", "lider", "supervisor", "maestro"]
           },
           "description": "User roles for access control"
         },
@@ -236,6 +236,61 @@
         "coLeaderInvitationStatus": { "type": "string" }
       },
       "required": ["leaderId", "leader", "name", "address", "barriada", "ciudad", "schedule"]
+    },
+    "KidsProgram": {
+      "title": "Kids Program",
+      "description": "Teaching schedule for a specific Sunday in Kids Ministry",
+      "type": "object",
+      "properties": {
+        "teachingTitle": { "type": "string" },
+        "teachingLink": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "date": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["teachingTitle", "teachingLink", "teacherId", "teacherName", "date"]
+    },
+    "KidsComment": {
+      "title": "Kids Comment",
+      "description": "Comment posted by a teacher in the Kids Ministry section",
+      "type": "object",
+      "properties": {
+        "content": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorPhoto": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["content", "authorId", "authorName"]
+    },
+    "KidsPhoto": {
+      "title": "Kids Photo",
+      "description": "Photo shared in the Kids Ministry gallery",
+      "type": "object",
+      "properties": {
+        "url": { "type": "string", "format": "uri" },
+        "dateTaken": { "type": "string" },
+        "uploadedById": { "type": "string" },
+        "uploadedByName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["url", "dateTaken", "uploadedById", "uploadedByName"]
+    },
+    "KidsNotification": {
+      "title": "Kids Notification",
+      "description": "Notification for teachers in the Kids Ministry",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "actionUrl": { "type": "string" }
+      },
+      "required": ["userId", "title", "body", "read"]
     }
   },
   "firestore": {
@@ -290,6 +345,22 @@
     "/cell_members/{memberId}": {
       "schema": "CellMember",
       "description": "Collection of cell group attendees/members memory for auto-attendance badges"
+    },
+    "/kids_programs/{programId}": {
+      "schema": "KidsProgram",
+      "description": "Collection of kids teaching programs"
+    },
+    "/kids_comments/{commentId}": {
+      "schema": "KidsComment",
+      "description": "Collection of comments in the Kids Ministry"
+    },
+    "/kids_photos/{photoId}": {
+      "schema": "KidsPhoto",
+      "description": "Collection of kids photos for gallery"
+    },
+    "/kids_notifications/{notificationId}": {
+      "schema": "KidsNotification",
+      "description": "Collection of notifications for Kids Ministry teachers"
     }
   }
 }

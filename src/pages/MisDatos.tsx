@@ -21,6 +21,15 @@ import {
   registerNativePush 
 } from '../utils/notifications';
 
+const PRESET_AVATARS = [
+  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150&h=150',
+  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=150&h=150',
+  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150&h=150',
+  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=150&h=150',
+  'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&q=80&w=150&h=150',
+  'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=150&h=150'
+];
+
 interface Course {
   id: string;
   title: string;
@@ -53,6 +62,7 @@ export default function MisDatos() {
   const [barriada, setBarriada] = useState('');
   const [municipio, setMunicipio] = useState('');
   const [lugarDetalle, setLugarDetalle] = useState('');
+  const [fotoPerfil, setFotoPerfil] = useState('');
   
   // Newsletter subscription state
   const [newsletterSubscribed, setNewsletterSubscribed] = useState(false);
@@ -123,6 +133,7 @@ export default function MisDatos() {
           
           if (docSnap.exists()) {
             const data = docSnap.data();
+            setFotoPerfil(data.photoURL || user?.photoURL || '');
             
             // Extract or separate name/surnames (Prefer distinct saved fields)
             if (data.nombre !== undefined || data.apellidos !== undefined) {
@@ -374,6 +385,81 @@ export default function MisDatos() {
     }, 1200);
   };
 
+  // Handle Local File Upload Convert to Base64
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      setErrorMsg('La imagen seleccionada supera el límite de 2MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64String = reader.result as string;
+      setFotoPerfil(base64String);
+      
+      if (user) {
+        setSaving(true);
+        try {
+          const userDocRef = doc(db, 'users', user.uid);
+          await setDoc(userDocRef, { photoURL: base64String }, { merge: true });
+          setSuccessMsg('¡Foto de perfil actualizada correctamente!');
+          setTimeout(() => setSuccessMsg(''), 5000);
+        } catch (error) {
+          console.error("Error saving profile photo:", error);
+          setErrorMsg("Error al guardar la foto de perfil en la base de datos.");
+        } finally {
+          setSaving(false);
+        }
+      }
+    };
+    reader.onerror = () => {
+      setErrorMsg('Error al procesar el archivo de imagen.');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Handle Preset Avatar Selection
+  const handleSelectPreset = async (avatarUrl: string) => {
+    setFotoPerfil(avatarUrl);
+    if (user) {
+      setSaving(true);
+      try {
+        const userDocRef = doc(db, 'users', user.uid);
+        await setDoc(userDocRef, { photoURL: avatarUrl }, { merge: true });
+        setSuccessMsg('¡Avatar predefinido guardado con éxito!');
+        setTimeout(() => setSuccessMsg(''), 5000);
+      } catch (error) {
+        console.error("Error saving preset avatar:", error);
+        setErrorMsg("Error al guardar el avatar predefinido.");
+      } finally {
+        setSaving(false);
+      }
+    }
+  };
+
+  // Handle Restore Default Google Photo
+  const handleResetPhoto = async () => {
+    const googlePhoto = user?.photoURL || '';
+    setFotoPerfil(googlePhoto);
+    if (user) {
+      setSaving(true);
+      try {
+        const userDocRef = doc(db, 'users', user.uid);
+        await setDoc(userDocRef, { photoURL: googlePhoto }, { merge: true });
+        setSuccessMsg('¡Foto de perfil restaurada de Google!');
+        setTimeout(() => setSuccessMsg(''), 5000);
+      } catch (error) {
+        console.error("Error resetting profile photo:", error);
+        setErrorMsg("Error al restaurar la foto de perfil.");
+      } finally {
+        setSaving(false);
+      }
+    }
+  };
+
   // Handle Save
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -503,7 +589,7 @@ export default function MisDatos() {
         
         {/* Page Title */}
         <div className="mb-10 text-center md:text-left">
-          <h1 className="text-4xl font-kenao text-primary mb-2">Perfil</h1>
+          <h1 className="text-4xl font-kenao text-primary mb-2">Mi Perfil</h1>
           <p className="text-primary/60">Gestiona tu información personal, rol académico y suscripciones</p>
         </div>
 
@@ -1116,6 +1202,67 @@ export default function MisDatos() {
 
           {/* Sidebar / Additional Options & Analytics */}
           <div className="space-y-8">
+
+            {/* Foto de Perfil Widget */}
+            <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm text-center relative overflow-hidden">
+              <h2 className="text-xl font-kenao text-primary mb-6 flex items-center gap-2 justify-center">
+                <User className="w-5 h-5 text-secondary" />
+                Foto de Perfil
+              </h2>
+              
+              <div className="flex flex-col items-center gap-4">
+                <div className="relative w-32 h-32 group">
+                  <div className="w-full h-full rounded-full overflow-hidden border-4 border-slate-100 shadow-inner bg-slate-50 flex items-center justify-center">
+                    {fotoPerfil ? (
+                      <img src={fotoPerfil} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      <User className="w-12 h-12 text-primary/20" />
+                    )}
+                  </div>
+                  <label htmlFor="avatar-file" className="absolute inset-0 bg-slate-900/40 rounded-full flex flex-col items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-xs font-bold gap-1">
+                    <Smartphone className="w-5 h-5" />
+                    Cambiar
+                  </label>
+                  <input 
+                    type="file" 
+                    id="avatar-file" 
+                    accept="image/*" 
+                    className="hidden" 
+                    onChange={handleFileChange} 
+                  />
+                </div>
+
+                <div className="space-y-2 w-full">
+                  <p className="text-xs text-primary/60 leading-relaxed">
+                    Sube una imagen local o selecciona un avatar predefinido para personalizar tu cuenta en Huelva Church.
+                  </p>
+                  
+                  {/* Preset avatars selection */}
+                  <div className="flex justify-center gap-2 py-2 flex-wrap">
+                    {PRESET_AVATARS.map((avatar, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => handleSelectPreset(avatar)}
+                        className={`w-10 h-10 rounded-full overflow-hidden border-2 transition-all hover:scale-105 ${fotoPerfil === avatar ? 'border-secondary scale-110 shadow-sm' : 'border-transparent opacity-60'}`}
+                      >
+                        <img src={avatar} alt={`Avatar ${idx}`} className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+
+                  {fotoPerfil && fotoPerfil !== (user?.photoURL || '') && (
+                    <button
+                      type="button"
+                      onClick={handleResetPhoto}
+                      className="text-[10px] text-red-500 hover:text-red-650 font-bold uppercase tracking-wider block mx-auto py-1 cursor-pointer"
+                    >
+                      Restaurar Foto de Google
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
 
             {/* My academic analytics */}
             {isAlumno && (

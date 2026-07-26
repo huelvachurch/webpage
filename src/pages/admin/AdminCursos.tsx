@@ -577,7 +577,7 @@ export default function AdminCursos() {
   if (loading || !isAuthReady) return <div className="pt-36 text-center text-primary/40 font-semibold">Validando credenciales académicas...</div>;
 
   return (
-    <div className="pt-28 pb-16 bg-slate-50 min-h-screen">
+    <div className="pt-32 pb-24 bg-slate-50 min-h-screen">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         <AnimatePresence mode="wait">
@@ -591,22 +591,18 @@ export default function AdminCursos() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
             >
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6">
                 <div>
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-wider mb-2">
-                    <GraduationCap className="w-3.5 h-3.5" />
-                    ACADEMIA HUELVA CHURCH
-                  </div>
-                  <h1 className="text-4xl md:text-5xl font-kenao text-primary mb-2">Gestión de Cursos</h1>
-                  <p className="text-primary/60 text-sm">Crea, edita secciones de aprendizaje y gestiona las solicitudes de tus alumnos</p>
+                  <h1 className="text-4xl font-kenao text-primary mb-2">Docencia</h1>
+                  <p className="text-primary/60 text-sm">Gestiona tus cursos, clases, secciones de aprendizaje y solicitudes de alumnos</p>
                 </div>
                 
                 <button
                   onClick={() => setIsNewCourseModalOpen(true)}
-                  className="flex items-center gap-2.5 bg-primary text-white hover:bg-secondary hover:text-primary px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg hover:shadow-xl cursor-pointer"
+                  className="flex items-center gap-2 bg-primary text-white px-6 py-3 rounded-2xl font-bold hover:bg-secondary hover:text-primary transition-all shadow-lg text-sm"
                 >
-                  <Plus className="w-4.5 h-4.5" />
-                  Nuevo programa
+                  <Plus className="w-5 h-5" />
+                  Nuevo Curso
                 </button>
               </div>
 

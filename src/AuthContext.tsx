@@ -5,11 +5,12 @@ import { auth, db, handleFirestoreError, OperationType, handleRedirectResult, re
 
 interface AuthContextType {
   user: User | null;
-  roles: ('superadmin' | 'admin' | 'comunicador' | 'profesor' | 'alumno' | 'lider' | 'supervisor')[];
+  roles: ('superadmin' | 'admin' | 'comunicador' | 'profesor' | 'alumno' | 'lider' | 'supervisor' | 'maestro')[];
   status: 'pending' | 'active' | 'blocked' | null;
   loading: boolean;
   isAuthReady: boolean;
   showWelcomePopup?: boolean;
+  customPhotoURL?: string;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -19,6 +20,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   isAuthReady: false,
   showWelcomePopup: false,
+  customPhotoURL: undefined,
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -30,6 +32,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [showWelcomePopup, setShowWelcomePopup] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [customPhotoURL, setCustomPhotoURL] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     // Check for redirect result on mount
@@ -53,6 +56,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setRoles([]);
         setStatus(null);
         setShowWelcomePopup(false);
+        setCustomPhotoURL(undefined);
         setLoading(false);
         setIsAuthReady(true);
       }
@@ -77,11 +81,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setRoles(isSuperAdmin ? Array.from(new Set(['superadmin', 'admin', ...dbRoles])) : dbRoles);
           setStatus(isSuperAdmin ? 'active' : dbStatus);
           setShowWelcomePopup(dbShowWelcome);
+          setCustomPhotoURL(data.photoURL || undefined);
         } else {
           // If document doesn't exist yet, check if it's the super admin email
           setRoles(isSuperAdmin ? ['superadmin', 'admin'] : []);
           setStatus(isSuperAdmin ? 'active' : 'active');
           setShowWelcomePopup(false);
+          setCustomPhotoURL(undefined);
         }
         setLoading(false);
         setIsAuthReady(true);
@@ -109,7 +115,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user]);
 
   return (
-    <AuthContext.Provider value={{ user, roles, status, loading, isAuthReady, showWelcomePopup }}>
+    <AuthContext.Provider value={{ user, roles, status, loading, isAuthReady, showWelcomePopup, customPhotoURL }}>
       {children}
     </AuthContext.Provider>
   );
