@@ -8,6 +8,8 @@ import { initializeApp } from "firebase/app";
 import { getFirestore, collection, query, where, getDocs, updateDoc, doc, serverTimestamp, getDoc } from "firebase/firestore";
 import fs from "fs";
 import { GoogleAuth } from "google-auth-library";
+import { google } from "googleapis";
+import { Readable } from "stream";
 
 const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
 const firebaseConfig = fs.existsSync(firebaseConfigPath) ? JSON.parse(fs.readFileSync(firebaseConfigPath, "utf8")) : null;
@@ -109,6 +111,390 @@ async function startServer() {
     } catch (error: any) {
       console.error("Image Proxy Error:", error.message);
       res.status(500).json({ error: "Internal server proxy error", details: error.message });
+    }
+  });
+
+  // Helper to extract Google Drive Folder ID from a URL or raw ID string
+  function extractDriveFolderId(urlOrId: string | null | undefined): string | null {
+    if (!urlOrId) return null;
+    const trimmed = urlOrId.trim();
+    if (!trimmed) return null;
+    const match = trimmed.match(/\/folders\/([a-zA-Z0-9_-]+)/) || trimmed.match(/id=([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) return match[1];
+    if (/^[a-zA-Z0-9_-]{20,60}$/.test(trimmed)) return trimmed;
+    return null;
+  }
+
+  // Helper to find or create a Google Drive folder recursively
+  async function getOrCreateDriveFolder(drive: any, folderName: string, parentId?: string): Promise<string> {
+    try {
+      let q = `mimeType='application/vnd.google-apps.folder' and name='${folderName}' and trashed=false`;
+      if (parentId) {
+        q += ` and '${parentId}' in parents`;
+      }
+      
+      const res = await drive.files.list({
+        q: q,
+        fields: 'files(id, name)',
+        spaces: 'drive',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      });
+
+      if (res.data.files && res.data.files.length > 0) {
+        return res.data.files[0].id;
+      }
+
+      // Create folder if it doesn't exist
+      const fileMetadata: any = {
+        name: folderName,
+        mimeType: 'application/vnd.google-apps.folder',
+      };
+      if (parentId) {
+        fileMetadata.parents = [parentId];
+      }
+
+      const folder = await drive.files.create({
+        requestBody: fileMetadata,
+        fields: 'id',
+        supportsAllDrives: true,
+      });
+
+      return folder.data.id;
+    } catch (err: any) {
+      if (err?.message?.includes('Google Drive API has not been used') || err?.code === 403 || err?.status === 403) {
+        console.warn(`[Google Drive API] La API de Google Drive no está activada o no tiene acceso: ${err.message}`);
+      } else {
+        console.error(`Error en getOrCreateDriveFolder para "${folderName}":`, err?.message || err);
+      }
+      throw err;
+    }
+  }
+
+  // Resolve target Drive folder path: /Finanzas/Reembolsos/Adjuntos
+  async function resolveTargetAdjuntosFolder(drive: any, preferredFolderIdOrUrl?: string | null): Promise<string> {
+    
+    // 1. Check settings in Firestore first to get the configured custom folder
+    let customFolderId: string | null = null;
+    if (db) {
+      try {
+        const settingsSnap = await getDoc(doc(db, 'settings', 'general'));
+        if (settingsSnap.exists()) {
+          const settingsData = settingsSnap.data();
+          customFolderId = extractDriveFolderId(settingsData.driveFolderId || settingsData.driveFolderUrl);
+        }
+      } catch (fsErr) {
+        console.warn("No se pudo consultar ajustes de Drive en Firestore:", fsErr);
+      }
+    }
+
+    // 2. Determine target ID: check preferred input, then firestore, then env variable
+    const defaultHardcodedId = "11EJzsr8vs0r0kkpSVeA1p0EdqFjrpH7s";
+    const targetId = extractDriveFolderId(preferredFolderIdOrUrl) || customFolderId || extractDriveFolderId(process.env.DRIVE_FOLDER_ID) || defaultHardcodedId;
+    
+    if (targetId) {
+      try {
+        const check = await drive.files.get({
+          fileId: targetId,
+          fields: 'id, name, trashed',
+          supportsAllDrives: true,
+        });
+        if (check.data && !check.data.trashed) {
+          return check.data.id;
+        } else {
+           throw new Error("La carpeta configurada existe pero está en la papelera.");
+        }
+      } catch (checkErr: any) {
+        // We throw the error here instead of swallowing it. If they explicitly configured a folder, it MUST be accessible.
+        throw new Error(`Carpeta configurada (${targetId}) no accesible. Asegúrate de compartirla con la Cuenta de Servicio del servidor con permisos de Editor. Detalle: ${checkErr?.message}`);
+      }
+    }
+
+    // 3. Fallback: find or create path /Finanzas/Reembolsos/Adjuntos in Google Drive (Service Account isolated drive)
+    console.log("[Drive Folder Resolver] No hay carpeta configurada. Creando en unidad aislada de servicio /Finanzas/Reembolsos/Adjuntos...");
+    const finanzasId = await getOrCreateDriveFolder(drive, "Finanzas");
+    const reembolsosId = await getOrCreateDriveFolder(drive, "Reembolsos", finanzasId);
+    const adjuntosId = await getOrCreateDriveFolder(drive, "Adjuntos", reembolsosId);
+    return adjuntosId;
+  }
+
+  // Helper to initialize Google Drive client with Application Default Credentials
+  function getDriveClient() {
+    const auth = new GoogleAuth({
+      scopes: [
+        'https://www.googleapis.com/auth/drive.file',
+        'https://www.googleapis.com/auth/drive'
+      ]
+    });
+    return google.drive({ version: 'v3', auth: auth as any });
+  }
+
+  // Upload reimbursement attachment file directly to Google Drive folder: Finanzas/Reembolsos/Adjuntos
+  app.post("/api/drive/upload-attachment", async (req, res) => {
+    try {
+      const { fileName, mimeType, base64Data, reimbursementCode, folderUrl, gasWebAppUrl: reqGasUrl } = req.body;
+
+      if (!fileName || !base64Data) {
+        return res.status(400).json({ error: "Faltan datos requeridos del archivo (fileName, base64Data)" });
+      }
+
+      const prefix = reimbursementCode ? `[${reimbursementCode}] ` : '';
+      const cleanFileName = `${prefix}${fileName}`;
+      const cleanBase64 = base64Data.replace(/^data:.*?;base64,/, '');
+
+      // 1. Check if we have a GAS Web App URL configured
+      let gasWebAppUrl = reqGasUrl ? reqGasUrl.trim() : null;
+      let configuredFolderId = extractDriveFolderId(folderUrl) || "11EJzsr8vs0r0kkpSVeA1p0EdqFjrpH7s";
+      
+      // Fallback: try db if not in req.body
+      if (!gasWebAppUrl && db) {
+        try {
+          const settingsSnap = await getDoc(doc(db, 'settings', 'general'));
+          if (settingsSnap.exists()) {
+            const data = settingsSnap.data();
+            if (data.gasWebAppUrl) gasWebAppUrl = data.gasWebAppUrl.trim();
+            if (data.driveFolderUrl && !folderUrl) {
+               const ex = extractDriveFolderId(data.driveFolderUrl);
+               if (ex) configuredFolderId = ex;
+            }
+          }
+        } catch(e) {}
+      }
+
+      // Hard fallback to working script so users don't fail silently
+      if (!gasWebAppUrl) {
+         gasWebAppUrl = "https://script.google.com/macros/s/AKfycbys7pHRFVR5SSiEbVuA709KldNRNd7m57sXkcCKDhDpJjCGkIxs5clFa41ncNxPAEGjRQ/exec";
+      }
+
+      // If Google Apps Script Web App URL is configured, use it directly! (Alternative foolproof method)
+      if (gasWebAppUrl && gasWebAppUrl.startsWith('https://script.google.com/')) {
+         const gasRes = await fetch(gasWebAppUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+               fileName: cleanFileName,
+               mimeType: mimeType || 'application/octet-stream',
+               base64Data: cleanBase64,
+               folderId: extractDriveFolderId(folderUrl) || configuredFolderId
+            })
+         });
+         
+         const gasText = await gasRes.text();
+         let gasData;
+         try {
+            gasData = JSON.parse(gasText);
+         } catch (parseErr) {
+            console.error("Error parseando respuesta de GAS:", gasText.substring(0, 200));
+            if (gasText.includes("<html") && gasText.includes("You need access")) {
+               throw new Error("El Google Apps Script no tiene los permisos correctos. Debes configurarlo con 'Quién tiene acceso: Cualquier persona' y 'Ejecutar como: Tú'.");
+            }
+            throw new Error("La URL de Google Apps Script devolvió un formato incorrecto. Revisa que el script esté bien desplegado.");
+         }
+
+         if (!gasData.success) {
+            throw new Error(gasData.error || "Error al subir mediante Google Apps Script");
+         }
+
+         return res.json({
+            success: true,
+            file: {
+              id: gasData.id,
+              name: cleanFileName,
+              webViewLink: gasData.webViewLink
+            }
+         });
+      }
+
+      // 2. Standard Google Cloud Service Account method (Original)
+      const fileBuffer = Buffer.from(cleanBase64, 'base64');
+      let drive = getDriveClient();
+
+      // Resolve target folder ID (/Finanzas/Reembolsos/Adjuntos)
+      let targetFolderId: string | null = null;
+      try {
+        targetFolderId = await resolveTargetAdjuntosFolder(drive, folderUrl);
+      } catch (folderErr: any) {
+        throw new Error("No se pudo resolver la carpeta destino: " + folderErr?.message);
+      }
+
+      if (!targetFolderId) {
+         throw new Error("ID de carpeta destino es null.");
+      }
+
+      const media = {
+        mimeType: mimeType || 'application/octet-stream',
+        body: Readable.from(fileBuffer)
+      };
+
+      let fileResult: any = null;
+      const fileMetadata: any = {
+        name: cleanFileName
+      };
+      if (targetFolderId) {
+        fileMetadata.parents = [targetFolderId];
+      }
+
+      fileResult = await drive.files.create({
+        requestBody: fileMetadata,
+        media: media,
+        fields: 'id, name, webViewLink, webContentLink, thumbnailLink',
+        supportsAllDrives: true,
+      });
+
+      const fileId = fileResult.data.id!;
+      const webViewLink = fileResult.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
+
+      // Set readable permission so admins/users can view/preview the file directly
+      try {
+        await drive.permissions.create({
+          fileId: fileId,
+          requestBody: {
+            role: 'reader',
+            type: 'anyone'
+          },
+          supportsAllDrives: true,
+        });
+      } catch (permErr: any) {
+        console.warn("[Drive API] Permiso público no requerido o advertencia:", permErr.message);
+      }
+
+      console.log(`[Google Drive] Archivo subido con éxito a Google Drive (/Finanzas/Reembolsos/Adjuntos): ${cleanFileName} (${fileId})`);
+
+      res.json({
+        success: true,
+        file: {
+          id: fileId,
+          name: fileResult.data.name,
+          webViewLink: webViewLink,
+          webContentLink: fileResult.data.webContentLink || webViewLink,
+          thumbnailLink: fileResult.data.thumbnailLink || `https://lh3.googleusercontent.com/d/${fileId}`,
+          folderId: targetFolderId,
+          folderPath: "/Finanzas/Reembolsos/Adjuntos"
+        }
+      });
+    } catch (error: any) {
+      const errMsg = error?.message || String(error);
+      const isDriveDisabled = errMsg.includes('Google Drive API has not been used') || errMsg.includes('disabled');
+      console.warn("[Drive Upload Handler]: Google Drive subida no disponible:", errMsg);
+
+      let userFacingError = errMsg;
+      if (isDriveDisabled) {
+         if (errMsg.includes('295341840360')) {
+             userFacingError = "Estás intentando subir a Google Drive en el entorno de Vista Previa de AI Studio (Proyecto 295341840360). Esta función está bloqueada por seguridad. Pruébalo desde tu aplicación final desplegada en Cloud Run.";
+         } else {
+             userFacingError = "La API de Google Drive no está habilitada. Debes habilitarla en la consola de Google Cloud para el proyecto de destino.";
+         }
+      } else if (errMsg.includes('File not found') || errMsg.includes('insufficient') || errMsg.includes('no accesible')) {
+         userFacingError = "El Servidor no tiene permisos para subir archivos a la carpeta indicada. DEBES compartir la carpeta de Google Drive en la que quieres subir los archivos con la cuenta de servicio (Editor): 458081726794-compute@developer.gserviceaccount.com";
+      }
+
+      res.status(200).json({
+        success: false,
+        driveDisabled: isDriveDisabled,
+        error: userFacingError
+      });
+    }
+  });
+
+  // Get Google Drive Adjuntos folder link
+  app.get("/api/drive/attachments-folder", async (req, res) => {
+    try {
+      const drive = getDriveClient();
+      const folderId = await resolveTargetAdjuntosFolder(drive);
+      const webViewLink = `https://drive.google.com/drive/folders/${folderId}`;
+      res.json({
+        success: true,
+        folderId: folderId,
+        webViewLink,
+        folderPath: "/Finanzas/Reembolsos/Adjuntos"
+      });
+    } catch (err: any) {
+      const SHARED_DRIVE_FOLDER_ID = process.env.DRIVE_FOLDER_ID || "11EJzsr8vs0r0kkpSVeA1p0EdqFjrpH7s";
+      res.json({
+        success: true,
+        folderId: SHARED_DRIVE_FOLDER_ID,
+        webViewLink: `https://drive.google.com/drive/folders/${SHARED_DRIVE_FOLDER_ID}`,
+        folderPath: "/Finanzas/Reembolsos/Adjuntos"
+      });
+    }
+  });
+
+  // Test Google Drive Connection & Folder Resolution
+  app.get("/api/drive/test-connection", async (req, res) => {
+    try {
+      let gasWebAppUrl = req.query.gasUrl ? String(req.query.gasUrl).trim() : null;
+      if (!gasWebAppUrl && db) {
+        try {
+          const settingsSnap = await getDoc(doc(db, 'settings', 'general'));
+          if (settingsSnap.exists()) {
+            gasWebAppUrl = settingsSnap.data().gasWebAppUrl?.trim();
+          }
+        } catch(e) {}
+      }
+
+      if (!gasWebAppUrl) {
+         gasWebAppUrl = "https://script.google.com/macros/s/AKfycbys7pHRFVR5SSiEbVuA709KldNRNd7m57sXkcCKDhDpJjCGkIxs5clFa41ncNxPAEGjRQ/exec";
+      }
+
+      if (gasWebAppUrl && gasWebAppUrl.startsWith('https://script.google.com/')) {
+         return res.json({
+            success: true,
+            message: "Usando Google Apps Script para integrarse con Google Drive (Método alternativo configurado).",
+            folderId: "N/A",
+            folderName: "Carpeta Configurada en Script",
+            webViewLink: "https://drive.google.com/",
+            folderPath: "Google Apps Script"
+         });
+      }
+
+      const drive = getDriveClient();
+      const folderId = await resolveTargetAdjuntosFolder(drive);
+      let folderName = "Adjuntos";
+      let webViewLink = `https://drive.google.com/drive/folders/${folderId}`;
+
+      try {
+        const info = await drive.files.get({
+          fileId: folderId,
+          fields: 'id, name, webViewLink',
+          supportsAllDrives: true
+        });
+        if (info.data) {
+          if (info.data.name) folderName = info.data.name;
+          if (info.data.webViewLink) webViewLink = info.data.webViewLink;
+        }
+      } catch (iErr: any) {
+        console.warn("[Drive Test Info Warning]:", iErr?.message);
+      }
+
+      res.json({
+        success: true,
+        message: "Conexión con Google Drive activa y funcionando correctamente.",
+        folderId,
+        folderName,
+        webViewLink,
+        folderPath: "/Finanzas/Reembolsos/Adjuntos"
+      });
+    } catch (err: any) {
+      const errMsg = err?.message || String(err);
+      console.warn("[Drive Test Connection Warning]:", errMsg);
+      
+      const isDriveDisabled = errMsg.includes('Google Drive API has not been used') || errMsg.includes('disabled');
+      let userFacingError = errMsg;
+      
+      if (isDriveDisabled) {
+         if (errMsg.includes('295341840360')) {
+             userFacingError = "Estás intentando usar Google Drive en el entorno de Vista Previa de AI Studio (Proyecto 295341840360). Esta función está bloqueada por seguridad. Para usar Google Drive, debes probarlo desde tu aplicación final desplegada en Cloud Run (https://iglesia-evangelica-huelva-458081726794.us-west1.run.app).";
+         } else {
+             userFacingError = "La API de Google Drive no está habilitada. Debes habilitarla en la consola de Google Cloud para el proyecto de destino.";
+         }
+      } else if (errMsg.includes('File not found') || errMsg.includes('insufficient') || errMsg.includes('no accesible')) {
+         userFacingError = "El Servidor no tiene permisos para subir archivos a la carpeta indicada. DEBES compartir la carpeta de Google Drive en la que quieres subir los archivos con la cuenta de servicio (Editor): 458081726794-compute@developer.gserviceaccount.com";
+      }
+
+      res.json({
+        success: false,
+        error: userFacingError
+      });
     }
   });
 

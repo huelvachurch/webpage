@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../AuthContext';
 import { db } from '../../firebase';
 import { doc, getDoc, setDoc, query, collection, where, getDocs, writeBatch } from 'firebase/firestore';
-import { Save, Loader2, Clock } from 'lucide-react';
+import { Save, Loader2, Clock, HardDrive, ExternalLink, CheckCircle2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export default function AdminSettings() {
@@ -13,6 +13,10 @@ export default function AdminSettings() {
   
   const [meetingTime, setMeetingTime] = useState('Domingos a las 18:30h');
   const [hideHuelvaChurchCell, setHideHuelvaChurchCell] = useState(false);
+  const [driveFolderUrl, setDriveFolderUrl] = useState('');
+  const [gasWebAppUrl, setGasWebAppUrl] = useState('');
+  const [testingDrive, setTestingDrive] = useState(false);
+  const [driveStatus, setDriveStatus] = useState<{ success: boolean; message: string; webViewLink?: string } | null>(null);
 
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -110,6 +114,8 @@ export default function AdminSettings() {
           const data = snap.data();
           if (data.meetingTime) setMeetingTime(data.meetingTime);
           if (data.hideHuelvaChurchCell !== undefined) setHideHuelvaChurchCell(data.hideHuelvaChurchCell);
+          if (data.driveFolderUrl) setDriveFolderUrl(data.driveFolderUrl);
+          if (data.gasWebAppUrl) setGasWebAppUrl(data.gasWebAppUrl);
         }
       } catch (err) {
         console.error(err);
@@ -120,13 +126,43 @@ export default function AdminSettings() {
     fetchSettings();
   }, [user, isAuthReady]);
 
+  const handleTestDriveConnection = async () => {
+    setTestingDrive(true);
+    setDriveStatus(null);
+    try {
+      const res = await fetch(`/api/drive/test-connection?gasUrl=${encodeURIComponent(gasWebAppUrl || '')}`);
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setDriveStatus({
+          success: true,
+          message: data.message || `Conexión con Google Drive activa. Carpeta destino: ${data.folderPath}`,
+          webViewLink: data.webViewLink
+        });
+      } else {
+        setDriveStatus({
+          success: false,
+          message: data.error || 'No se pudo conectar con la API de Google Drive.'
+        });
+      }
+    } catch (err: any) {
+      setDriveStatus({
+        success: false,
+        message: err?.message || 'Error al conectar con la API de Google Drive.'
+      });
+    } finally {
+      setTestingDrive(false);
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
       await setDoc(doc(db, 'settings', 'general'), {
         meetingTime: meetingTime,
-        hideHuelvaChurchCell: hideHuelvaChurchCell
+        hideHuelvaChurchCell: hideHuelvaChurchCell,
+        driveFolderUrl: driveFolderUrl.trim(),
+        gasWebAppUrl: gasWebAppUrl.trim()
       }, { merge: true });
       triggerSuccess('Ajustes guardados correctamente.');
     } catch (err) {
@@ -199,6 +235,137 @@ export default function AdminSettings() {
                   />
                   <p className="text-xs text-primary/40 mt-2">Este horario aparecerá en la página de Inicio y en las plantillas de los boletines semanales.</p>
                 </div>
+              </div>
+            </div>
+
+            <div className="pt-6 border-t border-slate-100">
+              <h2 className="text-xl font-kenao text-primary mb-4 flex items-center gap-2">
+                <HardDrive className="w-5 h-5 text-emerald-600" />
+                Almacenamiento en Google Drive (Reembolsos)
+              </h2>
+              <div className="space-y-4 bg-emerald-50/50 border border-emerald-100 rounded-2xl p-5">
+                <div>
+                  <label className="block text-xs font-bold text-emerald-900 mb-2 uppercase tracking-wide">
+                    Enlace o ID de la carpeta de Google Drive (/Finanzas/Reembolsos/Adjuntos)
+                  </label>
+                  <input 
+                    type="text" 
+                    value={driveFolderUrl}
+                    onChange={e => setDriveFolderUrl(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border border-emerald-200 bg-white outline-none focus:ring-2 focus:ring-emerald-500 text-primary text-sm font-mono"
+                    placeholder="https://drive.google.com/drive/folders/... o ID de la carpeta"
+                  />
+                  <p className="text-xs text-emerald-700/80 mt-2 leading-relaxed">
+                    Los archivos adjuntos enviados en los formularios de Solicitud de Reembolso se guardarán automáticamente en esta carpeta de Google Drive (por defecto en <strong>/Finanzas/Reembolsos/Adjuntos</strong> de <em>huelvachurch@gmail.com</em>).
+                  </p>
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-emerald-100">
+                  <label className="block text-sm font-bold text-primary mb-2 flex items-center gap-2">
+                    <ExternalLink className="w-4 h-4 text-emerald-600" />
+                    URL de Google Apps Script (Alternativa 100% segura para Google Drive)
+                  </label>
+                  <p className="text-xs text-primary/70 mb-3 leading-relaxed">
+                    Si el método estándar falla por permisos de Google Cloud, puedes usar este método alternativo infalible. Copia el siguiente código en un nuevo proyecto de <a href="https://script.google.com/" target="_blank" rel="noopener noreferrer" className="text-emerald-600 underline">Google Apps Script</a> (con tu cuenta huelvachurch@gmail.com):
+                  </p>
+                  <div className="bg-slate-800 text-emerald-300 text-[10px] sm:text-xs p-3 rounded-xl mb-3 overflow-x-auto font-mono whitespace-pre text-left leading-tight">
+{`function doPost(e) {
+  try {
+    const data = JSON.parse(e.postData.contents);
+    const folderId = data.folderId || "11EJzsr8vs0r0kkpSVeA1p0EdqFjrpH7s";
+    const folder = DriveApp.getFolderById(folderId);
+    
+    // Decodificar Base64
+    const blob = Utilities.newBlob(
+      Utilities.base64Decode(data.base64Data), 
+      data.mimeType || "application/octet-stream", 
+      data.fileName || "adjunto"
+    );
+    
+    const file = folder.createFile(blob);
+    return ContentService.createTextOutput(JSON.stringify({ 
+      success: true, 
+      id: file.getId(), 
+      webViewLink: file.getUrl() 
+    })).setMimeType(ContentService.MimeType.JSON);
+  } catch(err) {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, error: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}`}
+                  </div>
+                  <p className="text-xs text-primary/70 mb-3 leading-relaxed">
+                    Haz clic en <strong>Implementar &gt; Nueva implementación</strong>. Selecciona "Aplicación web". Ejecutar como: <strong>Tú</strong>. Quién tiene acceso: <strong>Cualquier persona</strong>. Luego, pega aquí la <strong>URL de la aplicación web</strong>:
+                  </p>
+                  <input
+                    type="text"
+                    value={gasWebAppUrl}
+                    onChange={e => setGasWebAppUrl(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border border-emerald-200 bg-white outline-none focus:ring-2 focus:ring-emerald-500 text-primary text-sm font-mono"
+                    placeholder="https://script.google.com/macros/s/.../exec"
+                  />
+                </div>
+
+                <div className="pt-2 flex flex-wrap items-center justify-between gap-3 mt-2">
+                  <button
+                    type="button"
+                    onClick={handleTestDriveConnection}
+                    disabled={testingDrive}
+                    className="px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs transition-colors shadow-sm flex items-center gap-2"
+                  >
+                    {testingDrive ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                    Probar Conexión con Google Drive
+                  </button>
+
+                  {driveStatus && driveStatus.webViewLink && (
+                    <a
+                      href={driveStatus.webViewLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 hover:underline"
+                    >
+                      <span>Abrir Carpeta en Google Drive</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                </div>
+
+                {driveStatus && (
+                  <div className={`p-4 rounded-xl text-xs font-medium border space-y-3 ${driveStatus.success ? 'bg-emerald-100/70 border-emerald-300 text-emerald-900' : 'bg-amber-50 border-amber-300 text-amber-950'}`}>
+                    <div className="flex items-start gap-2">
+                      <div className="leading-relaxed">
+                        {driveStatus.message}
+                      </div>
+                    </div>
+
+                    {(driveStatus.message.includes('Google Drive API has not been used') || driveStatus.message.includes('disabled') || driveStatus.message.includes('295341840360') || driveStatus.message.includes('458081726794')) && (
+                      <div className="p-3 bg-white/90 rounded-xl border border-amber-200 space-y-2 mt-2">
+                        <p className="font-bold text-amber-900 text-xs">
+                          ⚠️ Instrucciones para habilitar la API de Google Drive en Google Cloud:
+                        </p>
+                        <p className="text-amber-800 text-[11px] leading-normal">
+                          1. Haz clic en cualquiera de los enlaces de abajo para ir directamente al panel de tu proyecto en Google Cloud.<br />
+                          2. Pulsa el botón azul <strong>"Habilitar" / "Enable"</strong> en la página de Google Drive API.<br />
+                          3. Espera unos segundos y vuelve a pulsar en <strong>"Probar Conexión con Google Drive"</strong>.
+                        </p>
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          <a
+                            href="https://console.developers.google.com/apis/api/drive.googleapis.com/overview?project=458081726794"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg text-xs transition-colors shadow-xs"
+                          >
+                            <span>Habilitar API en Proyecto Cloud Run (458081726794)</span>
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                        <p className="text-[11px] text-amber-800/80 mt-2 bg-amber-50 p-2 rounded border border-amber-100">
+                          <strong>Nota Importante:</strong> El almacenamiento en Google Drive <strong>solo funciona en la aplicación desplegada (Cloud Run)</strong>. En el entorno de Vista Previa (AI Studio), esta función está bloqueada por seguridad y los archivos se guardarán temporalmente en la base de datos.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 

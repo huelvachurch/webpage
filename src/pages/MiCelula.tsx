@@ -224,9 +224,33 @@ export default function MiCelula() {
     const fetchStudies = async () => {
       let list: WeeklyStudy[] = [];
       try {
+         // Primary query to studiesDb (ai-studio-a2eeb6ca-be40-4061-b380-b75b9d9fb2ef)
          const studiesQuery = query(collection(studiesDb, 'studies'));
          const snap = await getDocs(studiesQuery);
          list = snap.docs.map(d => ({ id: d.id, ...d.data() } as WeeklyStudy));
+
+         // If empty in primary studies database, check fallback in main database (db)
+         if (list.length === 0) {
+           try {
+             const fallbackSnap = await getDocs(query(collection(db, 'studies')));
+             if (!fallbackSnap.empty) {
+               list = fallbackSnap.docs.map(d => ({ id: d.id, ...d.data() } as WeeklyStudy));
+             } else {
+               const cellStudiesSnap = await getDocs(query(collection(db, 'cell_studies')));
+               if (!cellStudiesSnap.empty) {
+                 list = cellStudiesSnap.docs.map(d => ({
+                   id: d.id,
+                   title: (d.data() as any).title,
+                   description: (d.data() as any).description,
+                   startDate: (d.data() as any).startDate || (d.data() as any).date,
+                   ...d.data()
+                 } as WeeklyStudy));
+               }
+             }
+           } catch (fbErr) {
+             console.warn("Fallback studies query warning:", fbErr);
+           }
+         }
 
          // Filter out future scheduled studies
          list = list.filter(study => {

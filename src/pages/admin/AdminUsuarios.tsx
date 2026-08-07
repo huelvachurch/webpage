@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
-import { Shield, User as UserIcon, Mail, Calendar, Search, MoreVertical, CheckCircle, AlertCircle, Users, UserCheck, MessageSquare, GraduationCap } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Shield, User as UserIcon, Mail, Calendar, Search, MoreVertical, CheckCircle, AlertCircle, Users, UserCheck, MessageSquare, GraduationCap, Key, Lock, Unlock, Eye, EyeOff, X } from 'lucide-react';
 import { collection, updateDoc, doc, onSnapshot, query, orderBy, serverTimestamp, getDocs, where, deleteDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { useAuth } from '../../AuthContext';
@@ -11,10 +11,11 @@ interface UserProfile {
   email: string;
   displayName: string;
   photoURL: string;
-  roles: ('admin' | 'comunicador' | 'profesor' | 'alumno' | 'lider' | 'supervisor' | 'maestro')[];
+  roles: ('admin' | 'comunicador' | 'profesor' | 'alumno' | 'lider' | 'supervisor' | 'maestro' | 'financiero')[];
   status: 'pending' | 'active' | 'blocked';
   createdAt: any;
   requestedAlumnoRole?: boolean;
+  finanzasPin?: string;
 }
 
 export default function AdminUsuarios() {
@@ -25,40 +26,86 @@ export default function AdminUsuarios() {
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  const isSuperAdmin = myRoles.includes('superadmin');
+  const isSuperAdmin = user?.email?.toLowerCase().trim() === 'huelvachurch@gmail.com';
+  const isAdmin = isSuperAdmin || myRoles.includes('admin') || myRoles.includes('superadmin');
 
-  // Redirect if not authorized (Super Admin only)
+  // Redirect if not authorized
   useEffect(() => {
     if (isAuthReady && !loading) {
-      if (!user || !isSuperAdmin) {
+      if (!user || !isAdmin) {
         navigate('/');
       }
     }
-  }, [user, isSuperAdmin, loading, isAuthReady, navigate]);
+  }, [user, isAdmin, loading, isAuthReady, navigate]);
 
   // Fetch users
   useEffect(() => {
-    if (isAuthReady && user && isSuperAdmin) {
-      const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+    if (isAuthReady && user && isAdmin) {
+      const q = query(collection(db, 'users'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
-        const usersData = snapshot.docs.map(doc => ({
-          ...doc.data()
-        })) as UserProfile[];
+        const usersData = snapshot.docs.map(docSnap => {
+          const data = docSnap.data();
+          return {
+            uid: docSnap.id,
+            ...data
+          } as UserProfile;
+        });
+
+        // Sort in memory by createdAt desc (or displayName if missing)
+        usersData.sort((a, b) => {
+          const timeA = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : (a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0);
+          const timeB = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : (b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0);
+          return timeB - timeA;
+        });
+
         setUsers(usersData);
       }, (error) => {
         handleFirestoreError(error, OperationType.LIST, 'users');
       });
       return () => unsubscribe();
     }
-  }, [isAuthReady, user, isSuperAdmin]);
+  }, [isAuthReady, user, isAdmin]);
 
   // Local drafts for accumulated changes (so we don't spam emails on single button presses)
   interface UserDraft {
-    roles?: ('admin' | 'comunicador' | 'profesor' | 'alumno' | 'lider' | 'supervisor' | 'maestro')[];
+    roles?: ('admin' | 'comunicador' | 'profesor' | 'alumno' | 'lider' | 'supervisor' | 'maestro' | 'financiero')[];
     status?: 'pending' | 'active' | 'blocked';
   }
   const [drafts, setDrafts] = useState<Record<string, UserDraft>>({});
   const [isApplying, setIsApplying] = useState<Record<string, boolean>>({});
+
+  // PIN Modal State for Financiero role
+  const [pinModalUser, setPinModalUser] = useState<UserProfile | null>(null);
+  const [pinInput, setPinInput] = useState<string>('');
+  const [pinSaving, setPinSaving] = useState<boolean>(false);
+  const [showPinInModal, setShowPinInModal] = useState<boolean>(false);
+
+  const openPinModal = (u: UserProfile) => {
+    setPinModalUser(u);
+    setPinInput(u.finanzasPin || '');
+    setShowPinInModal(false);
+  };
+
+  const handleSavePin = async () => {
+    if (!pinModalUser) return;
+    if (pinInput.trim().length < 4) {
+      alert("El código PIN debe tener al menos 4 números o caracteres.");
+      return;
+    }
+    setPinSaving(true);
+    try {
+      await updateDoc(doc(db, 'users', pinModalUser.uid), {
+        finanzasPin: pinInput.trim(),
+        updatedAt: serverTimestamp()
+      });
+      alert(`PIN configurado correctamente para ${pinModalUser.displayName || pinModalUser.email}.`);
+      setPinModalUser(null);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${pinModalUser.uid}`);
+    } finally {
+      setPinSaving(false);
+    }
+  };
 
   const getUserRoles = (u: UserProfile) => {
     if (drafts[u.uid] && drafts[u.uid].roles !== undefined) {
@@ -239,6 +286,7 @@ export default function AdminUsuarios() {
       case 'lider': return 'bg-amber-100 text-amber-600 border-amber-200';
       case 'supervisor': return 'bg-orange-100 text-orange-600 border-orange-200';
       case 'maestro': return 'bg-pink-100 text-pink-600 border-pink-200';
+      case 'financiero': return 'bg-teal-100 text-teal-700 border-teal-200';
       default: return 'bg-slate-100 text-slate-600 border-slate-200';
     }
   };
@@ -260,12 +308,13 @@ export default function AdminUsuarios() {
     alumnos: users.filter(u => u.roles?.includes('alumno')).length,
     lideres: users.filter(u => u.roles?.includes('lider')).length,
     maestros: users.filter(u => u.roles?.includes('maestro')).length,
+    financieros: users.filter(u => u.roles?.includes('financiero')).length,
     pending: users.filter(u => u.status === 'pending').length,
   };
 
   if (loading || !isAuthReady) return <div className="pt-32 text-center">Cargando...</div>;
 
-  const availableRoles: UserProfile['roles'][number][] = ['admin', 'comunicador', 'profesor', 'alumno', 'lider', 'supervisor', 'maestro'];
+  const availableRoles: UserProfile['roles'][number][] = ['admin', 'comunicador', 'profesor', 'alumno', 'lider', 'supervisor', 'maestro', 'financiero'];
 
   return (
     <div className="">
@@ -361,6 +410,7 @@ export default function AdminUsuarios() {
             <option value="lider">Líderes</option>
             <option value="supervisor">Supervisores</option>
             <option value="maestro">Maestros</option>
+            <option value="financiero">Financieros</option>
           </select>
           <select 
             className="px-6 py-3 rounded-xl border border-slate-100 text-primary/60 outline-none focus:ring-2 focus:ring-secondary appearance-none bg-white"
@@ -375,15 +425,13 @@ export default function AdminUsuarios() {
         </div>
 
         {/* Users Table */}
-        <div className="bg-white rounded-[3rem] shadow-sm border border-slate-100 overflow-hidden">
+        <div className="bg-white rounded-2xl sm:rounded-[3rem] shadow-sm border border-slate-100 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left">
+            <table className="w-full text-left table-fixed sm:table-auto">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
-                  <th className="px-8 py-6 text-sm font-bold text-primary/60 uppercase tracking-wider">Usuario</th>
-                  <th className="px-8 py-6 text-sm font-bold text-primary/60 uppercase tracking-wider">Estado</th>
-                  <th className="px-8 py-6 text-sm font-bold text-primary/60 uppercase tracking-wider">Roles (Múltiples)</th>
-                  <th className="px-8 py-6 text-sm font-bold text-primary/60 uppercase tracking-wider">Acciones</th>
+                  <th className="px-2 sm:px-8 py-3 sm:py-6 text-[11px] sm:text-sm font-bold text-primary/60 uppercase tracking-wider w-[28%] sm:w-auto">Usuario</th>
+                  <th className="px-2 sm:px-8 py-3 sm:py-6 text-[11px] sm:text-sm font-bold text-primary/60 uppercase tracking-wider w-[72%] sm:w-auto">Roles y Accesos</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -393,126 +441,150 @@ export default function AdminUsuarios() {
                   const activeStatus = getUserStatus(u);
                   return (
                     <tr key={u.uid} className={`transition-all ${draftActive ? 'bg-amber-50/40 border-l-4 border-amber-400 hover:bg-amber-50/60' : 'hover:bg-slate-50/50'}`}>
-                      <td className="px-8 py-6">
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-100 flex-shrink-0">
+                      {/* Column 1: User Info + Status + Status Button + Active Roles */}
+                      <td className="px-2 sm:px-8 py-3 sm:py-6 align-top min-w-0">
+                        <div className="flex flex-col sm:flex-row items-start gap-1.5 sm:gap-4 min-w-0">
+                          <div className="w-7 h-7 sm:w-12 sm:h-12 rounded-full overflow-hidden bg-slate-100 flex-shrink-0">
                             {u.photoURL ? (
                               <img src={u.photoURL} alt={u.displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-primary/20">
-                                <UserIcon className="w-6 h-6" />
+                                <UserIcon className="w-3.5 h-3.5 sm:w-6 sm:h-6" />
                               </div>
                             )}
                           </div>
-                          <div>
-                            <div className="font-bold text-primary flex items-center gap-2">
-                              {u.displayName || 'Sin nombre'}
+                          <div className="space-y-1 min-w-0 flex-1 w-full">
+                            <div className="font-bold text-[11px] sm:text-base text-primary flex flex-wrap items-center gap-1 sm:gap-2 min-w-0 leading-tight">
+                              <span className="truncate max-w-[80px] xs:max-w-[120px] sm:max-w-none" title={u.displayName || 'Sin nombre'}>
+                                {u.displayName || 'Sin nombre'}
+                              </span>
                               {draftActive && (
-                                <span className="text-[9px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse">Sin guardar</span>
+                                <span className="text-[7px] sm:text-[9px] font-bold bg-amber-100 text-amber-700 px-1 py-0.2 rounded-full uppercase tracking-wider animate-pulse shrink-0">Borrador</span>
                               )}
                               {u.requestedAlumnoRole && !activeRoles.includes('alumno') && (
-                                <span className="text-[9px] font-black bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse border border-blue-200">Solicitó Alumno</span>
+                                <span className="text-[7px] sm:text-[9px] font-black bg-blue-50 text-blue-700 px-1 py-0.2 rounded-full uppercase tracking-wider animate-pulse border border-blue-200 shrink-0">Solicitó Alumno</span>
                               )}
                             </div>
-                            <div className="text-sm text-primary/40 flex items-center gap-1">
-                              <Mail className="w-3 h-3" />
-                              {u.email}
+                            <div className="text-[9px] sm:text-sm text-primary/40 flex items-center gap-0.5 font-mono break-all leading-tight">
+                              <Mail className="w-2 h-2 sm:w-3 sm:h-3 shrink-0 hidden xs:inline" />
+                              <span className="break-all">{u.email}</span>
+                            </div>
+
+                            {/* Status Badge & Status Action Button UNDER Name */}
+                            <div className="pt-0.5 flex flex-wrap items-center gap-1 sm:gap-2">
+                              <span className={`px-1.5 py-0.5 rounded-full text-[7px] sm:text-[9px] font-black uppercase tracking-wider ${getStatusBadgeColor(activeStatus)}`}>
+                                {activeStatus === 'pending' ? 'Pendiente' : activeStatus === 'active' ? 'Activo' : 'Bloqueado'}
+                              </span>
+
+                              {activeStatus === 'pending' && (
+                                <button
+                                  onClick={() => handleStatusChangeDraft(u.uid, 'active')}
+                                  className="px-1 py-0.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-[7px] sm:text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-0.5"
+                                  title="Aceptar Miembro (Borrador)"
+                                >
+                                  <CheckCircle className="w-2.5 h-2.5 sm:w-3 sm:h-3" /> Aceptar
+                                </button>
+                              )}
+                              {activeStatus === 'active' && u.email !== 'huelvachurch@gmail.com' && (
+                                <button
+                                  onClick={() => handleStatusChangeDraft(u.uid, 'blocked')}
+                                  className="px-1 py-0.5 bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 rounded-lg text-[7px] sm:text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-0.5"
+                                  title="Bloquear Usuario (Borrador)"
+                                >
+                                  <AlertCircle className="w-2.5 h-2.5 sm:w-3 sm:h-3" /> Bloquear
+                                </button>
+                              )}
+                              {activeStatus === 'blocked' && (
+                                <button
+                                  onClick={() => handleStatusChangeDraft(u.uid, 'active')}
+                                  className="px-1 py-0.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg text-[7px] sm:text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-0.5"
+                                  title="Desbloquear Usuario (Borrador)"
+                                >
+                                  <UserCheck className="w-2.5 h-2.5 sm:w-3 sm:h-3" /> Desbloquear
+                                </button>
+                              )}
                             </div>
                           </div>
                         </div>
                       </td>
-                      <td className="px-8 py-6">
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${getStatusBadgeColor(activeStatus)}`}>
-                          {activeStatus === 'pending' ? 'Pendiente' : activeStatus === 'active' ? 'Activo' : 'Bloqueado'}
-                        </span>
-                      </td>
-                      <td className="px-8 py-6">
-                        <div className="flex flex-wrap gap-2 max-w-xs">
-                          {availableRoles.map(roleName => {
-                            const isAssigned = activeRoles.includes(roleName);
-                            const isSuperAdmin = u.email === 'huelvachurch@gmail.com';
-                            return (
-                              <button
-                                key={roleName}
-                                onClick={() => toggleRoleDraft(u.uid, roleName, u.roles || [])}
-                                disabled={isSuperAdmin && roleName === 'admin'}
-                                className={`px-3 py-1 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
-                                  isAssigned 
-                                    ? getRoleBadgeColor(roleName)
-                                    : 'bg-white text-slate-300 border-slate-100 hover:border-slate-300'
-                                }`}
-                              >
-                                {roleName.toUpperCase()}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </td>
-                      <td className="px-8 py-6">
-                        <div className="flex flex-col gap-3">
-                          <div className="flex items-center gap-2">
-                            {activeStatus === 'pending' && (
-                              <button 
-                                onClick={() => handleStatusChangeDraft(u.uid, 'active')}
-                                className="p-2 bg-green-50 text-green-600 rounded-xl hover:bg-green-100 transition-all cursor-pointer"
-                                title="Aceptar Miembro (Borrador)"
-                              >
-                                <CheckCircle className="w-5 h-5" />
-                              </button>
-                            )}
-                            {activeStatus === 'active' && u.email !== 'huelvachurch@gmail.com' && (
-                              <button 
-                                onClick={() => handleStatusChangeDraft(u.uid, 'blocked')}
-                                className="p-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-all cursor-pointer"
-                                title="Bloquear Usuario (Borrador)"
-                              >
-                                <AlertCircle className="w-5 h-5" />
-                              </button>
-                            )}
-                            {activeStatus === 'blocked' && (
-                              <button 
-                                onClick={() => handleStatusChangeDraft(u.uid, 'active')}
-                                className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all cursor-pointer"
-                                title="Desbloquear Usuario (Borrador)"
-                              >
-                                <UserCheck className="w-5 h-5" />
-                              </button>
-                            )}
+
+                      {/* Column 2: Interactive Role Toggles, Extra Actions, & Pending Changes Draft Bar */}
+                      <td className="px-2 sm:px-8 py-3 sm:py-6 align-top">
+                        <div className="space-y-2 sm:space-y-3">
+                          <div className="flex flex-wrap gap-1 sm:gap-1.5 max-w-lg">
+                            {availableRoles.map(roleName => {
+                              const isAssigned = activeRoles.includes(roleName);
+                              const isSuperAdmin = u.email === 'huelvachurch@gmail.com';
+                              return (
+                                <button
+                                  key={roleName}
+                                  onClick={() => toggleRoleDraft(u.uid, roleName, u.roles || [])}
+                                  disabled={isSuperAdmin && roleName === 'admin'}
+                                  className={`px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg sm:rounded-xl text-[8px] sm:text-[10px] font-bold border transition-all cursor-pointer ${
+                                    isAssigned 
+                                      ? getRoleBadgeColor(roleName) + ' font-black shadow-2xs'
+                                      : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
+                                  }`}
+                                >
+                                  {roleName.toUpperCase()}
+                                </button>
+                              );
+                            })}
                           </div>
 
                           {u.requestedAlumnoRole && !activeRoles.includes('alumno') && (
-                            <button 
-                              onClick={() => {
-                                if (!activeRoles.includes('alumno')) {
-                                  toggleRoleDraft(u.uid, 'alumno', u.roles || []);
-                                }
-                              }}
-                              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-md flex items-center gap-1.5 self-start"
-                              title="Aprobar Solicitud de Alumno"
-                            >
-                              <CheckCircle className="w-3.5 h-3.5" /> Aprobar Alumno
-                            </button>
+                            <div>
+                              <button 
+                                onClick={() => {
+                                  if (!activeRoles.includes('alumno')) {
+                                    toggleRoleDraft(u.uid, 'alumno', u.roles || []);
+                                  }
+                                }}
+                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-md flex items-center gap-1.5"
+                                title="Aprobar Solicitud de Alumno"
+                              >
+                                <CheckCircle className="w-3.5 h-3.5" /> Aprobar Alumno
+                              </button>
+                            </div>
                           )}
 
+                          {(activeRoles.includes('financiero') || activeRoles.includes('admin')) && (
+                            <div>
+                              <button
+                                onClick={() => openPinModal(u)}
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+                                  u.finanzasPin 
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100' 
+                                    : 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 animate-pulse'
+                                }`}
+                                title="Configurar PIN de Ingreso a Finanzas"
+                              >
+                                <Key className="w-3.5 h-3.5 text-teal-600" />
+                                {u.finanzasPin ? `PIN: ${'•'.repeat(u.finanzasPin.length)} (Configurado)` : 'Configurar PIN Finanzas'}
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Cambios Pendientes Bar (Aplicar / Descartar) */}
                           {draftActive && (
-                            <div className="flex flex-col gap-1 mt-1 border-t border-slate-100 pt-2 animate-fadeIn">
-                              <span className="text-[9px] font-black text-amber-600 uppercase tracking-wider">Cambios pendientes</span>
-                              <div className="flex items-center gap-1.5">
-                                <button
-                                  onClick={() => applyChanges(u)}
-                                  disabled={isApplying[u.uid]}
-                                  className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-[9px] uppercase tracking-wider cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-sm transition-all"
-                                >
-                                  {isApplying[u.uid] ? 'Aplicando...' : 'Aplicar'}
-                                </button>
-                                <button
-                                  onClick={() => discardChanges(u.uid)}
-                                  disabled={isApplying[u.uid]}
-                                  className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold rounded-lg text-[9px] uppercase tracking-wider cursor-pointer shadow-xs transition-all"
-                                >
-                                  Descartar
-                                </button>
-                              </div>
+                            <div className="flex items-center gap-2 pt-2 border-t border-amber-200/60 animate-fadeIn">
+                              <span className="text-[10px] font-black text-amber-700 uppercase tracking-wider">
+                                Cambios pendientes:
+                              </span>
+                              <button
+                                onClick={() => applyChanges(u)}
+                                disabled={isApplying[u.uid]}
+                                className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-lg text-[10px] uppercase tracking-wider cursor-pointer shadow-xs disabled:opacity-50 transition-all flex items-center gap-1"
+                              >
+                                {isApplying[u.uid] ? 'Guardando...' : 'Aplicar'}
+                              </button>
+                              <button
+                                onClick={() => discardChanges(u.uid)}
+                                disabled={isApplying[u.uid]}
+                                className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-extrabold rounded-lg text-[10px] uppercase tracking-wider cursor-pointer transition-all"
+                              >
+                                Descartar
+                              </button>
                             </div>
                           )}
                         </div>
@@ -529,6 +601,80 @@ export default function AdminUsuarios() {
             </div>
           )}
         </div>
+
+        {/* Modal Configurar PIN */}
+        <AnimatePresence>
+          {pinModalUser && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-100 p-6 space-y-4"
+              >
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-10 h-10 bg-teal-100 rounded-xl flex items-center justify-center text-teal-700">
+                      <Key className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-primary">PIN de Ingreso a Finanzas</h3>
+                      <p className="text-xs text-primary/60">{pinModalUser.displayName || pinModalUser.email}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setPinModalUser(null)}
+                    className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <p className="text-xs text-primary/70 leading-relaxed">
+                  Establece un código PIN personal (4 a 6 dígitos o caracteres) para que este miembro con rol Financiero pueda ingresar al módulo de Finanzas.
+                </p>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-black uppercase text-primary/50 tracking-wider">Código PIN</label>
+                  <div className="relative">
+                    <input
+                      type={showPinInModal ? 'text' : 'password'}
+                      value={pinInput}
+                      onChange={(e) => setPinInput(e.target.value)}
+                      placeholder="Ej: 1234"
+                      maxLength={8}
+                      className="w-full pl-4 pr-10 py-2.5 rounded-xl border border-slate-200 text-sm font-mono tracking-widest outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPinInModal(!showPinInModal)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      {showPinInModal ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-3 flex justify-end gap-2">
+                  <button
+                    onClick={() => setPinModalUser(null)}
+                    className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200 cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleSavePin}
+                    disabled={pinSaving}
+                    className="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    {pinSaving ? 'Guardando...' : 'Guardar PIN'}
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

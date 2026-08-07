@@ -7,9 +7,29 @@ import firebaseConfig from '../firebase-applet-config.json';
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-export const studiesDb = getFirestore(app, "ai-studio-a2eeb6ca-be40-4061-b380-b75b9d9fb2ef");
+export const databaseId = (firebaseConfig as any).firestoreDatabaseId || "ai-studio-abce701c-2f7d-47cd-be23-3ae6d8db43ca";
+export const db = getFirestore(app, databaseId);
+
+export const studiesDatabaseId = "ai-studio-a2eeb6ca-be40-4061-b380-b75b9d9fb2ef";
+export const studiesDb = getFirestore(app, studiesDatabaseId);
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope('https://www.googleapis.com/auth/drive');
+googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
+
+export const connectGoogleDrive = async () => {
+  try {
+    const result = await signInWithPopup(auth, googleProvider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    if (credential?.accessToken) {
+      sessionStorage.setItem('google_access_token', credential.accessToken);
+      return credential.accessToken;
+    }
+    return null;
+  } catch (err) {
+    console.error('Error connecting Google Drive:', err);
+    throw err;
+  }
+};
 
 // Initialize Messaging (ensuring compatibility with server-side and unsupported situations)
 export let messaging: any = null;
@@ -85,25 +105,33 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 export const loginWithGoogle = async () => {
   try {
     const result = await signInWithPopup(auth, googleProvider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    if (credential?.accessToken) {
+      sessionStorage.setItem('google_access_token', credential.accessToken);
+    }
     const user = result.user;
     
-    // Check if user profile exists in Firestore
-    const userDocRef = doc(db, 'users', user.uid);
-    const userDoc = await getDoc(userDocRef);
-    
-    if (!userDoc.exists()) {
-      // Create default profile for new users
-      const isSuperAdmin = user.email === 'huelvachurch@gmail.com';
-      await setDoc(userDocRef, {
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName,
-        photoURL: user.photoURL,
-        roles: isSuperAdmin ? ['admin'] : [],
-        status: isSuperAdmin ? 'active' : 'active',
-        createdAt: serverTimestamp(),
-        showWelcomePopup: true
-      });
+    // Check if user profile exists in Firestore safely
+    try {
+      const userDocRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (!userDoc.exists()) {
+        // Create default profile for new users
+        const isSuperAdmin = user.email?.toLowerCase().trim() === 'huelvachurch@gmail.com';
+        await setDoc(userDocRef, {
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+          roles: isSuperAdmin ? ['superadmin', 'admin'] : [],
+          status: 'active',
+          createdAt: serverTimestamp(),
+          showWelcomePopup: true
+        });
+      }
+    } catch (docErr) {
+      console.warn('Could not verify/create Firestore user doc immediately on login:', docErr);
     }
     
     return user;
@@ -126,21 +154,29 @@ export const handleRedirectResult = async () => {
   try {
     const result = await getRedirectResult(auth);
     if (result) {
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        sessionStorage.setItem('google_access_token', credential.accessToken);
+      }
       const user = result.user;
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
-      if (!userDoc.exists()) {
-        const isSuperAdmin = user.email === 'huelvachurch@gmail.com';
-        await setDoc(userDocRef, {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName,
-          photoURL: user.photoURL,
-          roles: isSuperAdmin ? ['admin'] : [],
-          status: isSuperAdmin ? 'active' : 'active',
-          createdAt: serverTimestamp(),
-          showWelcomePopup: true
-        });
+      try {
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (!userDoc.exists()) {
+          const isSuperAdmin = user.email?.toLowerCase().trim() === 'huelvachurch@gmail.com';
+          await setDoc(userDocRef, {
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName,
+            photoURL: user.photoURL,
+            roles: isSuperAdmin ? ['superadmin', 'admin'] : [],
+            status: 'active',
+            createdAt: serverTimestamp(),
+            showWelcomePopup: true
+          });
+        }
+      } catch (docErr) {
+        console.warn('Could not verify/create Firestore user doc after redirect:', docErr);
       }
       return user;
     }

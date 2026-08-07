@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Menu, X, Heart, LogIn, LogOut, Shield, MessageSquare, User as UserIcon, GraduationCap, Layout, Users, Globe, Mail, Settings, Smile, Radio, Bell, HandHeart, ChevronDown, Home } from 'lucide-react';
+import { Menu, X, Heart, LogIn, LogOut, Shield, MessageSquare, User as UserIcon, GraduationCap, Layout, Users, Globe, Mail, Settings, Smile, Radio, Bell, HandHeart, ChevronDown, Home, Wallet, Receipt } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { loginWithGoogle, logout } from '../firebase';
 import { useTranslation } from 'react-i18next';
@@ -17,10 +17,25 @@ export default function Navbar() {
   const displayPhotoURL = customPhotoURL || user?.photoURL;
   const { t, i18n } = useTranslation();
 
+  const navRef = useRef<HTMLElement>(null);
+
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Close menus on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (navRef.current && !navRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+        setIsLangMenuOpen(false);
+        setIsAboutMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   // Close menus on route change
@@ -29,6 +44,21 @@ export default function Navbar() {
     setIsUserMenuOpen(false);
     setIsLangMenuOpen(false);
   }, [location]);
+
+  // Lock body & html scroll when mobile menu is open to prevent page scrolling behind menu
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, [isOpen]);
 
   const baseNavLinks = [
     { name: t('nav.about'), path: '/nosotros', icon: Users },
@@ -50,10 +80,11 @@ export default function Navbar() {
   const isAdmin = roles.includes('admin') || isSuperAdmin;
   const isComunicador = roles.includes('comunicador') || isSuperAdmin;
   const isProfesor = roles.includes('profesor') || isSuperAdmin;
-  const isSupervisor = roles.includes('supervisor');
+  const isSupervisor = roles.includes('supervisor') || isSuperAdmin;
   const isLider = roles.includes('lider') || isSuperAdmin;
   const isStudent = roles.includes('alumno') || isProfesor || isSuperAdmin;
   const isMaestro = roles.includes('maestro') || isSuperAdmin;
+  const isFinanciero = roles.includes('financiero') || isAdmin;
 
   const changeLanguage = (lng: string) => {
     i18n.changeLanguage(lng);
@@ -61,7 +92,7 @@ export default function Navbar() {
   };
 
   return (
-    <nav className={`fixed w-full z-50 transition-all duration-500 ${scrolled || !isHomePage ? 'py-4 bg-white/80 backdrop-blur-xl shadow-sm' : 'py-8 bg-transparent'}`}>
+    <nav ref={navRef} className={`fixed w-full z-50 transition-all duration-500 ${scrolled || !isHomePage ? 'py-4 bg-white/80 backdrop-blur-xl shadow-sm' : 'py-8 bg-transparent'}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center">
           <Link to="/" className="flex items-center gap-3 group">
@@ -223,7 +254,7 @@ export default function Navbar() {
                           initial={{ opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: 10 }}
-                          className="absolute right-0 mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 p-2 min-w-[200px] flex flex-col z-[100]"
+                          className="absolute right-0 mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 p-2 min-w-[220px] max-h-[calc(100vh-100px)] overflow-y-auto flex flex-col z-[100]"
                         >
                           <div className="px-4 py-2 border-b border-slate-50 mb-1 text-xs text-primary/50 font-medium font-gordita truncate">
                             {user.displayName || user.email}
@@ -333,8 +364,20 @@ export default function Navbar() {
                             </Link>
                           )}
 
+                          {/* Finanzas */}
+                          {isFinanciero && (
+                            <Link 
+                              onClick={() => setIsUserMenuOpen(false)}
+                              to="/admin/finanzas" 
+                              className="flex items-center gap-3 px-4 py-2.5 text-left text-sm rounded-lg hover:bg-slate-50 text-primary font-medium transition-colors"
+                            >
+                              <Wallet className="w-5 h-5 text-primary/60" />
+                              Finanzas
+                            </Link>
+                          )}
+
                           {/* 10. Administración */}
-                          {isSuperAdmin && (
+                          {isAdmin && (
                             <Link 
                               onClick={() => setIsUserMenuOpen(false)}
                               to="/admin/administracion" 
@@ -413,7 +456,7 @@ export default function Navbar() {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="lg:hidden bg-white border-t border-slate-100 overflow-hidden mt-8 shadow-xl"
+            className="lg:hidden bg-white border-t border-slate-100 max-h-[calc(100vh-80px)] overflow-y-auto overscroll-contain touch-pan-y mt-4 shadow-xl"
           >
             <div className="px-6 py-8 pt-6 space-y-6 flex flex-col items-center text-center">
                {/* Mobile Language Selector */}
@@ -561,8 +604,16 @@ export default function Navbar() {
                     </Link>
                   )}
 
+                  {/* Finanzas */}
+                  {isFinanciero && (
+                    <Link to="/admin/finanzas" onClick={() => setIsOpen(false)} className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
+                      <Wallet className="w-5 h-5 shrink-0" />
+                      Finanzas
+                    </Link>
+                  )}
+
                   {/* 10. Administración */}
-                  {isSuperAdmin && (
+                  {isAdmin && (
                     <Link to="/admin/administracion" onClick={() => setIsOpen(false)} className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
                       <Shield className="w-5 h-5 shrink-0" />
                       Administración

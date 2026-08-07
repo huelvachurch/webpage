@@ -102,7 +102,7 @@ export default function Legal() {
                       Personal Data Protection according to the GDPR
                     </h2>
                     <p className="mb-4">
-                      <strong>Huelva Church</strong>, in compliance with active legislation on personal data protection, informs that the personal data collected through web forms on <strong>www.huelvachurch.es</strong> is included in the specific automated user files of Huelva Church services.
+                      <strong>Huelva Church</strong>, in compliance with active legislation on personal data protection, informs that the personal data collected through web forms on <strong>www.huelvachurch.com</strong> is included in the specific automated user files of Huelva Church services.
                     </p>
                     <p className="mb-4">
                       The collection and automated processing of personal data aim to maintain the connection with you and to perform information, training, counseling, and other activities proper to Huelva Church.
@@ -123,7 +123,7 @@ export default function Legal() {
                       <strong>Huelva Church</strong> adopts the necessary measures to guarantee the security, integrity, and confidentiality of the data in accordance with Regulation (EU) 2016/679 of the European Parliament and of the Council, of April 27, 2016, on the protection of natural persons with regard to the processing of personal data and on the free movement of such data (GDPR).
                     </p>
                     <p className="mb-4">
-                      At any time, the user can exercise the rights of access, opposition, rectification, and cancellation recognized in the aforementioned Regulation (EU). The user can exercise these rights by email to: <a href="mailto:huelvachurch@gmail.com" className="text-secondary font-bold hover:underline">huelvachurch@gmail.com</a> or at the physical address: <strong>Calle de los Marismeños, 6, 21006, Huelva</strong>.
+                      At any time, the user can exercise the rights of access, opposition, rectification, and cancellation recognized in the aforementioned Regulation (EU). The user can exercise these rights by email to: <a href="mailto:huelvachurch@gmail.com" className="text-secondary font-bold hover:underline">huelvachurch@gmail.com</a> / <a href="mailto:admin@huelvachurch.com" className="text-secondary font-bold hover:underline">admin@huelvachurch.com</a> or at the physical address: <strong>Calle de los Marismeños, 6, 21006, Huelva</strong>.
                     </p>
                     <p>
                       The user states that all data provided by them is true and correct, and undertakes to keep it updated, reporting any changes to <a href="mailto:huelvachurch@gmail.com" className="text-secondary font-bold hover:underline">huelvachurch@gmail.com</a>.
@@ -139,7 +139,7 @@ export default function Legal() {
                     </h3>
                     <p className="font-medium mb-3">For what purpose will we process your personal data?</p>
                     <p className="mb-4">
-                      In Huelva Church, we will process your personal data collected through the www.huelvachurch.es website for the following purposes:
+                      In Huelva Church, we will process your personal data collected through the www.huelvachurch.com website for the following purposes:
                     </p>
                     <ul className="space-y-3 mb-6">
                       <li className="flex items-start gap-3">
@@ -205,7 +205,7 @@ export default function Legal() {
                       Proteção de dados de caráter pessoal segundo o RGPD
                     </h2>
                     <p className="mb-4">
-                      <strong>Huelva Church</strong>, em aplicação da legislação vigente em matéria de proteção de dados pessoais, informa que os dados recolhidos através de formulários do site <strong>www.huelvachurch.es</strong> são de facto incluídos em ficheiros de utilizadores dos serviços da Huelva Church.
+                      <strong>Huelva Church</strong>, em aplicação da legislação vigente em matéria de proteção de dados pessoais, informa que os dados recolhidos através de formulários do site <strong>www.huelvachurch.com</strong> são de facto incluídos em ficheiros de utilizadores dos serviços da Huelva Church.
                     </p>
                     <p className="mb-4">
                       A recolha e o tratamento automatizado dos dados pessoais têm como finalidade a manutenção de contato e o desempenho de tarefas de informação, formação, aconselhamento e outras atividades da Huelva Church.
@@ -226,7 +226,7 @@ export default function Legal() {
                       <strong>Huelva Church</strong> adota as medidas necessárias para garantir a segurança, integridade e confidencialidade dos dados, de acordo com o Regulamento (UE) 2016/679 do Parlamento Europeu e do Conselho, de 27 de abril de 2016, relativo à proteção das pessoas singulares no que diz respeito ao tratamento de dados pessoais (RGPD).
                     </p>
                     <p className="mb-4">
-                      O utilizador poderá, a qualquer momento, exercer os direitos de acesso, oposição, retificação e cancelamento reconhecidos no citado Regulamento (UE). O exercício destes direitos pode ser realizado pelo próprio utilizador através de email para: <a href="mailto:huelvachurch@gmail.com" className="text-secondary font-bold hover:underline">huelvachurch@gmail.com</a> ou na morada física: <strong>Calle de los Marismeños, 6, 21006, Huelva</strong>.
+                      O utilizador poderá, a qualquer momento, exercer os direitos de acesso, oposição, retificação e cancelamento reconhecidos no citado Regulamento (UE). O exercício destes direitos pode ser realizado pelo próprio utilizador através de email para: <a href="mailto:huelvachurch@gmail.com" className="text-secondary font-bold hover:underline">huelvachurch@gmail.com</a> / <a href="mailto:admin@huelvachurch.com" className="text-secondary font-bold hover:underline">admin@huelvachurch.com</a> ou na morada física: <strong>Calle de los Marismeños, 6, 21006, Huelva</strong>.
                     </p>
                     <p>
                       O utilizador declara que todos os dados facultados por si são verdadeiros e corretos, e compromete-se a mantê-los atualizados, comunicando as alterações a <a href="mailto:huelvachurch@gmail.com" className="text-secondary font-bold hover:underline">huelvachurch@gmail.com</a>.
@@ -242,7 +242,7 @@ export default function Legal() {
                     </h3>
                     <p className="font-medium mb-3">Com que finalidade trataremos os seus dados pessoais?</p>
                     <p className="mb-4">
-                      Na Huelva Church, trataremos os seus dados pessoais recolhidos através do site www.huelvachurch.es com as seguintes finalidades:
+                      Na Huelva Church, trataremos os seus dados pessoais recolhidos através do site www.huelvachurch.com com as seguintes finalidades:
                     </p>
                     <ul className="space-y-3 mb-6">
                       <li className="flex items-start gap-3">
@@ -308,13 +308,13 @@ export default function Legal() {
                       Protección de datos de carácter personal según la LOPD
                     </h2>
                     <p className="mb-4">
-                      <strong>Huelva Church</strong>, en aplicación de la normativa vigente en materia de protección de datos de carácter personal, informa que los datos personales que se recogen a través de los formularios del sitio web <strong>www.huelvachurch.es</strong> se incluyen en los ficheros automatizados específicos de usuarios de los servicios de Huelva Church.
+                      <strong>Huelva Church</strong>, en aplicación de la normativa vigente en materia de protección de datos de carácter personal y régimen legal de Entidades Religiosas / Sin Ánimo de Lucro en España, informa que el sitio web oficial <strong>www.huelvachurch.com</strong> pertenece a la entidad oficial Huelva Church.
                     </p>
                     <p className="mb-4">
-                      La recogida y tratamiento automatizado de los datos de carácter personal tiene como finalidad el mantenimiento de la relación comercial y el desempeño de tareas de información, formación, asesoramiento y otras actividades propias de Huelva Church.
+                      La recogida y tratamiento automatizado de los datos de carácter personal tiene como finalidad el mantenimiento de la relación y el desempeño de tareas de información, formación, asesoramiento y otras actividades propias de Huelva Church.
                     </p>
                     <p>
-                      Estos datos únicamente serán cedidos a aquellas entidades que sean necesarias con el único objetivo de dar cumplimiento a la finalidad anteriormente expuesta.
+                      Estos datos únicamente serán cedidos a aquellas entidades que sean necesarias con el único objetivo de dar cumplimiento a la finalidad anteriormente exposta.
                     </p>
                   </div>
 
@@ -329,7 +329,7 @@ export default function Legal() {
                       <strong>Huelva Church</strong> adopta las medidas necesarias para garantizar la seguridad, integridad y confidencialidad de los datos conforme a lo dispuesto en el Reglamento (UE) 2016/679 del Parlamento Europeo y del Consejo, de 27 de abril de 2016, relativo a la protección de las personas físicas en lo que respecta al tratamiento de datos personales y a la libre circulación de estos (RGPD).
                     </p>
                     <p className="mb-4">
-                      El usuario podrá en cualquier momento ejercitar los derechos de acceso, oposición, rectificación y cancelación personalizados en el citado Reglamento (UE). El ejercicio de estos derechos puede realizarlo el propio usuario a través de email a: <a href="mailto:huelvachurch@gmail.com" className="text-secondary font-bold hover:underline">huelvachurch@gmail.com</a> o en la dirección física: <strong>Calle de los Marismeños, 6, 21006, Huelva</strong>.
+                      El usuario podrá en cualquier momento ejercitar los derechos de acceso, oposición, rectificación y cancelación personalizados en el citado Reglamento (UE). El ejercicio de estos derechos puede realizarlo el propio usuario a través de email a: <a href="mailto:huelvachurch@gmail.com" className="text-secondary font-bold hover:underline">huelvachurch@gmail.com</a> / <a href="mailto:admin@huelvachurch.com" className="text-secondary font-bold hover:underline">admin@huelvachurch.com</a> o en la dirección física: <strong>Calle de los Marismeños, 6, 21006, Huelva</strong>.
                     </p>
                     <p>
                       El usuario manifiesta que todos los datos facilitados por él son ciertos y correctos, y se compromete a mantenerlos actualizados, comunicando los cambios a <a href="mailto:huelvachurch@gmail.com" className="text-secondary font-bold hover:underline">huelvachurch@gmail.com</a>.
@@ -345,7 +345,7 @@ export default function Legal() {
                     </h3>
                     <p className="font-medium mb-3">¿Con qué finalidad trataremos tus datos personales?</p>
                     <p className="mb-4">
-                      En Huelva Church trataremos tus datos personales recabados a través del sitio web www.huelvachurch.es con las siguientes finalidades:
+                      En Huelva Church trataremos tus datos personales recabados a través del sitio web www.huelvachurch.com con las siguientes finalidades:
                     </p>
                     <ul className="space-y-3 mb-6">
                       <li className="flex items-start gap-3">
@@ -427,10 +427,10 @@ export default function Legal() {
                   <div>
                     <h3 className="text-xl font-bold text-primary mb-4">Intellectual Property Rights</h3>
                     <p className="mb-4">
-                      <strong>Huelva Church</strong> is the owner of all copyrights, intellectual, industrial property, "know how" and other rights related to the contents of the website www.huelvachurch.es and the services offered on it, as well as the programs necessary for its implementation and related info.
+                      <strong>Huelva Church</strong> is the owner of all copyrights, intellectual, industrial property, "know how" and other rights related to the contents of the website www.huelvachurch.com and the services offered on it, as well as the programs necessary for its implementation and related info.
                     </p>
                     <p className="mb-6">
-                      The reproduction, publication and/or non-strictly private use of the contents, in whole or in part, of the website <strong>www.huelvachurch.es</strong> is not permitted without the prior written consent of Huelva Church.
+                      The reproduction, publication and/or non-strictly private use of the contents, in whole or in part, of the website <strong>www.huelvachurch.com</strong> is not permitted without the prior written consent of Huelva Church.
                     </p>
                   </div>
 
@@ -464,10 +464,10 @@ export default function Legal() {
                   <div>
                     <h3 className="text-xl font-bold text-primary mb-4">Direitos de Propriedade Intelectual</h3>
                     <p className="mb-4">
-                      <strong>Huelva Church</strong> é titular de todos os direitos de autor, propriedade intelectual, industrial, "know-how" e outros direitos relacionados com os conteúdos do website www.huelvachurch.es e os serviços aí oferecidos, bem como programas e informações relacionadas.
+                      <strong>Huelva Church</strong> é titular de todos os direitos de autor, propriedade intelectual, industrial, "know-how" e outros direitos relacionados com os conteúdos do website www.huelvachurch.com e os serviços aí oferecidos, bem como programas e informações relacionadas.
                     </p>
                     <p className="mb-6">
-                      Não é permitida a reprodução, publicação e/ou utilização não estritamente privada dos conteúdos, totais ou parciais, do site <strong>www.huelvachurch.es</strong> sem o consentimento prévio e por escrito da Huelva Church.
+                      Não é permitida a reprodução, publicação e/ou utilização não estritamente privada dos conteúdos, totais ou parciais, do site <strong>www.huelvachurch.com</strong> sem o consentimento prévio e por escrito da Huelva Church.
                     </p>
                   </div>
 
@@ -501,10 +501,10 @@ export default function Legal() {
                   <div>
                     <h3 className="text-xl font-bold text-primary mb-4">Derechos de Propiedad Intelectual</h3>
                     <p className="mb-4">
-                      <strong>Huelva Church</strong> es titular de todos los derechos de autor, propiedad intelectual, industrial, "know how" y cuantos otros derechos guardan relación con los contenidos del sitio web www.huelvachurch.es y los servicios ofertados en el mismo, así como de los programas necesarios para su implementación y la información relacionada.
+                      <strong>Huelva Church</strong> es titular de todos los derechos de autor, propiedad intelectual, industrial, "know how" y cuantos otros derechos guardan relación con los contenidos del sitio web www.huelvachurch.com y los servicios ofertados en el mismo, así como de los programas necesarios para su implementación y la información relacionada.
                     </p>
                     <p className="mb-6">
-                      No se permite la reproducción, publicación y/o uso no estrictamente privado de los contenidos, totales o parciales, del sitio web <strong>www.huelvachurch.es</strong> sin el consentimiento previo y por escrito de Huelva Church.
+                      No se permite la reproducción, publicación y/o uso no estrictamente privado de los contenidos, totales o parciales, del sitio web <strong>www.huelvachurch.com</strong> sin el consentimiento previo y por escrito de Huelva Church.
                     </p>
                   </div>
 
@@ -535,7 +535,7 @@ export default function Legal() {
                       <Lock className="w-7 h-7 text-secondary shrink-0" />
                       Cookie Policy
                     </h2>
-                    <p className="text-lg font-medium">Huelva Church informs about the use and storage of cookies on its website: www.huelvachurch.es</p>
+                    <p className="text-lg font-medium">Huelva Church informs about the use and storage of cookies on its website: www.huelvachurch.com</p>
                   </div>
 
                   <hr className="border-slate-100 py-2" />
@@ -610,7 +610,7 @@ export default function Legal() {
                       <Lock className="w-7 h-7 text-secondary shrink-0" />
                       Política de Cookies
                     </h2>
-                    <p className="text-lg font-medium">A Huelva Church informa sobre a utilização e armazenamento de cookies na sua página de internet: www.huelvachurch.es</p>
+                    <p className="text-lg font-medium">A Huelva Church informa sobre a utilização e armazenamento de cookies na sua página de internet: www.huelvachurch.com</p>
                   </div>
 
                   <hr className="border-slate-100 py-2" />
@@ -685,7 +685,7 @@ export default function Legal() {
                       <Lock className="w-7 h-7 text-secondary shrink-0" />
                       Política de Cookies
                     </h2>
-                    <p className="text-lg font-medium">Huelva Church informa acerca de la utilización y almacenamiento de cookies en su página web: www.huelvachurch.es</p>
+                    <p className="text-lg font-medium">Huelva Church informa acerca de la utilización y almacenamiento de cookies en su página web: www.huelvachurch.com</p>
                   </div>
 
                   <hr className="border-slate-100 py-2" />

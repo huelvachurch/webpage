@@ -20,6 +20,8 @@ export default function Login() {
         navigate('/admin/anuncios');
       } else if (roles.includes('profesor')) {
         navigate('/admin/docencia');
+      } else if (roles.includes('financiero')) {
+        navigate('/admin/finanzas');
       } else {
         navigate('/');
       }

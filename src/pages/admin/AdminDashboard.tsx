@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link, Outlet } from 'react-router-dom';
-import { Users, Users as UsersIcon, Home } from 'lucide-react';
+import { Users, Users as UsersIcon, Home, Wallet, Building2 } from 'lucide-react';
 import { useAuth } from '../../AuthContext';
 
 export default function AdminDashboard() {
@@ -8,15 +8,15 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const isSuperAdmin = roles.includes('superadmin');
+  const isAdmin = roles.includes('admin') || roles.includes('superadmin');
 
   useEffect(() => {
     if (isAuthReady && !loading) {
-      if (!user || !isSuperAdmin) {
+      if (!user || !isAdmin) {
         navigate('/');
       }
     }
-  }, [user, isSuperAdmin, loading, isAuthReady, navigate]);
+  }, [user, isAdmin, loading, isAuthReady, navigate]);
 
   if (loading || !isAuthReady) return <div className="pt-32 text-center">Cargando...</div>;
 
@@ -54,6 +54,28 @@ export default function AdminDashboard() {
           >
             <Home className="w-4 h-4" />
             Células
+          </Link>
+          <Link
+            to="/admin/administracion/areas"
+            className={`px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all whitespace-nowrap ${
+              location.pathname.includes('/areas') 
+                ? 'bg-primary text-white shadow-md' 
+                : 'text-primary/60 hover:bg-slate-50 hover:text-primary'
+            }`}
+          >
+            <Building2 className="w-4 h-4" />
+            Áreas
+          </Link>
+          <Link
+            to="/admin/administracion/finanzas"
+            className={`px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all whitespace-nowrap ${
+              location.pathname.includes('/finanzas') 
+                ? 'bg-primary text-white shadow-md' 
+                : 'text-primary/60 hover:bg-slate-50 hover:text-primary'
+            }`}
+          >
+            <Wallet className="w-4 h-4 text-teal-600" />
+            Finanzas
           </Link>
         </div>
 

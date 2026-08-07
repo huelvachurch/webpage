@@ -48,8 +48,11 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && (
-        request.auth.token.email == "huelvachurch@gmail.com" ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 'admin' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles)
+        request.auth.token.email.matches('(?i)huelvachurch@gmail.com') ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          'admin' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles ||
+          'superadmin' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles
+        ))
       );
     }
 
@@ -85,6 +88,13 @@ service cloud.firestore {
       return isAuthenticated() && (
         isAdmin() ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 'maestro' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles)
+      );
+    }
+
+    function isFinanciero() {
+      return isAuthenticated() && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 'financiero' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles)
       );
     }
 
@@ -263,7 +273,7 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isOwner(userId) || isLider() || isSupervisor();
+      allow read: if true;
       allow create: if isAuthenticated() && isValidUser(request.resource.data) && (
         isOwner(userId) || isAdmin()
       );
@@ -445,6 +455,49 @@ service cloud.firestore {
       allow create: if isMaestro() && isValidKidsNotification(request.resource.data);
       allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
       allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    match /finanzas/{transactionId} {
+      allow read, write: if isFinanciero();
+    }
+
+    match /finanzas_etiquetas/{tagId} {
+      allow read, write: if isFinanciero();
+    }
+
+    match /finanzas_bancarios/{movId} {
+      allow read, write: if isFinanciero();
+    }
+
+    match /finanzas_celebraciones/{ingresoId} {
+      allow read, write: if isFinanciero();
+    }
+
+    match /finanzas_arqueos/{arqueoId} {
+      allow read, write: if isFinanciero();
+    }
+
+    match /finanzas_caja_chica/{movId} {
+      allow read, write: if isFinanciero();
+    }
+
+    match /finanzas_cafeteria/{movId} {
+      allow read, write: if isFinanciero();
+    }
+
+    match /finanzas_libreria/{movId} {
+      allow read, write: if isFinanciero();
+    }
+
+    match /areas/{areaId} {
+      allow read: if true;
+      allow write: if isAdmin() || isFinanciero();
+    }
+
+    match /reembolsos/{reembolsoId} {
+      allow read: if isFinanciero() || (isAuthenticated() && resource.data.createdByUid == request.auth.uid);
+      allow create: if isAuthenticated();
+      allow update, delete: if isFinanciero();
     }
   }
 }

@@ -13,7 +13,7 @@
           "type": "array", 
           "items": {
             "type": "string", 
-            "enum": ["admin", "comunicador", "profesor", "alumno", "lider", "supervisor", "maestro"]
+            "enum": ["admin", "comunicador", "profesor", "alumno", "lider", "supervisor", "maestro", "financiero"]
           },
           "description": "User roles for access control"
         },
@@ -291,9 +291,88 @@
         "actionUrl": { "type": "string" }
       },
       "required": ["userId", "title", "body", "read"]
+    },
+    "FinanceTransaction": {
+      "title": "Finance Transaction",
+      "description": "Church treasury income or expense transaction",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["ingreso", "gasto"] },
+        "amount": { "type": "number" },
+        "category": { "type": "string" },
+        "concept": { "type": "string" },
+        "date": { "type": "string" },
+        "paymentMethod": { "type": "string", "enum": ["Efectivo", "Transferencia", "Bizum", "Tarjeta", "Otro"] },
+        "referenceNumber": { "type": "string" },
+        "notes": { "type": "string" },
+        "registeredByUid": { "type": "string" },
+        "registeredByName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "amount", "category", "concept", "date", "paymentMethod"]
+    },
+    "ChurchArea": {
+      "title": "Church Area",
+      "description": "Church area (Servicios or Ministeriales) with name and initials for finance and organization",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["Servicios", "Ministeriales"] },
+        "initials": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "type", "initials"]
+    },
+    "Reembolso": {
+      "title": "Solicitud de Reembolso",
+      "description": "Member reimbursement request for church expenses",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "createdByUid": { "type": "string" },
+        "createdByName": { "type": "string" },
+        "createdByEmail": { "type": "string" },
+        "createdByPhone": { "type": "string" },
+        "date": { "type": "string" },
+        "areaId": { "type": "string" },
+        "areaName": { "type": "string" },
+        "areaInitials": { "type": "string" },
+        "concept": { "type": "string" },
+        "amount": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["Efectivo", "Transferencia Bancaria"] },
+        "iban": { "type": "string" },
+        "receiptUrl": { "type": "string" },
+        "notes": { "type": "string" },
+        "status": { "type": "string", "enum": ["pendiente", "incompleto", "completado"] },
+        "signatures": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "createdByName", "date", "areaName", "concept", "amount", "paymentMethod", "status"]
     }
   },
   "firestore": {
+    "/areas/{areaId}": {
+      "schema": "ChurchArea",
+      "description": "Collection of configured church areas (Servicios and Ministeriales)"
+    },
+    "/reembolsos/{reembolsoId}": {
+      "schema": "Reembolso",
+      "description": "Collection of member reimbursement requests"
+    },
+    "/finanzas_caja_chica/{movId}": {
+      "schema": "FinanceTransaction",
+      "description": "Collection of petty cash movements"
+    },
+    "/finanzas_cafeteria/{movId}": {
+      "schema": "FinanceTransaction",
+      "description": "Collection of cafeteria petty cash movements"
+    },
+    "/finanzas_libreria/{movId}": {
+      "schema": "FinanceTransaction",
+      "description": "Collection of bookstore petty cash movements"
+    },
     "/users/{userId}": {
       "schema": "User",
       "description": "Collection of user profiles"

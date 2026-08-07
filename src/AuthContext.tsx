@@ -1,16 +1,17 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType, handleRedirectResult, requestAndSaveFCMToken } from './firebase';
 
 interface AuthContextType {
   user: User | null;
-  roles: ('superadmin' | 'admin' | 'comunicador' | 'profesor' | 'alumno' | 'lider' | 'supervisor' | 'maestro')[];
+  roles: ('superadmin' | 'admin' | 'comunicador' | 'profesor' | 'alumno' | 'lider' | 'supervisor' | 'maestro' | 'financiero')[];
   status: 'pending' | 'active' | 'blocked' | null;
   loading: boolean;
   isAuthReady: boolean;
   showWelcomePopup?: boolean;
   customPhotoURL?: string;
+  finanzasPermissions?: string[];
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -21,6 +22,7 @@ const AuthContext = createContext<AuthContextType>({
   isAuthReady: false,
   showWelcomePopup: false,
   customPhotoURL: undefined,
+  finanzasPermissions: [],
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -33,6 +35,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [customPhotoURL, setCustomPhotoURL] = useState<string | undefined>(undefined);
+  const [finanzasPermissions, setFinanzasPermissions] = useState<string[]>([]);
 
   useEffect(() => {
     // Check for redirect result on mount
@@ -57,6 +60,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setStatus(null);
         setShowWelcomePopup(false);
         setCustomPhotoURL(undefined);
+        setFinanzasPermissions([]);
         setLoading(false);
         setIsAuthReady(true);
       }
@@ -67,32 +71,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     if (user) {
+      const isSuperAdmin = user.email?.toLowerCase().trim() === 'huelvachurch@gmail.com';
       const userDocRef = doc(db, 'users', user.uid);
-      const unsubscribeUser = onSnapshot(userDocRef, (docSnap) => {
-        const isSuperAdmin = user.email === 'huelvachurch@gmail.com';
-        
+      const unsubscribeUser = onSnapshot(userDocRef, async (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
           const dbRoles = (data.roles || []) as AuthContextType['roles'];
           const dbStatus = data.status as AuthContextType['status'];
           const dbShowWelcome = !!data.showWelcomePopup;
+          const dbPermissions = (data.finanzasPermissions || []) as string[];
           
           // If it's super admin but DB says otherwise (e.g. old record), force admin and superadmin
-          setRoles(isSuperAdmin ? Array.from(new Set(['superadmin', 'admin', ...dbRoles])) : dbRoles);
+          const updatedRoles = isSuperAdmin ? Array.from(new Set(['superadmin', 'admin', ...dbRoles])) : dbRoles;
+          setRoles(updatedRoles as AuthContextType['roles']);
           setStatus(isSuperAdmin ? 'active' : dbStatus);
           setShowWelcomePopup(dbShowWelcome);
           setCustomPhotoURL(data.photoURL || undefined);
+          setFinanzasPermissions(dbPermissions);
+
+          // If superadmin in auth but missing superadmin or admin in Firestore document, sync to Firestore
+          if (isSuperAdmin && (!dbRoles.includes('superadmin') || !dbRoles.includes('admin') || data.status !== 'active')) {
+            setDoc(userDocRef, {
+              roles: updatedRoles,
+              status: 'active'
+            }, { merge: true }).catch(err => console.warn("Failed syncing superadmin roles:", err));
+          }
         } else {
-          // If document doesn't exist yet, check if it's the super admin email
-          setRoles(isSuperAdmin ? ['superadmin', 'admin'] : []);
-          setStatus(isSuperAdmin ? 'active' : 'active');
+          // If document doesn't exist yet in Firestore
+          const defaultRoles = isSuperAdmin ? ['superadmin', 'admin'] : [];
+          setRoles(defaultRoles as AuthContextType['roles']);
+          setStatus('active');
           setShowWelcomePopup(false);
           setCustomPhotoURL(undefined);
+          setFinanzasPermissions([]);
+
+          // Auto-create user document in Firestore so it exists in DB
+          setDoc(userDocRef, {
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName || user.email?.split('@')[0] || 'Usuario',
+            photoURL: user.photoURL || null,
+            roles: defaultRoles,
+            status: 'active',
+            createdAt: serverTimestamp(),
+            showWelcomePopup: true
+          }, { merge: true }).catch(err => console.warn("Failed auto-creating user document:", err));
         }
         setLoading(false);
         setIsAuthReady(true);
       }, (error) => {
         handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
+        if (isSuperAdmin) {
+          setRoles(['superadmin', 'admin']);
+          setStatus('active');
+        }
         setLoading(false);
         setIsAuthReady(true);
       });
@@ -115,7 +147,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user]);
 
   return (
-    <AuthContext.Provider value={{ user, roles, status, loading, isAuthReady, showWelcomePopup, customPhotoURL }}>
+    <AuthContext.Provider value={{ user, roles, status, loading, isAuthReady, showWelcomePopup, customPhotoURL, finanzasPermissions }}>
       {children}
     </AuthContext.Provider>
   );

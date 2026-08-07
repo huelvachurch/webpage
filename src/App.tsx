@@ -18,6 +18,10 @@ import AdminUsuarios from './pages/admin/AdminUsuarios';
 import AdminCursos from './pages/admin/AdminCursos';
 import AdminNewsletter from './pages/admin/AdminNewsletter';
 import AdminSettings from './pages/admin/AdminSettings';
+import AdminFinanzas from './pages/admin/AdminFinanzas';
+import AdminFinanzasPermissions from './pages/admin/AdminFinanzasPermissions';
+import AdminAreas from './pages/admin/AdminAreas';
+import SolicitudReembolso from './pages/SolicitudReembolso';
 import Cursos from './pages/Cursos';
 import MisCursos from './pages/MisCursos';
 import MisDatos from './pages/MisDatos';
@@ -303,23 +307,29 @@ function AppContent() {
           <Route path="/marca" element={<Marca />} />
           <Route path="/ninos" element={<Ninos />} />
           <Route path="/infantil" element={<Infantil />} />
+          <Route path="/solicitud-reembolso" element={<Navigate to="/reembolso" replace />} />
+          <Route path="/reembolso" element={<SolicitudReembolso />} />
           
           <Route path="/boletin/web/:date" element={<BoletinPublico forcedViewMode="web" />} />
           <Route path="/boletin/folleto/:date" element={<BoletinPublico forcedViewMode="revista" />} />
           <Route path="/boletin/:date" element={<BoletinPublico />} />
           
           {/* Admin Routes */}
+          <Route path="/admin" element={<Navigate to="/admin/administracion" replace />} />
           <Route path="/admin/comunicaciones" element={<Navigate to="/admin/anuncios" replace />} />
           <Route path="/admin/anuncios" element={<AdminComunicaciones />} />
           <Route path="/admin/administracion" element={<AdminDashboard />}>
             <Route path="usuarios" element={<AdminUsuarios />} />
             <Route path="celulas" element={<AdminCelulas />} />
+            <Route path="areas" element={<AdminAreas />} />
+            <Route path="finanzas" element={<AdminFinanzasPermissions />} />
             <Route index element={<Navigate to="usuarios" replace />} />
           </Route>
           <Route path="/admin/cursos" element={<Navigate to="/admin/docencia" replace />} />
           <Route path="/admin/docencia" element={<AdminCursos />} />
           <Route path="/admin/newsletter" element={<Navigate to="/admin/boletines" replace />} />
           <Route path="/admin/boletines" element={<AdminNewsletter />} />
+          <Route path="/admin/finanzas" element={<AdminFinanzas />} />
           <Route path="/admin/ajustes" element={<AdminSettings />} />
         </Routes>
       </main>

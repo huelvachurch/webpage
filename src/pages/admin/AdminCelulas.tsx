@@ -27,20 +27,20 @@ export default function AdminCelulas() {
   const [isAdding, setIsAdding] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-  const isSuperAdmin = roles.includes('superadmin');
+  const isAdmin = roles.includes('admin') || roles.includes('superadmin');
 
   // Redirect if not authorized
   useEffect(() => {
     if (isAuthReady && !loading) {
-      if (!user || !isSuperAdmin) {
+      if (!user || !isAdmin) {
         navigate('/');
       }
     }
-  }, [user, isSuperAdmin, loading, isAuthReady, navigate]);
+  }, [user, isAdmin, loading, isAuthReady, navigate]);
 
   // Load from Firestore
   useEffect(() => {
-    if (!isSuperAdmin) return;
+    if (!isAdmin) return;
     const q = query(collection(db, 'celulas'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Celula[] = [];
