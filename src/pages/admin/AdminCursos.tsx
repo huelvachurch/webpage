@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, Edit2, Trash2, X, Save, Image as ImageIcon, Search, Filter, 
   Eye, GraduationCap, Calendar, Clock, Users, CheckCircle, AlertCircle, 
   ChevronRight, ArrowLeft, BookOpen, Settings, Check, ListTodo, Paperclip, 
-  Heading, Bold, Italic, Link, FileText, ChevronDown, ChevronUp, Award
+  Heading, Bold, Italic, Link, FileText, ChevronDown, ChevronUp, Award, Edit3, Layout
 } from 'lucide-react';
 import { 
   collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, 
@@ -14,6 +14,8 @@ import { db, auth, handleFirestoreError, OperationType } from '../../firebase';
 import { useAuth } from '../../AuthContext';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
+import { TheoryMarkdown } from '../../components/TheoryMarkdown';
+import { VisualBlockEditor } from '../../components/VisualBlockEditor';
 
 interface Course {
   id: string;
@@ -91,16 +93,167 @@ export default function AdminCursos() {
   const [activeClassId, setActiveClassId] = useState<string | null>(null);
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isAnalyzingPdf, setIsAnalyzingPdf] = useState(false);
+  const [showSaveToast, setShowSaveToast] = useState(false);
+
+  // Helper to detect isolated enumerations and format them as Markdown subtitles (##)
+  const formatIsolatedEnumerationsAsSubtitles = (text: string): string => {
+    if (!text) return text;
+    const lines = text.split('\n');
+    const resultLines: string[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      const match = trimmed.match(/^(\d+)[.)]\s+(.+)$/);
+      if (match && !trimmed.startsWith('>') && !trimmed.startsWith('#')) {
+        const currentNum = parseInt(match[1], 10);
+        const prevNum = currentNum - 1;
+        const nextNum = currentNum + 1;
+
+        let hasPrevInList = false;
+        for (let k = i - 1; k >= 0; k--) {
+          const backLine = lines[k].trim();
+          if (backLine.startsWith('#')) break;
+          const backMatch = backLine.match(/^(\d+)[.)]\s+/);
+          if (backMatch && parseInt(backMatch[1], 10) === prevNum) {
+            hasPrevInList = true;
+            break;
+          }
+        }
+
+        let hasNextInList = false;
+        for (let j = i + 1; j < lines.length; j++) {
+          const aheadLine = lines[j].trim();
+          if (aheadLine.startsWith('#')) break;
+          const aheadMatch = aheadLine.match(/^(\d+)[.)]\s+/);
+          if (aheadMatch && parseInt(aheadMatch[1], 10) === nextNum) {
+            hasNextInList = true;
+            break;
+          }
+        }
+
+        if (!hasPrevInList && !hasNextInList) {
+          resultLines.push(`## ${trimmed}`);
+          continue;
+        }
+      }
+      resultLines.push(line);
+    }
+
+    return resultLines.join('\n');
+  };
+
+  const handleSimulateSave = async () => {
+    if (activeStep) {
+      if (activeStep.type === 'theory') {
+        await handleUpdateStepFields({
+          content: activeStep.content || '',
+          attachments: activeStep.attachments || []
+        });
+      } else if (activeStep.type === 'quiz') {
+        await handleUpdateStepFields({
+          questions: activeStep.questions || []
+        });
+      }
+    }
+    setShowSaveToast(true);
+    setTimeout(() => setShowSaveToast(false), 2500);
+  };
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePdfFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== 'application/pdf') {
+      alert('Por favor, selecciona un archivo PDF válido.');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('El archivo es muy pesado. El tamaño máximo es 5MB para asegurar un análisis rápido.');
+      return;
+    }
+
+    try {
+      setIsAnalyzingPdf(true);
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64Data = (reader.result as string).split(',')[1];
+          const res = await fetch('/api/gemini/analyze-pdf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pdfBase64: base64Data, mimeType: file.type })
+          });
+          
+          if (!res.ok) {
+            let errorMsg = 'Error analizando PDF';
+            try {
+              const data = await res.json();
+              errorMsg = data.error || errorMsg;
+            } catch (e) {}
+            throw new Error(errorMsg);
+          }
+          
+          const data = await res.json();
+          if (data.content) {
+            const processedContent = formatIsolatedEnumerationsAsSubtitles(data.content);
+            handleUpdateStepFields({ content: processedContent });
+          }
+        } catch (error: any) {
+          console.error("Error AI PDF:", error);
+          if (error.message.includes('Failed to fetch')) {
+             alert('Error de conexión o archivo demasiado grande. Intenta con un PDF más pequeño o revisa tu conexión.');
+          } else {
+             alert(error.message || 'Ocurrió un error al analizar el PDF con IA.');
+          }
+        } finally {
+          setIsAnalyzingPdf(false);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+      };
+      reader.onerror = () => {
+        alert('Error al leer el archivo.');
+        setIsAnalyzingPdf(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error(error);
+      setIsAnalyzingPdf(false);
+    }
+  };
 
   // States for deleting items and collapsing/expanding sidebar on mobile
   const [courseToDeleteId, setCourseToDeleteId] = useState<string | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [classToDelete, setClassToDelete] = useState<{ id: string; title: string } | null>(null);
   const [stepToDelete, setStepToDelete] = useState<{ classId: string; stepId: string; title: string } | null>(null);
-  const [isSidebarCollapsedOnMobile, setIsSidebarCollapsedOnMobile] = useState(true);
+  const [isSidebarCollapsedOnMobile, setIsSidebarCollapsedOnMobile] = useState(false);
+  const [isProgramaCollapsed, setIsProgramaCollapsed] = useState(false);
+
+  // Inline step title editing state
+  const [isEditingStepTitle, setIsEditingStepTitle] = useState(false);
+  const [editingStepTitleValue, setEditingStepTitleValue] = useState('');
+
+  // Theory & Quiz view mode & interactive preview states
+  const [theoryViewMode, setTheoryViewMode] = useState<'editor' | 'preview' | 'both'>('editor');
+  const [quizViewMode, setQuizViewMode] = useState<'editor' | 'preview'>('editor');
+  const [quizPreviewAnswers, setQuizPreviewAnswers] = useState<Record<number, any>>({});
+  const [quizPreviewSubmitted, setQuizPreviewSubmitted] = useState(false);
+  const [showGuidelineForQuestion, setShowGuidelineForQuestion] = useState<Record<number, boolean>>({});
+
+  useEffect(() => {
+    setIsEditingStepTitle(false);
+    setQuizPreviewAnswers({});
+    setQuizPreviewSubmitted(false);
+    setShowGuidelineForQuestion({});
+  }, [activeStepId]);
 
   // Markdown Editor Tooling
-  const [isPreviewMode, setIsPreviewMode] = useState(false);
   
   // Attachment Input State
   const [newAttachmentName, setNewAttachmentName] = useState('');
@@ -360,7 +513,7 @@ export default function AdminCursos() {
     try {
       const nextOrder = workspaceClasses.length;
       await addDoc(collection(db, 'courses', activeWorkspaceCourse.id, 'classes'), {
-        title: `Sección (Clase) ${workspaceClasses.length + 1}`,
+        title: `Clase ${workspaceClasses.length + 1}`,
         description: '',
         order: nextOrder,
         requiresPrevious: false,
@@ -475,27 +628,6 @@ export default function AdminCursos() {
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `courses/${activeWorkspaceCourse.id}/classes/${classId}/steps`);
     }
-  };
-
-  // Helper text utility injecting markdown
-  const injectMarkdownMarkup = (prefix: string, suffix: string = '') => {
-    if (!activeStep || activeStep.type !== 'theory') return;
-    const textarea = document.getElementById('theory-textarea') as HTMLTextAreaElement;
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const text = textarea.value;
-    const selectedText = text.substring(start, end);
-    const replacement = prefix + (selectedText || 'texto') + suffix;
-
-    const newContent = text.substring(0, start) + replacement + text.substring(end);
-    handleUpdateStepFields({ content: newContent });
-    
-    setTimeout(() => {
-      textarea.focus();
-      textarea.setSelectionRange(start + prefix.length, start + prefix.length + (selectedText || 'texto').length);
-    }, 10);
   };
 
   // Attachments Manager
@@ -811,21 +943,34 @@ export default function AdminCursos() {
                       className="grid grid-cols-1 lg:grid-cols-12 min-h-[600px]"
                     >
                        {/* Left Sidebar (col-span-4): Clases & Sections tree */}
-                      <div className="lg:col-span-4 border-r border-slate-100 flex flex-col bg-slate-50/50 lg:max-h-[70vh] lg:overflow-y-auto">
+                      <div className={`border-r border-slate-100 flex flex-col bg-slate-50/50 lg:max-h-[70vh] lg:overflow-y-auto transition-all ${
+                        isProgramaCollapsed ? 'hidden' : 'lg:col-span-4'
+                      }`}>
                         <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white">
-                          <div className="flex items-center justify-between w-full lg:w-auto">
-                            <h2 className="text-xs font-black uppercase tracking-widest text-[#008080] flex items-center gap-1.5">
+                          <div className="flex items-center justify-between w-full gap-4">
+                            <h2 className="text-xs font-black uppercase tracking-widest text-[#008080] flex items-center gap-1.5 shrink-0">
                               <ListTodo className="w-4 h-4 text-[#008080]/65" />
                               Programa ({workspaceClasses.length})
                             </h2>
-                            {/* Mobile Collapse/Expand Trigger Button */}
-                            <button
-                              type="button"
-                              onClick={() => setIsSidebarCollapsedOnMobile(!isSidebarCollapsedOnMobile)}
-                              className="lg:hidden text-[10px] font-black uppercase tracking-wider text-secondary bg-secondary/10 hover:bg-secondary/20 px-3 py-1.5 rounded-xl transition-all cursor-pointer"
-                            >
-                              {isSidebarCollapsedOnMobile ? 'Mostrar Temario ▾' : 'Ocultar Temario ▴'}
-                            </button>
+                            <div className="flex items-center gap-2">
+                              {/* Mobile Collapse/Expand Trigger Button */}
+                              <button
+                                type="button"
+                                onClick={() => setIsSidebarCollapsedOnMobile(!isSidebarCollapsedOnMobile)}
+                                className="lg:hidden text-[10px] font-black uppercase tracking-wider text-secondary bg-secondary/10 hover:bg-secondary/20 px-3 py-1.5 rounded-xl transition-all cursor-pointer"
+                              >
+                                {isSidebarCollapsedOnMobile ? 'Mostrar Temario ▾' : 'Ocultar Temario ▴'}
+                              </button>
+                              {/* Desktop Collapse Trigger Button */}
+                              <button
+                                type="button"
+                                onClick={() => setIsProgramaCollapsed(true)}
+                                className="hidden lg:flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-primary bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-xl transition-all cursor-pointer border border-slate-200/60 shadow-2xs"
+                                title="Ocultar columna de Programa para ampliar editor"
+                              >
+                                <span>Ocultar ◄</span>
+                              </button>
+                            </div>
                           </div>
                           
                           <button
@@ -891,7 +1036,14 @@ export default function AdminCursos() {
                                     >
                                       <ChevronDown className="w-3.5 h-3.5" />
                                     </button>
-                                    <button 
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setActiveClassId(clase.id); setActiveStepId(null); setIsSidebarCollapsedOnMobile(true); }}
+                                      className="p-1 text-slate-400 hover:text-secondary transition-all cursor-pointer"
+                                      title="Configuración Técnica"
+                                    >
+                                      <Settings className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
                                       onClick={(e) => { e.stopPropagation(); handleDeleteWorkspaceClass(clase.id); }}
                                       className="p-1 text-slate-300 hover:text-red-500 transition-all cursor-pointer"
                                       title="Borrar clase"
@@ -981,26 +1133,39 @@ export default function AdminCursos() {
                         </div>
                       </div>
 
-                      {/* Right Panel (col-span-8): Interactive Workspace Rich Editor */}
-                      <div className="lg:col-span-8 p-8 flex flex-col max-h-[70vh] overflow-y-auto bg-white">
+                      {/* Right Panel (col-span-8 or 12): Interactive Workspace Rich Editor */}
+                      <div className={`p-8 flex flex-col max-h-[70vh] overflow-y-auto bg-white transition-all ${
+                        isProgramaCollapsed ? 'lg:col-span-12' : 'lg:col-span-8'
+                      }`}>
+                        {isProgramaCollapsed && (
+                          <div className="mb-4 flex items-center justify-between bg-teal-50 border border-teal-100 px-4 py-2.5 rounded-2xl">
+                            <div className="flex items-center gap-2 text-xs font-bold text-teal-800">
+                              <ListTodo className="w-4 h-4 text-teal-600" />
+                              <span>Programa ocultado (Vista de Editor ampliada)</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setIsProgramaCollapsed(false)}
+                              className="text-xs font-bold bg-white text-teal-700 hover:bg-teal-700 hover:text-white px-3 py-1.5 rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer border border-teal-200"
+                            >
+                              <ListTodo className="w-3.5 h-3.5" />
+                              Mostrar Programa
+                            </button>
+                          </div>
+                        )}
                         
                         {!activeClassId ? (
                           /* 2A.I NO CLASS CHOSEN PLACEHOLDER */
-                          <div className="flex-grow flex flex-col items-center justify-center py-24 text-center">
-                            <div className="w-20 h-20 bg-primary/5 text-primary rounded-3xl flex items-center justify-center mb-6">
-                              <BookOpen className="w-10 h-10" />
-                            </div>
-                            <h3 className="text-xl font-kenao text-primary mb-2">Comienza a diseñar tu temario</h3>
-                            <p className="text-primary/60 text-sm max-w-md leading-relaxed">
-                              Selecciona una de las secciones (clases) en el panel de la izquierda para diseñar sus condiciones o agregar clases de teoría y cuestionarios.
-                            </p>
-                          </div>
+                          <div className="flex-grow hidden"></div>
                         ) : !activeStepId ? (
                           /* 2A.II CLASS OPTIONS (Inline configuration) SELECTED */
                           <div className="space-y-8 animate-fade-in">
-                            <div className="border-b border-slate-100 pb-5">
-                              <span className="text-[10px] font-black uppercase tracking-widest text-secondary block mb-1">Configuración técnica</span>
-                              <h3 className="text-2xl font-kenao text-primary">Detalles de {activeClass.title}</h3>
+                            <div className="border-b border-slate-100 pb-5 flex items-start justify-between">
+                              <div>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-secondary block mb-1">Configuración técnica</span>
+                                <h3 className="text-2xl font-kenao text-primary">Detalles de {activeClass.title}</h3>
+                              </div>
+                              <button onClick={() => setActiveClassId(null)} className="p-2 bg-slate-50 text-slate-400 hover:text-slate-800 rounded-lg transition-colors cursor-pointer"><X className="w-4 h-4" /></button>
                             </div>
 
                             <div className="space-y-6 max-w-lg">
@@ -1069,105 +1234,181 @@ export default function AdminCursos() {
                                 <span className="text-[10px] font-black uppercase tracking-widest text-secondary block mb-1">
                                   Paso {activeStep.order + 1} • {activeStep.type === 'theory' ? '📝 TEORÍA' : '❓ CUESTIONARIO'}
                                 </span>
-                                <input
-                                  type="text"
-                                  value={activeStep.title}
-                                  onChange={(e) => handleUpdateStepFields({ title: e.target.value })}
-                                  className="text-2xl font-bold text-primary border-b border-transparent hover:border-slate-100 focus:border-secondary outline-none py-0.5 font-kenao"
-                                />
+                                {isEditingStepTitle ? (
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <input
+                                      type="text"
+                                      value={editingStepTitleValue}
+                                      onChange={(e) => setEditingStepTitleValue(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          if (editingStepTitleValue.trim()) {
+                                            handleUpdateStepFields({ title: editingStepTitleValue.trim() });
+                                          }
+                                          setIsEditingStepTitle(false);
+                                        } else if (e.key === 'Escape') {
+                                          setIsEditingStepTitle(false);
+                                        }
+                                      }}
+                                      autoFocus
+                                      className="px-3 py-1.5 rounded-xl border border-secondary outline-none focus:ring-2 focus:ring-secondary text-lg font-bold text-primary bg-white shadow-xs"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (editingStepTitleValue.trim()) {
+                                          handleUpdateStepFields({ title: editingStepTitleValue.trim() });
+                                        }
+                                        setIsEditingStepTitle(false);
+                                      }}
+                                      className="p-2 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-colors cursor-pointer"
+                                      title="Guardar título"
+                                    >
+                                      <Check className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setIsEditingStepTitle(false)}
+                                      className="p-2 bg-slate-200 text-slate-600 rounded-xl hover:bg-slate-300 transition-colors cursor-pointer"
+                                      title="Cancelar"
+                                    >
+                                      <X className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-3">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingStepTitleValue(activeStep.title);
+                                        setIsEditingStepTitle(true);
+                                      }}
+                                      className="p-1.5 bg-slate-50 text-slate-400 hover:text-secondary rounded-lg shrink-0 cursor-pointer transition-colors"
+                                      title="Editar título"
+                                    >
+                                      <Edit2 className="w-4 h-4" />
+                                    </button>
+                                    <h3
+                                      onClick={() => {
+                                        setEditingStepTitleValue(activeStep.title);
+                                        setIsEditingStepTitle(true);
+                                      }}
+                                      className="text-2xl font-bold text-primary py-0.5 font-kenao cursor-pointer hover:text-secondary transition-colors"
+                                      title="Haz clic para editar el título"
+                                    >
+                                      {activeStep.title}
+                                    </h3>
+                                  </div>
+                                )}
                               </div>
+                              <button onClick={() => setActiveStepId(null)} className="p-2 bg-slate-50 text-slate-400 hover:text-slate-800 rounded-lg transition-colors cursor-pointer self-start"><X className="w-4 h-4" /></button>
                             </div>
 
                             {/* CONDITIONAL RENDER INDIVIDUAL STEP TYPE */}
                             {activeStep.type === 'theory' ? (
                               /* ====================================
-                                 A. TEORÍA EDITOR WITH RICH FORMAT SHORTCUTS & SIMULTANEOUS SIDE-BY-SIDE PREVIEW
+                                 A. TEORÍA EDITOR WITH TABBED / SIDE-BY-SIDE VIEW MODES
                                  ==================================== */
                               <div className="space-y-6">
-                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-stretch">
-                                  
-                                  {/* LEFT COLUMN: ASSISTED RICH TEXT BOX */}
-                                  <div className="space-y-4">
-                                    <div className="flex flex-col gap-2.5">
-                                      <span className="text-[10px] font-black uppercase tracking-widest text-primary/40 block">Botones de Formato Rápido (Asistente)</span>
-                                      
-                                      <div className="flex flex-wrap gap-1.5 p-2 bg-slate-50 border border-slate-100 rounded-xl">
-                                        <button 
-                                          type="button"
-                                          onClick={() => injectMarkdownMarkup('### ')}
-                                          className="px-2.5 py-1.5 bg-white text-slate-700 hover:text-black rounded-lg text-[11px] font-bold border border-slate-150 transition-all flex items-center gap-1 cursor-pointer"
-                                          title="Título"
-                                        >
-                                          📌 Título
-                                        </button>
-                                        <button 
-                                          type="button"
-                                          onClick={() => injectMarkdownMarkup('#### ')}
-                                          className="px-2.5 py-1.5 bg-white text-slate-700 hover:text-black rounded-lg text-[11px] font-bold border border-slate-150 transition-all flex items-center gap-1 cursor-pointer"
-                                          title="Subtítulo"
-                                        >
-                                          📑 Subtítulo
-                                        </button>
-                                        <button 
-                                          type="button"
-                                          onClick={() => injectMarkdownMarkup('**', '**')}
-                                          className="px-2.5 py-1.5 bg-white text-slate-700 hover:text-black rounded-lg text-[11px] font-bold border border-slate-150 transition-all flex items-center gap-1 cursor-pointer"
-                                          title="Destacar en Negrita"
-                                        >
-                                          ✍️ Negrita
-                                        </button>
-                                        <button 
-                                          type="button"
-                                          onClick={() => injectMarkdownMarkup('\n- Primer punto importante\n- Segundo punto relevante\n')}
-                                          className="px-2.5 py-1.5 bg-white text-slate-700 hover:text-black rounded-lg text-[11px] font-bold border border-slate-150 transition-all flex items-center gap-1 cursor-pointer"
-                                          title="Lista de Viñetas"
-                                        >
-                                          📝 Lista
-                                        </button>
-                                        <button 
-                                          type="button"
-                                          onClick={() => injectMarkdownMarkup('\n> "Porque de tal manera amó Dios al mundo..." — Juan 3:16\n')}
-                                          className="px-2.5 py-1.5 bg-secondary/15 text-primary hover:bg-secondary/35 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer"
-                                          title="Citar Versículos"
-                                        >
-                                          📖 Versículos
-                                        </button>
-                                        <button 
-                                          type="button"
-                                          onClick={() => injectMarkdownMarkup('\n> **Nota:** Explica este concepto de forma sencilla.\n')}
-                                          className="px-2.5 py-1.5 bg-amber-50 text-amber-800 hover:bg-amber-100/70 rounded-lg text-[11px] font-bold transition-all border border-amber-100 flex items-center gap-1 cursor-pointer"
-                                          title="Nota"
-                                        >
-                                          💡 Notas
-                                        </button>
+                                {/* Mode Switcher Tabs for Theory */}
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-100/80 p-1.5 rounded-2xl mb-6">
+                                  <div className="flex items-center gap-1 bg-slate-200/50 p-1 rounded-xl">
+                                    <button
+                                      type="button"
+                                      onClick={() => setTheoryViewMode('editor')}
+                                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                                        theoryViewMode === 'editor'
+                                          ? 'bg-white text-primary shadow-xs'
+                                          : 'text-slate-600 hover:text-slate-900'
+                                      }`}
+                                    >
+                                      <Edit3 className="w-4 h-4" />
+                                      Editor de Teoría (Bloques)
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setTheoryViewMode('preview')}
+                                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                                        theoryViewMode === 'preview'
+                                          ? 'bg-white text-primary shadow-xs'
+                                          : 'text-slate-600 hover:text-slate-900'
+                                      }`}
+                                    >
+                                      <Eye className="w-4 h-4" />
+                                      Vista Previa
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setTheoryViewMode('both')}
+                                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                                        theoryViewMode === 'both'
+                                          ? 'bg-white text-primary shadow-xs'
+                                          : 'text-slate-600 hover:text-slate-900'
+                                      }`}
+                                    >
+                                      <Layout className="w-4 h-4" />
+                                      Vista Dividida
+                                    </button>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 px-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => fileInputRef.current?.click()}
+                                      disabled={isAnalyzingPdf}
+                                      className="px-3.5 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-xl text-xs font-bold transition-all border border-indigo-100 flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
+                                      title="Subir PDF para extraer estructura con Inteligencia Artificial"
+                                    >
+                                      {isAnalyzingPdf ? '⏳ Analizando...' : '✨ Analizar PDF'}
+                                    </button>
+                                    <input
+                                      type="file"
+                                      accept="application/pdf"
+                                      className="hidden"
+                                      ref={fileInputRef}
+                                      onChange={handlePdfFileChange}
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* CONTENT CONTAINER DEPENDING ON THEORY VIEW MODE */}
+                                {theoryViewMode === 'editor' && (
+                                  <div className="bg-slate-50/50 p-6 border border-slate-200/60 rounded-2xl shadow-xs min-h-[450px]">
+                                    <VisualBlockEditor
+                                      content={activeStep.content || ''}
+                                      onChange={(newContent) => handleUpdateStepFields({ content: newContent })}
+                                    />
+                                  </div>
+                                )}
+
+                                {theoryViewMode === 'preview' && (
+                                  <div className="bg-white p-8 md:p-10 rounded-2xl border border-slate-200/80 shadow-xs min-h-[450px] prose prose-slate max-w-none text-slate-800 leading-relaxed font-sans">
+                                    <TheoryMarkdown content={activeStep.content || ''} />
+                                  </div>
+                                )}
+
+                                {theoryViewMode === 'both' && (
+                                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-stretch">
+                                    {/* LEFT COLUMN: VISUAL BLOCK EDITOR */}
+                                    <div className="space-y-3">
+                                      <span className="text-[10px] font-black uppercase tracking-widest text-primary/40 block">Constructor Visual</span>
+                                      <div className="bg-slate-50/50 p-6 border border-slate-200/60 rounded-2xl shadow-xs min-h-[400px]">
+                                        <VisualBlockEditor
+                                          content={activeStep.content || ''}
+                                          onChange={(newContent) => handleUpdateStepFields({ content: newContent })}
+                                        />
                                       </div>
                                     </div>
-
-                                    <textarea
-                                      id="theory-textarea"
-                                      rows={15}
-                                      value={activeStep.content || ''}
-                                      onChange={(e) => handleUpdateStepFields({ content: e.target.value })}
-                                      className="w-full p-5 rounded-2xl border border-slate-200 font-sans text-xs outline-none focus:ring-2 focus:ring-secondary leading-relaxed bg-slate-50/20 shadow-inner resize-y min-h-[300px]"
-                                      placeholder="Escribe el tema aquí de forma sencilla, puedes hacer clic en los botones de formato de arriba para ayudarte..."
-                                    />
-                                    <span className="text-[10px] text-slate-400 font-semibold italic">Usa los botones superiores para agregar versículos bíblicos de manera hermosa sin trucos complejos.</span>
-                                  </div>
-
-                                  {/* RIGHT COLUMN: REALTIME PREVIEW ON STUDY PAPER */}
-                                  <div className="flex flex-col">
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-primary/40 block mb-2.5">Vista Previa en Vivo (Estudio del Alumno)</span>
                                     
-                                    <div className="flex-grow p-6 md:p-8 bg-slate-50 border border-slate-200/60 rounded-2xl max-h-[420px] overflow-y-auto shadow-sm prose prose-slate max-w-none text-slate-800 leading-relaxed font-sans text-xs">
-                                      {activeStep.content ? (
-                                        <ReactMarkdown>{activeStep.content}</ReactMarkdown>
-                                      ) : (
-                                        <span className="text-slate-400 italic font-semibold">Empieza a escribir en la caja izquierda para ver la hoja de estudio cobrar vida...</span>
-                                      )}
+                                    {/* RIGHT COLUMN: PREVIEW */}
+                                    <div className="space-y-3">
+                                      <span className="text-[10px] font-black uppercase tracking-widest text-primary/40 block">Vista Previa</span>
+                                      <div className="bg-white p-8 rounded-2xl border border-slate-200/60 shadow-xs min-h-[400px] prose prose-slate max-w-none text-slate-800 leading-relaxed font-sans">
+                                        <TheoryMarkdown content={activeStep.content || ''} />
+                                      </div>
                                     </div>
                                   </div>
-
-                                </div>
+                                )}
 
                                 {/* Attachments block */}
                                 <div className="pt-6 border-t border-slate-100">
@@ -1220,285 +1461,620 @@ export default function AdminCursos() {
                                       Añadir
                                     </button>
                                   </div>
+
+                                    <div className="flex justify-end mt-4">
+                                      <button
+                                        type="button"
+                                        onClick={handleSimulateSave}
+                                        className="bg-primary text-white hover:bg-secondary hover:text-primary px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-sm hover:shadow-md flex items-center gap-2 cursor-pointer"
+                                      >
+                                        <Save className="w-4 h-4" />
+                                        Guardar cambios
+                                      </button>
+                                    </div>
                                 </div>
                               </div>
                             ) : (
                               /* ====================================
-                                 B. CUESTIONARIO TEST MULTI CHOICE BUILDER
+                                 B. CUESTIONARIO TEST MULTI CHOICE BUILDER & VISTA PREVIA
                                  ==================================== */
                               <div className="space-y-6">
-                                <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-                                  <h4 className="text-xs font-black uppercase tracking-widest text-primary/40">Preguntas del Examen</h4>
-                                  <button
-                                    onClick={handleAddQuizQuestion}
-                                    className="text-[10px] font-black uppercase tracking-wider text-secondary bg-secondary/10 px-3.5 py-1.5 rounded-xl hover:bg-secondary hover:text-primary transition-all flex items-center gap-1 cursor-pointer"
-                                  >
-                                    <Plus className="w-3.5 h-3.5" /> Añadir Pregunta
-                                  </button>
+                                {/* Mode Switcher Tabs */}
+                                <div className="flex items-center justify-between bg-slate-100/80 p-1.5 rounded-2xl mb-6">
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => setQuizViewMode('editor')}
+                                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                                        quizViewMode === 'editor'
+                                          ? 'bg-white text-primary shadow-xs'
+                                          : 'text-slate-500 hover:text-slate-800'
+                                      }`}
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                      Editor de Preguntas ({(activeStep.questions || []).length})
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => setQuizViewMode('preview')}
+                                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                                        quizViewMode === 'preview'
+                                          ? 'bg-primary text-white shadow-xs'
+                                          : 'text-slate-500 hover:text-slate-800'
+                                      }`}
+                                    >
+                                      <Eye className="w-3.5 h-3.5" />
+                                      Vista Previa del Cuestionario
+                                    </button>
+                                  </div>
+
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 hidden sm:inline px-3">
+                                    {quizViewMode === 'editor' ? 'Modo Edición' : 'Modo Vista Alumno'}
+                                  </span>
                                 </div>
 
-                                <div className="space-y-6">
-                                  {(activeStep.questions || []).map((qItem, qIdx) => {
-                                    const qType = qItem.type || 'single';
+                                {quizViewMode === 'editor' ? (
+                                  <div className="space-y-6">
+                                    <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                                      <h4 className="text-xs font-black uppercase tracking-widest text-primary/40">Preguntas del Examen</h4>
+                                      <button
+                                        onClick={handleAddQuizQuestion}
+                                        className="text-[10px] font-black uppercase tracking-wider text-secondary bg-secondary/10 px-3.5 py-1.5 rounded-xl hover:bg-secondary hover:text-primary transition-all flex items-center gap-1 cursor-pointer"
+                                      >
+                                        <Plus className="w-3.5 h-3.5" /> Añadir Pregunta
+                                      </button>
+                                    </div>
 
-                                    return (
-                                      <div key={qIdx} className="bg-slate-50 border border-slate-200 p-6 md:p-8 rounded-[2.5rem] space-y-6 relative shadow-xs">
-                                        <button
-                                          type="button"
-                                          onClick={() => handleRemoveQuizQuestion(qIdx)}
-                                          className="absolute top-6 right-6 p-2 hover:bg-slate-100/80 text-slate-400 hover:text-red-500 rounded-xl transition-all cursor-pointer"
-                                          title="Eliminar pregunta"
-                                        >
-                                          <X className="w-4 h-4" />
-                                        </button>
+                                    <div className="space-y-6">
+                                      {(activeStep.questions || []).map((qItem, qIdx) => {
+                                        const qType = qItem.type || 'single';
 
-                                        {/* HEADER SUMMARY */}
-                                        <div className="flex flex-col gap-2 border-b border-slate-100 pb-4">
-                                          <span className="text-[10px] font-black uppercase tracking-widest text-primary/40 block mb-0.5">
-                                            Pregunta {qIdx + 1}
-                                          </span>
-                                          
-                                          {/* Type selector */}
-                                          <div className="flex flex-wrap items-center gap-1.5 bg-slate-200/50 p-1 rounded-2xl w-full max-w-2xl">
-                                            {[
-                                              { key: 'single', label: '🔘 Opción Única' },
-                                              { key: 'multiple', label: '☑️ Selección Múltiple' },
-                                              { key: 'text', label: '✍️ Escribir Libre' },
-                                              { key: 'pairs', label: '🧩 Relacionar Conceptos' }
-                                            ].map((typeObj) => (
-                                              <button
-                                                type="button"
-                                                key={typeObj.key}
-                                                onClick={() => {
-                                                  const newType = typeObj.key as 'single' | 'multiple' | 'text' | 'pairs';
-                                                  const updatedFields: any = { type: newType };
-                                                  
-                                                  if (newType === 'single') {
-                                                    updatedFields.options = qItem.options || ['Opción A', 'Opción B', 'Opción C', 'Opción D'];
-                                                    updatedFields.correctAnswer = qItem.correctAnswer !== undefined ? qItem.correctAnswer : 0;
-                                                  } else if (newType === 'multiple') {
-                                                    updatedFields.options = qItem.options || ['Opción A', 'Opción B', 'Opción C', 'Opción D'];
-                                                    updatedFields.correctAnswers = qItem.correctAnswers || [0];
-                                                  } else if (newType === 'text') {
-                                                    updatedFields.guidelineAnswer = qItem.guidelineAnswer || 'Escribe aquí la respuesta ideal para orientar al alumno.';
-                                                  } else if (newType === 'pairs') {
-                                                    updatedFields.pairs = qItem.pairs || [
-                                                      { left: 'Primer Concepto', right: 'Su Significado' },
-                                                      { left: 'Segundo Concepto', right: 'Su Significado' }
-                                                    ];
-                                                  }
-                                                  
-                                                  handleUpdateQuizQuestion(qIdx, updatedFields);
-                                                }}
-                                                className={`flex-grow py-2 px-3 text-[11px] font-bold rounded-xl transition-all cursor-pointer ${
-                                                  qType === typeObj.key 
-                                                    ? 'bg-primary text-white shadow-sm' 
-                                                    : 'text-slate-500 hover:text-slate-800 hover:bg-white/50'
-                                                }`}
-                                              >
-                                                {typeObj.label}
-                                              </button>
-                                            ))}
-                                          </div>
-                                        </div>
+                                        return (
+                                          <div key={qIdx} className="bg-slate-50 border border-slate-200 p-6 md:p-8 rounded-[2.5rem] space-y-6 relative shadow-xs">
+                                            <button
+                                              type="button"
+                                              onClick={() => handleRemoveQuizQuestion(qIdx)}
+                                              className="absolute top-6 right-6 p-2 hover:bg-slate-100/80 text-slate-400 hover:text-red-500 rounded-xl transition-all cursor-pointer"
+                                              title="Eliminar pregunta"
+                                            >
+                                              <X className="w-4 h-4" />
+                                            </button>
 
-                                        {/* QUESTION TITLE TEXT */}
-                                        <div className="space-y-1.5">
-                                          <label className="block text-[9px] font-black uppercase tracking-widest text-primary/30">
-                                            Enunciado o Pregunta Teológica
-                                          </label>
-                                          <input
-                                            type="text"
-                                            value={qItem.question}
-                                            placeholder="Ej: ¿Cuáles son las tres virtudes teologales?"
-                                            onChange={(e) => handleUpdateQuizQuestion(qIdx, { question: e.target.value })}
-                                            className="w-full bg-white px-4 py-3.5 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-secondary text-xs font-bold text-primary"
-                                          />
-                                        </div>
-
-                                        {/* DETAILED OPTIONS DEPENDING ON TYPE */}
-                                        {qType === 'single' && (
-                                          <div className="space-y-4">
-                                            <span className="block text-[9px] font-black uppercase tracking-widest text-primary/30">Configuración de Opciones (Elige la correcta)</span>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                              {(qItem.options || ['Opción A', 'Opción B', 'Opción C', 'Opción D']).map((opt, oIdx) => (
-                                                <div key={oIdx} className="bg-white p-4.5 rounded-2xl border border-slate-200/80 space-y-2">
-                                                  <div className="flex items-center justify-between">
-                                                    <span className="text-[9px] font-black uppercase tracking-widest text-primary/30">Opción {oIdx + 1}</span>
-                                                    <label className="inline-flex items-center gap-1.5 text-[10px] font-black text-slate-500 cursor-pointer">
-                                                      <input
-                                                        type="radio"
-                                                        name={`correct-${qIdx}`}
-                                                        checked={qItem.correctAnswer === oIdx}
-                                                        onChange={() => handleUpdateQuizQuestion(qIdx, { correctAnswer: oIdx })}
-                                                        className="w-4.5 h-4.5 text-emerald-500 focus:ring-emerald-400 cursor-pointer"
-                                                      />
-                                                      Correcta
-                                                    </label>
-                                                  </div>
-                                                  <input
-                                                    type="text"
-                                                    value={opt}
-                                                    onChange={(e) => {
-                                                      const currentOpts = qItem.options || ['Opción A', 'Opción B', 'Opción C', 'Opción D'];
-                                                      const updatedOpts = [...currentOpts];
-                                                      updatedOpts[oIdx] = e.target.value;
-                                                      handleUpdateQuizQuestion(qIdx, { options: updatedOpts });
-                                                    }}
-                                                    className="w-full bg-slate-50/50 px-3 py-2 rounded-xl border border-slate-250 outline-none focus:ring-1 focus:ring-secondary text-xs font-semibold"
-                                                  />
-                                                </div>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        )}
-
-                                        {qType === 'multiple' && (
-                                          <div className="space-y-4">
-                                            <span className="block text-[9px] font-black uppercase tracking-widest text-primary/30">Configuración de Opciones (Marca todas las correctas)</span>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                              {(qItem.options || ['Opción A', 'Opción B', 'Opción C', 'Opción D']).map((opt, oIdx) => {
-                                                const correctList = qItem.correctAnswers || [];
-                                                const isCorrect = correctList.includes(oIdx);
-                                                
-                                                return (
-                                                  <div key={oIdx} className="bg-white p-4.5 rounded-2xl border border-slate-200/80 space-y-2">
-                                                    <div className="flex items-center justify-between">
-                                                      <span className="text-[9px] font-black uppercase tracking-widest text-primary/30">Opción {oIdx + 1}</span>
-                                                      <label className="inline-flex items-center gap-1.5 text-[10px] font-black text-slate-500 cursor-pointer">
-                                                        <input
-                                                          type="checkbox"
-                                                          checked={isCorrect}
-                                                          onChange={() => {
-                                                            let updated;
-                                                            if (isCorrect) {
-                                                              updated = correctList.filter((val: number) => val !== oIdx);
-                                                            } else {
-                                                              updated = [...correctList, oIdx];
-                                                            }
-                                                            handleUpdateQuizQuestion(qIdx, { correctAnswers: updated });
-                                                          }}
-                                                          className="w-4.5 h-4.5 rounded text-emerald-500 focus:ring-emerald-400 cursor-pointer"
-                                                        />
-                                                        Correcta
-                                                      </label>
-                                                    </div>
-                                                    <input
-                                                      type="text"
-                                                      value={opt}
-                                                      onChange={(e) => {
-                                                        const currentOpts = qItem.options || ['Opción A', 'Opción B', 'Opción C', 'Opción D'];
-                                                        const updatedOpts = [...currentOpts];
-                                                        updatedOpts[oIdx] = e.target.value;
-                                                        handleUpdateQuizQuestion(qIdx, { options: updatedOpts });
-                                                      }}
-                                                      className="w-full bg-slate-50/50 px-3 py-2 rounded-xl border border-slate-250 outline-none focus:ring-1 focus:ring-secondary text-xs font-semibold"
-                                                    />
-                                                  </div>
-                                                );
-                                              })}
-                                            </div>
-                                          </div>
-                                        )}
-
-                                        {qType === 'text' && (
-                                          <div className="bg-white p-6 rounded-2xl border border-slate-200 space-y-3">
-                                            <div className="flex items-center gap-1.5">
-                                              <span className="text-sm">💡</span>
-                                              <span className="text-[10px] font-black uppercase tracking-widest text-primary/45">Explicación o Criterio de Respuestas (Modelo)</span>
-                                            </div>
-                                            <p className="text-[10px] text-slate-500 font-medium">Esta explicación se le mostrará al alumno una vez que termine de redactar su texto libre para que pueda realizar una autoevaluación.</p>
-                                            
-                                            <textarea
-                                              value={qItem.guidelineAnswer || ''}
-                                              onChange={(e) => handleUpdateQuizQuestion(qIdx, { guidelineAnswer: e.target.value })}
-                                              rows={4}
-                                              placeholder="Ej: Las tres virtudes teologales de acuerdo a 1 Corintios 13 son la Fe, la Esperanza y el Amor (Caridad). El amor posee un carácter permanente..."
-                                              className="w-full bg-slate-50/40 p-4 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-secondary text-xs leading-relaxed font-semibold text-slate-700"
-                                            />
-                                          </div>
-                                        )}
-
-                                        {qType === 'pairs' && (
-                                          <div className="bg-white p-6 rounded-2xl border border-slate-200 space-y-4">
-                                            <div className="flex items-center justify-between">
-                                              <div className="flex items-center gap-1.5">
-                                                <span className="text-sm">🧩</span>
-                                                <span className="text-[10px] font-black uppercase tracking-widest text-primary/45">Parejas de Relaciones Directas</span>
-                                              </div>
+                                            {/* HEADER SUMMARY */}
+                                            <div className="flex flex-col gap-2 border-b border-slate-100 pb-4">
+                                              <span className="text-[10px] font-black uppercase tracking-widest text-primary/40 block mb-0.5">
+                                                Pregunta {qIdx + 1}
+                                              </span>
                                               
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  const currentPairs = qItem.pairs || [];
-                                                  const updatedPairs = [...currentPairs, { left: 'Concepto', right: 'Definición Relacionada' }];
-                                                  handleUpdateQuizQuestion(qIdx, { pairs: updatedPairs });
-                                                }}
-                                                className="text-[10px] font-black text-secondary bg-secondary/10 px-3 py-1.5 rounded-xl hover:bg-secondary hover:text-primary transition-all flex items-center gap-1 cursor-pointer"
-                                              >
-                                                <Plus className="w-3.5 h-3.5" /> Añadir Pareja
-                                              </button>
+                                              {/* Type selector */}
+                                              <div className="flex flex-wrap items-center gap-1.5 bg-slate-200/50 p-1 rounded-2xl w-full max-w-2xl">
+                                                {[
+                                                  { key: 'single', label: '🔘 Opción Única' },
+                                                  { key: 'multiple', label: '☑️ Selección Múltiple' },
+                                                  { key: 'text', label: '✍️ Escribir Libre' },
+                                                  { key: 'pairs', label: '🧩 Relacionar Conceptos' }
+                                                ].map((typeObj) => (
+                                                  <button
+                                                    type="button"
+                                                    key={typeObj.key}
+                                                    onClick={() => {
+                                                      const newType = typeObj.key as 'single' | 'multiple' | 'text' | 'pairs';
+                                                      const updatedFields: any = { type: newType };
+                                                      
+                                                      if (newType === 'single') {
+                                                        updatedFields.options = qItem.options || ['Opción A', 'Opción B', 'Opción C', 'Opción D'];
+                                                        updatedFields.correctAnswer = qItem.correctAnswer !== undefined ? qItem.correctAnswer : 0;
+                                                      } else if (newType === 'multiple') {
+                                                        updatedFields.options = qItem.options || ['Opción A', 'Opción B', 'Opción C', 'Opción D'];
+                                                        updatedFields.correctAnswers = qItem.correctAnswers || [0];
+                                                      } else if (newType === 'text') {
+                                                        updatedFields.guidelineAnswer = qItem.guidelineAnswer || 'Escribe aquí la respuesta ideal para orientar al alumno.';
+                                                      } else if (newType === 'pairs') {
+                                                        updatedFields.pairs = qItem.pairs || [
+                                                          { left: 'Primer Concepto', right: 'Su Significado' },
+                                                          { left: 'Segundo Concepto', right: 'Su Significado' }
+                                                        ];
+                                                      }
+                                                      
+                                                      handleUpdateQuizQuestion(qIdx, updatedFields);
+                                                    }}
+                                                    className={`flex-grow py-2 px-3 text-[11px] font-bold rounded-xl transition-all cursor-pointer ${
+                                                      qType === typeObj.key 
+                                                        ? 'bg-primary text-white shadow-sm' 
+                                                        : 'text-slate-500 hover:text-slate-800 hover:bg-white/50'
+                                                    }`}
+                                                  >
+                                                    {typeObj.label}
+                                                  </button>
+                                                ))}
+                                              </div>
                                             </div>
-                                            
-                                            <p className="text-[10px] text-slate-500 font-medium italic">Los estudiantes verán la columna izquierda fija, y un selector con las opciones de la columna derecha mezcladas aleatoriamente para unirlas.</p>
 
-                                            <div className="space-y-3 pt-2">
-                                              {(qItem.pairs || []).map((pair: any, pIdx: number) => (
-                                                <div key={pIdx} className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center bg-slate-50/50 p-3 rounded-xl border border-slate-150 relative">
-                                                  <input
-                                                    type="text"
-                                                    value={pair.left}
-                                                    placeholder="Concepto Izquierda (Ej. Amor)"
-                                                    onChange={(e) => {
-                                                      const updatedPairs = [...qItem.pairs];
-                                                      updatedPairs[pIdx] = { ...pair, left: e.target.value };
-                                                      handleUpdateQuizQuestion(qIdx, { pairs: updatedPairs });
-                                                    }}
-                                                    className="flex-grow bg-white px-3 py-2 rounded-lg border border-slate-150 text-xs font-bold text-slate-700"
-                                                  />
-                                                  <span className="text-secondary text-center self-center shrink-0">↔️</span>
-                                                  <input
-                                                    type="text"
-                                                    value={pair.right}
-                                                    placeholder="Relación Derecha (Ej. El mayor de todas ellas)"
-                                                    onChange={(e) => {
-                                                      const updatedPairs = [...qItem.pairs];
-                                                      updatedPairs[pIdx] = { ...pair, right: e.target.value };
-                                                      handleUpdateQuizQuestion(qIdx, { pairs: updatedPairs });
-                                                    }}
-                                                    className="flex-grow bg-white px-3 py-2 rounded-lg border border-slate-150 text-xs font-semibold text-slate-600"
-                                                  />
+                                            {/* QUESTION TITLE TEXT */}
+                                            <div className="space-y-1.5">
+                                              <label className="block text-[9px] font-black uppercase tracking-widest text-primary/30">
+                                                Enunciado o Pregunta Teológica
+                                              </label>
+                                              <input
+                                                type="text"
+                                                value={qItem.question}
+                                                placeholder="Ej: ¿Cuáles son las tres virtudes teologales?"
+                                                onChange={(e) => handleUpdateQuizQuestion(qIdx, { question: e.target.value })}
+                                                className="w-full bg-white px-4 py-3.5 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-secondary text-xs font-bold text-primary"
+                                              />
+                                            </div>
+
+                                            {/* DETAILED OPTIONS DEPENDING ON TYPE */}
+                                            {qType === 'single' && (
+                                              <div className="space-y-4">
+                                                <span className="block text-[9px] font-black uppercase tracking-widest text-primary/30">Configuración de Opciones (Elige la correcta)</span>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                  {(qItem.options || ['Opción A', 'Opción B', 'Opción C', 'Opción D']).map((opt, oIdx) => (
+                                                    <div key={oIdx} className="bg-white p-4.5 rounded-2xl border border-slate-200/80 space-y-2">
+                                                      <div className="flex items-center justify-between">
+                                                        <span className="text-[9px] font-black uppercase tracking-widest text-primary/30">Opción {oIdx + 1}</span>
+                                                        <label className="inline-flex items-center gap-1.5 text-[10px] font-black text-slate-500 cursor-pointer">
+                                                          <input
+                                                            type="radio"
+                                                            name={`correct-${qIdx}`}
+                                                            checked={qItem.correctAnswer === oIdx}
+                                                            onChange={() => handleUpdateQuizQuestion(qIdx, { correctAnswer: oIdx })}
+                                                            className="w-4.5 h-4.5 text-emerald-500 focus:ring-emerald-400 cursor-pointer"
+                                                          />
+                                                          Correcta
+                                                        </label>
+                                                      </div>
+                                                      <input
+                                                        type="text"
+                                                        value={opt}
+                                                        onChange={(e) => {
+                                                          const currentOpts = qItem.options || ['Opción A', 'Opción B', 'Opción C', 'Opción D'];
+                                                          const updatedOpts = [...currentOpts];
+                                                          updatedOpts[oIdx] = e.target.value;
+                                                          handleUpdateQuizQuestion(qIdx, { options: updatedOpts });
+                                                        }}
+                                                        className="w-full bg-slate-50/50 px-3 py-2 rounded-xl border border-slate-250 outline-none focus:ring-1 focus:ring-secondary text-xs font-semibold"
+                                                      />
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              </div>
+                                            )}
+
+                                            {qType === 'multiple' && (
+                                              <div className="space-y-4">
+                                                <span className="block text-[9px] font-black uppercase tracking-widest text-primary/30">Configuración de Opciones (Marca todas las correctas)</span>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                  {(qItem.options || ['Opción A', 'Opción B', 'Opción C', 'Opción D']).map((opt, oIdx) => {
+                                                    const correctList = qItem.correctAnswers || [];
+                                                    const isCorrect = correctList.includes(oIdx);
+                                                    
+                                                    return (
+                                                      <div key={oIdx} className="bg-white p-4.5 rounded-2xl border border-slate-200/80 space-y-2">
+                                                        <div className="flex items-center justify-between">
+                                                          <span className="text-[9px] font-black uppercase tracking-widest text-primary/30">Opción {oIdx + 1}</span>
+                                                          <label className="inline-flex items-center gap-1.5 text-[10px] font-black text-slate-500 cursor-pointer">
+                                                            <input
+                                                              type="checkbox"
+                                                              checked={isCorrect}
+                                                              onChange={() => {
+                                                                let updated;
+                                                                if (isCorrect) {
+                                                                  updated = correctList.filter((val: number) => val !== oIdx);
+                                                                } else {
+                                                                  updated = [...correctList, oIdx];
+                                                                }
+                                                                handleUpdateQuizQuestion(qIdx, { correctAnswers: updated });
+                                                              }}
+                                                              className="w-4.5 h-4.5 rounded text-emerald-500 focus:ring-emerald-400 cursor-pointer"
+                                                            />
+                                                            Correcta
+                                                          </label>
+                                                        </div>
+                                                        <input
+                                                          type="text"
+                                                          value={opt}
+                                                          onChange={(e) => {
+                                                            const currentOpts = qItem.options || ['Opción A', 'Opción B', 'Opción C', 'Opción D'];
+                                                            const updatedOpts = [...currentOpts];
+                                                            updatedOpts[oIdx] = e.target.value;
+                                                            handleUpdateQuizQuestion(qIdx, { options: updatedOpts });
+                                                          }}
+                                                          className="w-full bg-slate-50/50 px-3 py-2 rounded-xl border border-slate-250 outline-none focus:ring-1 focus:ring-secondary text-xs font-semibold"
+                                                        />
+                                                      </div>
+                                                    );
+                                                  })}
+                                                </div>
+                                              </div>
+                                            )}
+
+                                            {qType === 'text' && (
+                                              <div className="bg-white p-6 rounded-2xl border border-slate-200 space-y-3">
+                                                <div className="flex items-center gap-1.5">
+                                                  <span className="text-sm">💡</span>
+                                                  <span className="text-[10px] font-black uppercase tracking-widest text-primary/45">Explicación o Criterio de Respuestas (Modelo)</span>
+                                                </div>
+                                                <p className="text-[10px] text-slate-500 font-medium">Esta explicación se le mostrará al alumno una vez que termine de redactar su texto libre para que pueda realizar una autoevaluación.</p>
+                                                
+                                                <textarea
+                                                  value={qItem.guidelineAnswer || ''}
+                                                  onChange={(e) => handleUpdateQuizQuestion(qIdx, { guidelineAnswer: e.target.value })}
+                                                  rows={4}
+                                                  placeholder="Ej: Las tres virtudes teologales de acuerdo a 1 Corintios 13 son la Fe, la Esperanza y el Amor (Caridad). El amor posee un carácter permanente..."
+                                                  className="w-full bg-slate-50/40 p-4 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-secondary text-xs leading-relaxed font-semibold text-slate-700"
+                                                />
+                                              </div>
+                                            )}
+
+                                            {qType === 'pairs' && (
+                                              <div className="bg-white p-6 rounded-2xl border border-slate-200 space-y-4">
+                                                <div className="flex items-center justify-between">
+                                                  <div className="flex items-center gap-1.5">
+                                                    <span className="text-sm">🧩</span>
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-primary/45">Parejas de Relaciones Directas</span>
+                                                  </div>
+                                                  
                                                   <button
                                                     type="button"
                                                     onClick={() => {
-                                                      const updatedPairs = qItem.pairs.filter((_: any, idx: number) => idx !== pIdx);
+                                                      const currentPairs = qItem.pairs || [];
+                                                      const updatedPairs = [...currentPairs, { left: 'Concepto', right: 'Definición Relacionada' }];
                                                       handleUpdateQuizQuestion(qIdx, { pairs: updatedPairs });
                                                     }}
-                                                    className="p-2 hover:bg-white text-slate-300 hover:text-red-500 rounded-lg transition-all"
-                                                    title="Eliminar pareja"
+                                                    className="text-[10px] font-black text-secondary bg-secondary/10 px-3 py-1.5 rounded-xl hover:bg-secondary hover:text-primary transition-all flex items-center gap-1 cursor-pointer"
                                                   >
-                                                    <Trash2 className="w-4.5 h-4.5" />
+                                                    <Plus className="w-3.5 h-3.5" /> Añadir Pareja
                                                   </button>
                                                 </div>
-                                              ))}
+                                                
+                                                <p className="text-[10px] text-slate-500 font-medium italic">Los estudiantes verán la columna izquierda fija, y un selector con las opciones de la columna derecha mezcladas aleatoriamente para unirlas.</p>
 
-                                              {(qItem.pairs || []).length === 0 && (
-                                                <span className="block text-[10px] text-slate-400 italic font-semibold text-center py-2">No has definido parejas. Haz clic en "Añadir Pareja" arriba para empezar.</span>
-                                              )}
-                                            </div>
+                                                <div className="space-y-3 pt-2">
+                                                  {(qItem.pairs || []).map((pair: any, pIdx: number) => (
+                                                    <div key={pIdx} className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center bg-slate-50/50 p-3 rounded-xl border border-slate-150 relative">
+                                                      <input
+                                                        type="text"
+                                                        value={pair.left}
+                                                        placeholder="Concepto Izquierda (Ej. Amor)"
+                                                        onChange={(e) => {
+                                                          const updatedPairs = [...qItem.pairs];
+                                                          updatedPairs[pIdx] = { ...pair, left: e.target.value };
+                                                          handleUpdateQuizQuestion(qIdx, { pairs: updatedPairs });
+                                                        }}
+                                                        className="flex-grow bg-white px-3 py-2 rounded-lg border border-slate-150 text-xs font-bold text-slate-700"
+                                                      />
+                                                      <span className="text-secondary text-center self-center shrink-0">↔️</span>
+                                                      <input
+                                                        type="text"
+                                                        value={pair.right}
+                                                        placeholder="Relación Derecha (Ej. El mayor de todas ellas)"
+                                                        onChange={(e) => {
+                                                          const updatedPairs = [...qItem.pairs];
+                                                          updatedPairs[pIdx] = { ...pair, right: e.target.value };
+                                                          handleUpdateQuizQuestion(qIdx, { pairs: updatedPairs });
+                                                        }}
+                                                        className="flex-grow bg-white px-3 py-2 rounded-lg border border-slate-150 text-xs font-semibold text-slate-600"
+                                                      />
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                          const updatedPairs = qItem.pairs.filter((_: any, idx: number) => idx !== pIdx);
+                                                          handleUpdateQuizQuestion(qIdx, { pairs: updatedPairs });
+                                                        }}
+                                                        className="p-2 hover:bg-white text-slate-300 hover:text-red-500 rounded-lg transition-all"
+                                                        title="Eliminar pareja"
+                                                      >
+                                                        <Trash2 className="w-4.5 h-4.5" />
+                                                      </button>
+                                                    </div>
+                                                  ))}
+
+                                                  {(qItem.pairs || []).length === 0 && (
+                                                    <span className="block text-[10px] text-slate-400 italic font-semibold text-center py-2">No has definido parejas. Haz clic en "Añadir Pareja" arriba para empezar.</span>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
+
                                           </div>
-                                        )}
+                                        );
+                                      })}
 
-                                      </div>
-                                    );
-                                  })}
-
-                                  {(activeStep.questions || []).length === 0 && (
-                                    <div className="py-8 text-center text-primary/30 text-xs italic">
-                                      Este cuestiorio está vacío. Añade una pregunta para comenzar a armar el test.
+                                      {(activeStep.questions || []).length === 0 && (
+                                        <div className="py-8 text-center text-primary/30 text-xs italic">
+                                          Este cuestiorio está vacío. Añade una pregunta para comenzar a armar el test.
+                                        </div>
+                                      )}
                                     </div>
-                                  )}
-                                </div>
+
+                                    <div className="flex justify-end pt-4 border-t border-slate-100 mt-6">
+                                      <button
+                                        type="button"
+                                        onClick={handleSimulateSave}
+                                        className="bg-primary text-white hover:bg-secondary hover:text-primary px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-sm hover:shadow-md flex items-center gap-2 cursor-pointer"
+                                      >
+                                        <Save className="w-4 h-4" />
+                                        Guardar cambios
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  /* VISTA PREVIA DEL CUESTIONARIO (MODO ESTUDIANTE) */
+                                  <div className="space-y-6 bg-slate-50/50 p-6 md:p-8 rounded-[2.5rem] border border-slate-200/80">
+                                    <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+                                      <div>
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-secondary block mb-1">
+                                          Vista Previa Interactiva
+                                        </span>
+                                        <h4 className="text-xl font-bold text-primary font-kenao">
+                                          {activeStep.title}
+                                        </h4>
+                                      </div>
+                                      <span className="bg-primary/10 text-primary text-xs font-bold px-3 py-1.5 rounded-xl border border-primary/20 flex items-center gap-1.5">
+                                        <Eye className="w-3.5 h-3.5 text-primary" />
+                                        Simulación Estudiante
+                                      </span>
+                                    </div>
+
+                                    {(activeStep.questions || []).length === 0 ? (
+                                      <div className="py-12 text-center text-slate-400 text-sm italic">
+                                        No hay preguntas configuradas para este cuestionario todavía. Haz clic en la pestaña "Editor de Preguntas" para agregar la primera.
+                                      </div>
+                                    ) : (
+                                      <div className="space-y-8">
+                                        {(activeStep.questions || []).map((qItem, qIdx) => {
+                                          const qType = qItem.type || 'single';
+                                          const studentAns = quizPreviewAnswers[qIdx];
+                                          const isShowGuideline = showGuidelineForQuestion[qIdx];
+
+                                          return (
+                                            <div key={qIdx} className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+                                              <div className="flex items-start justify-between gap-4">
+                                                <div className="flex items-start gap-3">
+                                                  <span className="flex-shrink-0 w-7 h-7 bg-primary text-white font-bold text-xs rounded-full flex items-center justify-center mt-0.5">
+                                                    {qIdx + 1}
+                                                  </span>
+                                                  <div>
+                                                    <h5 className="font-bold text-primary text-base leading-snug">
+                                                      {qItem.question || 'Pregunta sin enunciado'}
+                                                    </h5>
+                                                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 mt-1 block">
+                                                      {qType === 'single' && 'Selección Única'}
+                                                      {qType === 'multiple' && 'Selección Múltiple'}
+                                                      {qType === 'text' && 'Desarrollo Escrito / Respuesta Libre'}
+                                                      {qType === 'pairs' && 'Relacionar Conceptos'}
+                                                    </span>
+                                                  </div>
+                                                </div>
+                                              </div>
+
+                                              {/* SINGLE CHOICE PREVIEW */}
+                                              {qType === 'single' && (
+                                                <div className="space-y-2.5 pt-2">
+                                                  {(qItem.options || []).map((opt, oIdx) => {
+                                                    const isSelected = studentAns === oIdx;
+                                                    const isCorrect = qItem.correctAnswer === oIdx;
+                                                    let optStyle = "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100";
+                                                    
+                                                    if (quizPreviewSubmitted) {
+                                                      if (isCorrect) {
+                                                        optStyle = "bg-emerald-50 border-emerald-300 text-emerald-900 font-bold";
+                                                      } else if (isSelected && !isCorrect) {
+                                                        optStyle = "bg-red-50 border-red-300 text-red-900";
+                                                      }
+                                                    } else if (isSelected) {
+                                                      optStyle = "bg-secondary/15 border-secondary text-primary font-bold shadow-xs";
+                                                    }
+
+                                                    return (
+                                                      <label
+                                                        key={oIdx}
+                                                        className={`flex items-center gap-3 p-4 rounded-2xl border transition-all cursor-pointer text-xs ${optStyle}`}
+                                                      >
+                                                        <input
+                                                          type="radio"
+                                                          name={`preview-q-${qIdx}`}
+                                                          checked={isSelected}
+                                                          onChange={() => {
+                                                            setQuizPreviewAnswers(prev => ({ ...prev, [qIdx]: oIdx }));
+                                                          }}
+                                                          className="w-4 h-4 text-secondary focus:ring-secondary cursor-pointer"
+                                                        />
+                                                        <span className="flex-grow">{opt}</span>
+                                                        {quizPreviewSubmitted && isCorrect && (
+                                                          <span className="text-emerald-600 font-bold text-[10px] uppercase bg-emerald-100 px-2 py-0.5 rounded-md">Correcta</span>
+                                                        )}
+                                                      </label>
+                                                    );
+                                                  })}
+                                                </div>
+                                              )}
+
+                                              {/* MULTIPLE CHOICE PREVIEW */}
+                                              {qType === 'multiple' && (
+                                                <div className="space-y-2.5 pt-2">
+                                                  {(qItem.options || []).map((opt, oIdx) => {
+                                                    const selectedArr = Array.isArray(studentAns) ? studentAns : [];
+                                                    const isSelected = selectedArr.includes(oIdx);
+                                                    const isCorrect = (qItem.correctAnswers || []).includes(oIdx);
+                                                    let optStyle = "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100";
+
+                                                    if (quizPreviewSubmitted) {
+                                                      if (isCorrect) {
+                                                        optStyle = "bg-emerald-50 border-emerald-300 text-emerald-900 font-bold";
+                                                      } else if (isSelected && !isCorrect) {
+                                                        optStyle = "bg-red-50 border-red-300 text-red-900";
+                                                      }
+                                                    } else if (isSelected) {
+                                                      optStyle = "bg-secondary/15 border-secondary text-primary font-bold shadow-xs";
+                                                    }
+
+                                                    return (
+                                                      <label
+                                                        key={oIdx}
+                                                        className={`flex items-center gap-3 p-4 rounded-2xl border transition-all cursor-pointer text-xs ${optStyle}`}
+                                                      >
+                                                        <input
+                                                          type="checkbox"
+                                                          checked={isSelected}
+                                                          onChange={() => {
+                                                            const current = Array.isArray(studentAns) ? [...studentAns] : [];
+                                                            const updated = isSelected ? current.filter(i => i !== oIdx) : [...current, oIdx];
+                                                            setQuizPreviewAnswers(prev => ({ ...prev, [qIdx]: updated }));
+                                                          }}
+                                                          className="w-4 h-4 rounded text-secondary focus:ring-secondary cursor-pointer"
+                                                        />
+                                                        <span className="flex-grow">{opt}</span>
+                                                        {quizPreviewSubmitted && isCorrect && (
+                                                          <span className="text-emerald-600 font-bold text-[10px] uppercase bg-emerald-100 px-2 py-0.5 rounded-md">Correcta</span>
+                                                        )}
+                                                      </label>
+                                                    );
+                                                  })}
+                                                </div>
+                                              )}
+
+                                              {/* TEXT PREVIEW */}
+                                              {qType === 'text' && (
+                                                <div className="space-y-3 pt-2">
+                                                  <textarea
+                                                    rows={4}
+                                                    value={studentAns || ''}
+                                                    onChange={(e) => setQuizPreviewAnswers(prev => ({ ...prev, [qIdx]: e.target.value }))}
+                                                    placeholder="El estudiante redactará aquí su respuesta..."
+                                                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs outline-none focus:ring-2 focus:ring-secondary"
+                                                  />
+                                                  <div className="flex items-center justify-between">
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => setShowGuidelineForQuestion(prev => ({ ...prev, [qIdx]: !prev[qIdx] }))}
+                                                      className="text-xs font-bold text-secondary hover:underline flex items-center gap-1 cursor-pointer"
+                                                    >
+                                                      💡 {isShowGuideline ? 'Ocultar Pauta / Respuesta Modelo' : 'Ver Pauta de Evaluación Modelo'}
+                                                    </button>
+                                                  </div>
+                                                  {isShowGuideline && (
+                                                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 leading-relaxed font-medium">
+                                                      <span className="font-bold block mb-1">Pauta / Respuesta de orientación:</span>
+                                                      {qItem.guidelineAnswer || 'No hay pauta especificada para esta pregunta.'}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              )}
+
+                                              {/* PAIRS PREVIEW */}
+                                              {qType === 'pairs' && (
+                                                <div className="space-y-3 pt-2">
+                                                  <p className="text-xs text-slate-500 font-medium italic">Relaciona cada concepto de la izquierda con su opción correspondiente:</p>
+                                                  {(qItem.pairs || []).map((pair, pIdx) => {
+                                                    const pairAnsMap = studentAns || {};
+                                                    const selectedRight = pairAnsMap[pIdx];
+                                                    const isMatchCorrect = selectedRight === pair.right;
+
+                                                    return (
+                                                      <div 
+                                                        key={pIdx} 
+                                                        className={`flex flex-col sm:flex-row items-center gap-3 p-3 rounded-2xl text-xs border transition-all ${
+                                                          quizPreviewSubmitted && isMatchCorrect ? 'bg-emerald-50 border-emerald-300' :
+                                                          quizPreviewSubmitted ? 'bg-red-50 border-red-300' :
+                                                          'bg-slate-50 border-slate-200'
+                                                        }`}
+                                                      >
+                                                        <span className="font-bold text-primary sm:w-1/3">{pair.left}</span>
+                                                        <span className="text-slate-400 font-bold shrink-0">
+                                                          {quizPreviewSubmitted ? (isMatchCorrect ? '✅' : '❌') : '↔'}
+                                                        </span>
+                                                        <select
+                                                          disabled={quizPreviewSubmitted}
+                                                          value={selectedRight || ''}
+                                                          onChange={(e) => {
+                                                            const currentMap = studentAns || {};
+                                                            setQuizPreviewAnswers(prev => ({
+                                                              ...prev,
+                                                              [qIdx]: { ...currentMap, [pIdx]: e.target.value }
+                                                            }));
+                                                          }}
+                                                          className="sm:w-1/2 bg-white p-2.5 rounded-xl border border-slate-200 outline-none text-xs font-semibold text-slate-700 disabled:opacity-80 cursor-pointer"
+                                                        >
+                                                          <option value="">Seleccionar respuesta...</option>
+                                                          {(qItem.pairs || []).map((pRight, rIdx) => (
+                                                            <option key={rIdx} value={pRight.right}>
+                                                              {pRight.right}
+                                                            </option>
+                                                          ))}
+                                                        </select>
+
+                                                        {quizPreviewSubmitted && (
+                                                          <div className="shrink-0 text-[10px] font-bold">
+                                                            {isMatchCorrect ? (
+                                                              <span className="text-emerald-700 bg-emerald-100/80 px-2.5 py-1 rounded-md uppercase tracking-wider block">¡Correcto!</span>
+                                                            ) : (
+                                                              <span className="text-red-700 bg-red-100/80 px-2.5 py-1 rounded-md block">
+                                                                Debió ser: <strong className="font-extrabold">{pair.right}</strong>
+                                                              </span>
+                                                            )}
+                                                          </div>
+                                                        )}
+                                                      </div>
+                                                    );
+                                                  })}
+                                                </div>
+                                              )}
+
+                                            </div>
+                                          );
+                                        })}
+
+                                        {/* SUBMIT SIMULATION BAR */}
+                                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-slate-200 bg-white p-6 rounded-3xl">
+                                          <div className="text-xs text-slate-500">
+                                            {quizPreviewSubmitted ? (
+                                              <span className="font-bold text-emerald-700 flex items-center gap-1.5">
+                                                <CheckCircle className="w-4 h-4 text-emerald-600" />
+                                                Simulación realizada. Revisa las respuestas arriba.
+                                              </span>
+                                            ) : (
+                                              <span>Prueba cómo el estudiante interactuará con este test en tiempo real.</span>
+                                            )}
+                                          </div>
+                                          <div className="flex items-center gap-2">
+                                            {quizPreviewSubmitted && (
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setQuizPreviewSubmitted(false);
+                                                  setQuizPreviewAnswers({});
+                                                }}
+                                                className="px-4 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                                              >
+                                                Reiniciar Simulación
+                                              </button>
+                                            )}
+                                            <button
+                                              type="button"
+                                              onClick={() => setQuizPreviewSubmitted(true)}
+                                              className="px-6 py-2.5 bg-primary text-white hover:bg-secondary hover:text-primary rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer flex items-center gap-2"
+                                            >
+                                              <CheckCircle className="w-4 h-4" />
+                                              Comprobar Respuestas
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={handleSimulateSave}
+                                              className="px-6 py-2.5 bg-secondary text-primary hover:bg-primary hover:text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md cursor-pointer flex items-center gap-2"
+                                            >
+                                              <Save className="w-4 h-4" />
+                                              Guardar Cambios
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
                               </div>
                             )}
 
@@ -2093,6 +2669,24 @@ export default function AdminCursos() {
               </div>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating Save Success Toast */}
+      <AnimatePresence>
+        {showSaveToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 30, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 30, scale: 0.9 }}
+            className="fixed bottom-8 right-8 z-[200] bg-emerald-600 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3.5 font-bold text-xs border border-emerald-400/30"
+          >
+            <CheckCircle className="w-6 h-6 text-emerald-200 shrink-0" />
+            <div>
+              <p className="font-bold text-sm text-white">¡Cambios guardados con éxito!</p>
+              <p className="text-[11px] text-emerald-100 font-normal">Toda la teoría y los cuestionarios han sido guardados correctamente en la nube.</p>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 

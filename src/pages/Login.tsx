@@ -34,8 +34,8 @@ export default function Login() {
       await loginWithGoogle();
     } catch (error: any) {
       console.error("Login failed", error);
-      if (error && (error.code === 'auth/popup-closed-by-user' || error.message?.includes('popup-closed-by-user'))) {
-        setErrorMsg('La ventana emergente de inicio de sesión se cerró. Para solucionar esto en el visor de AI Studio, prueba el botón "Acceder con Google (Redirección)" o abre la app en una pestaña nueva.');
+      if (error && (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request' || error.message?.includes('popup-closed-by-user') || error.message?.includes('cancelled-popup-request'))) {
+        setErrorMsg('La ventana emergente de inicio de sesión se cerró o canceló. Para solucionar esto en el visor de AI Studio, prueba la opción con redirección o abre la app en una pestaña nueva.');
       } else if (error && (error.code === 'auth/popup-blocked' || error.message?.includes('popup-blocked'))) {
         setErrorMsg('El navegador bloqueó la ventana emergente de Google. Por favor, permite las ventanas emergentes o utiliza "Acceder con Google (Redirección)".');
       } else {

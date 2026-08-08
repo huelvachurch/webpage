@@ -16,7 +16,17 @@ const firebaseConfig = fs.existsSync(firebaseConfigPath) ? JSON.parse(fs.readFil
 
 dotenv.config();
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+let stripeClient: Stripe | null = null;
+function getStripe(): Stripe {
+  if (!stripeClient) {
+    const key = process.env.STRIPE_SECRET_KEY;
+    if (!key) {
+      throw new Error("STRIPE_SECRET_KEY environment variable is required");
+    }
+    stripeClient = new Stripe(key);
+  }
+  return stripeClient;
+}
 const ai = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
 
 // Initialize Firebase client on the server
@@ -498,7 +508,145 @@ async function startServer() {
     }
   });
 
+// Helper to detect isolated enumerations and format them as Markdown subtitles (##)
+function formatIsolatedEnumerationsAsSubtitles(text: string): string {
+  if (!text) return text;
+  const lines = text.split('\n');
+  const resultLines: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    // Match lines starting with a number list item like "1. Jesús es la Luz" or "1) Jesús es la Luz"
+    // Ignore blockquotes (> ...), headings (# ...), or empty lines
+    const match = trimmed.match(/^(\d+)[.)]\s+(.+)$/);
+    if (match && !trimmed.startsWith('>') && !trimmed.startsWith('#')) {
+      const currentNum = parseInt(match[1], 10);
+      const prevNum = currentNum - 1;
+      const nextNum = currentNum + 1;
+
+      // Look back for prevNum in current section
+      let hasPrevInList = false;
+      for (let k = i - 1; k >= 0; k--) {
+        const backLine = lines[k].trim();
+        if (backLine.startsWith('#')) break; // Hit section header
+        const backMatch = backLine.match(/^(\d+)[.)]\s+/);
+        if (backMatch && parseInt(backMatch[1], 10) === prevNum) {
+          hasPrevInList = true;
+          break;
+        }
+      }
+
+      // Look ahead for nextNum in current section
+      let hasNextInList = false;
+      for (let j = i + 1; j < lines.length; j++) {
+        const aheadLine = lines[j].trim();
+        if (aheadLine.startsWith('#')) break; // Hit section header
+        const aheadMatch = aheadLine.match(/^(\d+)[.)]\s+/);
+        if (aheadMatch && parseInt(aheadMatch[1], 10) === nextNum) {
+          hasNextInList = true;
+          break;
+        }
+      }
+
+      if (!hasPrevInList && !hasNextInList) {
+        // Isolated enumeration! Format as Subtitle (##)
+        resultLines.push(`## ${trimmed}`);
+        continue;
+      }
+    }
+    resultLines.push(line);
+  }
+
+  return resultLines.join('\n');
+}
+
   // Generate Post with AI endpoint
+  app.post("/api/gemini/analyze-pdf", async (req, res) => {
+    try {
+      if (!ai) {
+        return res.status(500).json({ error: "Gemini API integration missing." });
+      }
+      
+      const { pdfBase64, mimeType } = req.body;
+      if (!pdfBase64) {
+        return res.status(400).json({ error: "No PDF data provided" });
+      }
+
+      const prompt = `Eres un asistente experto en analizar material educativo teológico y pastoral para estructurarlo en clases teóricas.
+Analiza el documento PDF adjunto. Identifica las secciones del contenido (sin alterar, resumir ni omitir el texto original, manteniendo fielmente el texto) y formatea el contenido en Markdown. IMPORTANTE: Para el texto normal, SOLO devuelve el contenido sin usar formatos Markdown como títulos (##) o negritas (**). Separa cada párrafo con una línea en blanco. Solo usa la sintaxis especial de bloques de cita que se detalla a continuación:
+
+REGLA PARA ENUMERACIONES AISLADAS:
+Si encuentras una enumeración aislada (por ejemplo "1. Jesús es la Luz" o "1. LA FE EN JESÚS" que no va seguida de un "2." en esa misma sección), debes considerarla obligatoriamente como un Subtítulo. En ese caso, aplícale el formato Markdown de Subtítulo usando el prefijo "## " (ejemplo: "## 1. Jesús es la Luz").
+Las listas enumeradas reales con múltiples elementos secuenciales (1., 2., 3., etc.) deben mantenerse como lista.
+
+- Versículos Bíblicos (Citas de la Escritura): ponlos en un bloque de cita donde la primera línea lleve la referencia (ej. Juan 3:16-17) y las líneas siguientes el contenido del versículo. Ejemplo exacto:
+> **Versículo: Juan 3:16-17**
+> 16 Porque de tal manera amó Dios al mundo, que ha dado a su Hijo unigénito...
+
+- Preguntas de reflexión o estudio: ponlas en bloques de cita especificados exactamente como:
+> **Pregunta:** ¿Cómo podemos aplicar esta enseñanza en nuestra vida cotidiana?
+
+- Comentarios adicionales, notas, consejos o datos curiosos: ponlas en bloques de cita especificados exactamente como:
+> **Nota:** Recordar profundizar en este punto en la clase.
+o
+> **Consejo:** Medita en este pasaje antes de la reunión.
+o
+> **Dato curioso:** La palabra evangelio significa buena noticia.
+
+- Frases destacadas o citas de autores (ej. C.S. Lewis, J.C. Ryle, Spurgeon, etc.): ponlas en bloques de cita especificados exactamente como:
+> **Frase:** "La fe es el arte de aferrarse a las cosas que tu razón ha aceptado una vez..." — C.S. Lewis
+
+Solo devuelve el contenido formateado en Markdown, sin ningún texto adicional ni introducción al inicio ni al final.`;
+
+      let response;
+      try {
+        response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: {
+            parts: [
+              {
+                inlineData: {
+                  data: pdfBase64,
+                  mimeType: mimeType || "application/pdf",
+                }
+              },
+              { text: prompt }
+            ]
+          }
+        });
+      } catch (err: any) {
+        if (err.status === 503 || err.message?.includes('503')) {
+          console.warn("Retrying with gemini-2.5-flash-lite due to 503...");
+          response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-lite',
+            contents: {
+              parts: [
+                {
+                  inlineData: {
+                    data: pdfBase64,
+                    mimeType: mimeType || "application/pdf",
+                  }
+                },
+                { text: prompt }
+              ]
+            }
+          });
+        } else {
+          throw err;
+        }
+      }
+      
+      let rawContent = response.text || "";
+      const content = formatIsolatedEnumerationsAsSubtitles(rawContent);
+      res.json({ content });
+    } catch (err: any) {
+      console.error("Gemini Error:", err);
+      res.status(500).json({ error: err.message || "Failed to analyze PDF" });
+    }
+  });
+
   app.post("/api/gemini/generate-post", async (req, res) => {
     try {
       if (!ai) {
@@ -699,6 +847,7 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
     try {
       const { amount, type, description } = req.body;
 
+      const stripe = getStripe();
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         line_items: [

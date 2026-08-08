@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Filter, GraduationCap, Calendar, Clock, User, ChevronRight, CheckCircle, AlertCircle, LogIn } from 'lucide-react';
+import { Search, Filter, GraduationCap, Calendar, Clock, User, ChevronRight, CheckCircle, AlertCircle, LogIn, Play } from 'lucide-react';
 import { collection, addDoc, onSnapshot, query, where, orderBy, serverTimestamp, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../AuthContext';
@@ -266,6 +266,9 @@ export default function Cursos() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {filteredCourses.map((course, index) => {
                 const status = getEnrollmentStatus(course.id);
+                const isTeacherOrAdmin = roles?.includes('admin') || roles?.includes('profesor') || roles?.includes('superadmin') || course.instructorId === user?.uid;
+                const canAccess = status === 'active' || isTeacherOrAdmin;
+
                 return (
                   <motion.div
                     key={course.id}
@@ -274,19 +277,41 @@ export default function Cursos() {
                     transition={{ delay: index * 0.1 }}
                     className="bg-white rounded-[3rem] shadow-sm border border-slate-100 overflow-hidden group hover:shadow-2xl transition-all duration-500 flex flex-col"
                   >
-                    <div className="aspect-[16/10] relative overflow-hidden">
-                      <img 
-                        src={course.imageUrl || `https://picsum.photos/seed/${course.id}/800/500`} 
-                        alt={getCourseTitle(course)}
-                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                        referrerPolicy="no-referrer"
-                      />
-                      <div className="absolute top-6 left-6">
-                        <span className="px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest bg-white/90 backdrop-blur-md shadow-sm text-primary">
-                          {course.modality === 'self-paced' ? t('courses.selfPaced') : t('courses.scheduled')}
-                        </span>
+                    {canAccess ? (
+                      <Link to={`/cursos/${course.id}`} className="aspect-[16/10] relative overflow-hidden block cursor-pointer">
+                        <img 
+                          src={course.imageUrl || `https://picsum.photos/seed/${course.id}/800/500`} 
+                          alt={getCourseTitle(course)}
+                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="absolute top-6 left-6">
+                          <span className="px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest bg-white/90 backdrop-blur-md shadow-sm text-primary">
+                            {course.modality === 'self-paced' ? t('courses.selfPaced') : t('courses.scheduled')}
+                          </span>
+                        </div>
+                        <div className="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <span className="bg-white text-primary px-6 py-2.5 rounded-full font-bold text-xs flex items-center gap-2 shadow-xl">
+                            <Play className="w-4 h-4 fill-current text-emerald-600" />
+                            Ingresar al Curso
+                          </span>
+                        </div>
+                      </Link>
+                    ) : (
+                      <div className="aspect-[16/10] relative overflow-hidden">
+                        <img 
+                          src={course.imageUrl || `https://picsum.photos/seed/${course.id}/800/500`} 
+                          alt={getCourseTitle(course)}
+                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="absolute top-6 left-6">
+                          <span className="px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest bg-white/90 backdrop-blur-md shadow-sm text-primary">
+                            {course.modality === 'self-paced' ? t('courses.selfPaced') : t('courses.scheduled')}
+                          </span>
+                        </div>
                       </div>
-                    </div>
+                    )}
                     
                     <div className="p-8 flex-grow flex flex-col">
                       <div className="flex items-center gap-2 text-primary/40 mb-4">
@@ -295,13 +320,19 @@ export default function Cursos() {
                       </div>
                       
                       <h3 className="text-2xl font-bold text-primary mb-3 line-clamp-2 group-hover:text-secondary transition-colors">
-                        {getCourseTitle(course)}
+                        {canAccess ? (
+                          <Link to={`/cursos/${course.id}`} className="hover:underline">
+                            {getCourseTitle(course)}
+                          </Link>
+                        ) : (
+                          getCourseTitle(course)
+                        )}
                       </h3>
                       <p className="text-primary/60 text-sm mb-8 line-clamp-3 leading-relaxed">
                         {getCourseDesc(course)}
                       </p>
                       
-                      <div className="mt-auto pt-8 border-t border-slate-50 flex items-center justify-between">
+                      <div className="mt-auto pt-8 border-t border-slate-50 flex items-center justify-between gap-3">
                         <div className="flex flex-col">
                           <span className="text-[10px] font-black text-primary/20 uppercase tracking-widest mb-1">Duración</span>
                           <span className="text-sm font-bold text-primary flex items-center gap-2">
@@ -315,31 +346,40 @@ export default function Cursos() {
                           </span>
                         </div>
                         
-                        {status ? (
-                          <div className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold text-sm ${
-                            status === 'active' ? 'bg-emerald-50 text-emerald-600' : 
-                            status === 'pending' ? 'bg-amber-50 text-amber-600' : 
-                            'bg-slate-50 text-slate-400'
-                          }`}>
-                            {status === 'pending' ? (
-                              <><Clock className="w-4 h-4" /> Pendiente</>
-                            ) : status === 'active' ? (
-                              <><CheckCircle className="w-4 h-4" /> Inscrito</>
-                            ) : (
-                              status.toUpperCase()
-                            )}
+                        {status === 'active' ? (
+                          <Link
+                            to={`/cursos/${course.id}`}
+                            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3.5 rounded-2xl font-bold text-xs transition-all shadow-md group/btn shrink-0"
+                          >
+                            <Play className="w-4 h-4 fill-current shrink-0" />
+                            <span>Ingresar al Curso</span>
+                            <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform shrink-0" />
+                          </Link>
+                        ) : status === 'pending' ? (
+                          <div className="flex items-center gap-2 px-5 py-3.5 rounded-2xl font-bold text-xs bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
+                            <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                            <span>Solicitud Pendiente</span>
                           </div>
+                        ) : isTeacherOrAdmin ? (
+                          <Link
+                            to={`/cursos/${course.id}`}
+                            className="flex items-center gap-2 bg-primary text-white hover:bg-secondary hover:text-primary px-6 py-3.5 rounded-2xl font-bold text-xs transition-all shadow-md group/btn shrink-0"
+                          >
+                            <Play className="w-4 h-4 fill-current shrink-0" />
+                            <span>Ver / Probar Curso</span>
+                            <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform shrink-0" />
+                          </Link>
                         ) : (
                           <button
                             onClick={() => handleEnroll(course.id)}
                             disabled={isEnrolling === course.id}
-                            className="flex items-center gap-2 bg-primary text-white px-8 py-4 rounded-2xl font-bold hover:bg-secondary hover:text-primary transition-all shadow-lg group/btn"
+                            className="flex items-center gap-2 bg-primary text-white px-7 py-3.5 rounded-2xl font-bold hover:bg-secondary hover:text-primary transition-all shadow-md group/btn shrink-0 cursor-pointer"
                           >
                             {isEnrolling === course.id ? (
                               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                             ) : (
                               <>
-                                Solicitar Ingreso
+                                <span>Solicitar Ingreso</span>
                                 <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
                               </>
                             )}

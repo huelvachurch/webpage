@@ -166,77 +166,115 @@ export default function MisCursos() {
 function CourseCard({ enrollment }: { enrollment: Enrollment }) {
   if (!enrollment.course) return null;
 
+  const canAccess = enrollment.status === 'active' || enrollment.status === 'completed';
+
   return (
-    <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden group hover:shadow-xl transition-all duration-500">
-      <div className="aspect-video relative overflow-hidden">
-        <img 
-          src={enrollment.course.imageUrl || `https://picsum.photos/seed/${enrollment.courseId}/800/500`} 
-          alt={enrollment.course.title}
-          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-          referrerPolicy="no-referrer"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex items-center justify-center">
-          {enrollment.status === 'active' && (
-            <Link 
-              to={`/cursos/${enrollment.courseId}`}
-              className="bg-white text-primary px-8 py-3 rounded-xl font-bold flex items-center gap-2 transform translate-y-4 group-hover:translate-y-0 transition-transform duration-500"
-            >
-              Continuar
+    <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden group hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
+      {canAccess ? (
+        <Link to={`/cursos/${enrollment.courseId}`} className="aspect-video relative overflow-hidden block cursor-pointer">
+          <img 
+            src={enrollment.course.imageUrl || `https://picsum.photos/seed/${enrollment.courseId}/800/500`} 
+            alt={enrollment.course.title}
+            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+            referrerPolicy="no-referrer"
+          />
+          <div className="absolute inset-0 bg-primary/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+            <span className="bg-white text-primary px-6 py-2.5 rounded-full font-bold text-xs flex items-center gap-2 shadow-xl">
+              <Play className="w-3.5 h-3.5 fill-current text-emerald-600" />
+              Ingresar al Curso
               <ChevronRight className="w-4 h-4" />
-            </Link>
+            </span>
+          </div>
+        </Link>
+      ) : (
+        <div className="aspect-video relative overflow-hidden">
+          <img 
+            src={enrollment.course.imageUrl || `https://picsum.photos/seed/${enrollment.courseId}/800/500`} 
+            alt={enrollment.course.title}
+            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+            referrerPolicy="no-referrer"
+          />
+        </div>
+      )}
+      
+      <div className="p-8 flex-grow flex flex-col justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-[10px] font-bold text-secondary uppercase tracking-widest mb-3">
+            {enrollment.course.modality === 'self-paced' ? <Clock className="w-3 h-3" /> : <Calendar className="w-3 h-3" />}
+            {enrollment.course.modality === 'self-paced' ? 'A ritmo personal' : 'Programado'}
+          </div>
+          
+          <h3 className="text-xl font-bold text-primary mb-2 line-clamp-1">
+            {canAccess ? (
+              <Link to={`/cursos/${enrollment.courseId}`} className="hover:text-secondary transition-colors">
+                {enrollment.course.title}
+              </Link>
+            ) : (
+              enrollment.course.title
+            )}
+          </h3>
+          <div className="flex items-center gap-2 text-primary/40 text-xs mb-6">
+            <User className="w-3 h-3" />
+            {enrollment.course.instructorName}
+          </div>
+        </div>
+
+        <div>
+          {enrollment.status === 'active' && (
+            <div className="space-y-3">
+              <div className="flex justify-between text-xs font-bold text-primary/40 uppercase tracking-widest">
+                <span>Progreso</span>
+                <span>{enrollment.progress}%</span>
+              </div>
+              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                <motion.div 
+                  initial={{ width: 0 }}
+                  animate={{ width: `${enrollment.progress}%` }}
+                  className="h-full bg-secondary"
+                />
+              </div>
+              <Link
+                to={`/cursos/${enrollment.courseId}`}
+                className="w-full mt-3 flex items-center justify-center gap-2 bg-emerald-600 text-white py-3 px-4 rounded-2xl font-bold text-xs hover:bg-emerald-700 transition-all shadow-md group/btn"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>Ingresar al Curso</span>
+                <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
+              </Link>
+            </div>
+          )}
+
+          {enrollment.status === 'pending' && (
+            <div className="flex items-center gap-2 text-amber-700 bg-amber-50 px-4 py-2.5 rounded-xl text-xs font-bold border border-amber-200">
+              <Clock className="w-4 h-4 text-amber-600" />
+              Esperando aprobación del profesor
+            </div>
+          )}
+
+          {enrollment.status === 'completed' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 px-4 py-2 rounded-xl text-xs font-bold">
+                  <CheckCircle className="w-4 h-4" />
+                  Completado
+                </div>
+                {enrollment.grade !== undefined && (
+                  <div className="text-right">
+                    <span className="text-[10px] font-black text-primary/20 uppercase tracking-widest block">Nota</span>
+                    <span className="text-lg font-bold text-primary">{enrollment.grade}</span>
+                  </div>
+                )}
+              </div>
+              <Link
+                to={`/cursos/${enrollment.courseId}`}
+                className="w-full flex items-center justify-center gap-2 bg-slate-100 text-slate-700 py-3 px-4 rounded-2xl font-bold text-xs hover:bg-slate-200 transition-all"
+              >
+                <span>Repasar Contenidos</span>
+                <ChevronRight className="w-4 h-4" />
+              </Link>
+            </div>
           )}
         </div>
-      </div>
-      
-      <div className="p-8">
-        <div className="flex items-center gap-2 text-[10px] font-bold text-secondary uppercase tracking-widest mb-3">
-          {enrollment.course.modality === 'self-paced' ? <Clock className="w-3 h-3" /> : <Calendar className="w-3 h-3" />}
-          {enrollment.course.modality === 'self-paced' ? 'A ritmo personal' : 'Programado'}
-        </div>
-        
-        <h3 className="text-xl font-bold text-primary mb-2 line-clamp-1">{enrollment.course.title}</h3>
-        <div className="flex items-center gap-2 text-primary/40 text-xs mb-6">
-          <User className="w-3 h-3" />
-          {enrollment.course.instructorName}
-        </div>
-
-        {enrollment.status === 'active' && (
-          <div className="space-y-2">
-            <div className="flex justify-between text-xs font-bold text-primary/40 uppercase tracking-widest">
-              <span>Progreso</span>
-              <span>{enrollment.progress}%</span>
-            </div>
-            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-              <motion.div 
-                initial={{ width: 0 }}
-                animate={{ width: `${enrollment.progress}%` }}
-                className="h-full bg-secondary"
-              />
-            </div>
-          </div>
-        )}
-
-        {enrollment.status === 'pending' && (
-          <div className="flex items-center gap-2 text-amber-600 bg-amber-50 px-4 py-2 rounded-xl text-xs font-bold">
-            <Clock className="w-4 h-4" />
-            Esperando aprobación
-          </div>
-        )}
-
-        {enrollment.status === 'completed' && (
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 px-4 py-2 rounded-xl text-xs font-bold">
-              <CheckCircle className="w-4 h-4" />
-              Completado
-            </div>
-            {enrollment.grade !== undefined && (
-              <div className="text-right">
-                <span className="text-[10px] font-black text-primary/20 uppercase tracking-widest block">Nota</span>
-                <span className="text-lg font-bold text-primary">{enrollment.grade}</span>
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );

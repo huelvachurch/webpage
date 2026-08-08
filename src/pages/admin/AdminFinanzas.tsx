@@ -400,6 +400,41 @@ export default function AdminFinanzas() {
   const [selectedBankIds, setSelectedBankIds] = useState<string[]>([]);
   const [bankMovementToDelete, setBankMovementToDelete] = useState<BankMovement | null>(null);
 
+  // Generic Movement Delete Modal State
+  const [genericItemToDelete, setGenericItemToDelete] = useState<{
+    id?: string;
+    ids?: string[];
+    title: string;
+    description: string;
+    collection: string;
+    secondCollection?: string;
+  } | null>(null);
+
+  const confirmDeleteGenericItem = async () => {
+    if (!genericItemToDelete) return;
+    const { id, ids, collection: col1, secondCollection: col2 } = genericItemToDelete;
+    try {
+      if (ids && ids.length > 0) {
+        await Promise.all(ids.map(docId => deleteDoc(doc(db, col1, docId)).catch(() => {})));
+        if (col2) {
+          await Promise.all(ids.map(docId => deleteDoc(doc(db, col2, docId)).catch(() => {})));
+        }
+        if (col1 === 'finanzas_bancarios') {
+          setSelectedBankIds([]);
+        }
+      } else if (id) {
+        await deleteDoc(doc(db, col1, id)).catch(() => {});
+        if (col2) {
+          await deleteDoc(doc(db, col2, id)).catch(() => {});
+        }
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `${col1}/${id || 'bulk'}`);
+    } finally {
+      setGenericItemToDelete(null);
+    }
+  };
+
   const handleToggleSelectAll = () => {
     const allFilteredIds = filteredBankMovements.map(m => m.id!).filter(Boolean);
     const isAllSelected = allFilteredIds.length > 0 && allFilteredIds.every(id => selectedBankIds.includes(id));
@@ -421,17 +456,12 @@ export default function AdminFinanzas() {
   const handleDeleteSelectedBankMovements = async () => {
     if (selectedBankIds.length === 0) return;
     const count = selectedBankIds.length;
-    if (!window.confirm(`¿Estás seguro de que deseas eliminar los ${count} movimientos bancarios seleccionados? Esta acción no se puede deshacer.`)) {
-      return;
-    }
-
-    try {
-      await Promise.all(selectedBankIds.map(id => deleteDoc(doc(db, 'finanzas_bancarios', id))));
-      setSelectedBankIds([]);
-      alert(`Se han eliminado ${count} movimiento(s) bancario(s) correctamente.`);
-    } catch (err: any) {
-      handleFirestoreError(err, OperationType.DELETE, 'finanzas_bancarios');
-    }
+    setGenericItemToDelete({
+      ids: selectedBankIds,
+      title: 'Eliminar Movimientos Seleccionados',
+      description: `¿Estás seguro de que deseas eliminar los ${count} movimientos bancarios seleccionados? Esta acción no se puede deshacer.`,
+      collection: 'finanzas_bancarios'
+    });
   };
 
   // Helper to determine tag type (ingreso = green, egreso = red)
@@ -1437,7 +1467,7 @@ export default function AdminFinanzas() {
         destination: celebEgresoForm.destination.trim(),
         concept: celebEgresoForm.destination.trim(),
         paymentMethod: 'Efectivo',
-        notes: celebEgresoForm.notes.trim() || undefined,
+        notes: celebEgresoForm.notes.trim() || '',
         registeredByUid: user?.uid,
         registeredByName: user?.displayName || user?.email || 'Financiero',
         createdAt: serverTimestamp()
@@ -1458,13 +1488,13 @@ export default function AdminFinanzas() {
   };
 
   const handleDeleteCelebEgreso = async (id: string) => {
-    if (!window.confirm("¿Estás seguro de que deseas eliminar este egreso?")) return;
-    try {
-      await deleteDoc(doc(db, 'finanzas_celebraciones', id)).catch(() => {});
-      await deleteDoc(doc(db, 'finanzas_caja_chica', id)).catch(() => {});
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `finanzas_celebraciones/${id}`);
-    }
+    setGenericItemToDelete({
+      id,
+      title: 'Eliminar Egreso de Celebraciones',
+      description: '¿Estás seguro de que deseas eliminar este egreso de Celebraciones?',
+      collection: 'finanzas_celebraciones',
+      secondCollection: 'finanzas_caja_chica'
+    });
   };
 
   // =============================================================
@@ -1518,7 +1548,7 @@ export default function AdminFinanzas() {
         paymentMethod: cafeteriaIngresoForm.paymentMethod,
         category: cafeteriaIngresoForm.category,
         concept: cafeteriaIngresoForm.concept.trim() || 'Ingreso Cafetería',
-        notes: cafeteriaIngresoForm.notes.trim() || undefined,
+        notes: cafeteriaIngresoForm.notes.trim() || '',
         registeredByUid: user?.uid,
         registeredByName: user?.displayName || user?.email || 'Financiero',
         createdAt: serverTimestamp()
@@ -1562,7 +1592,7 @@ export default function AdminFinanzas() {
         concept: cafeteriaEgresoForm.destination.trim(),
         category: cafeteriaEgresoForm.destination.trim(),
         paymentMethod: 'Efectivo',
-        notes: cafeteriaEgresoForm.notes.trim() || undefined,
+        notes: cafeteriaEgresoForm.notes.trim() || '',
         registeredByUid: user?.uid,
         registeredByName: user?.displayName || user?.email || 'Financiero',
         createdAt: serverTimestamp()
@@ -1682,7 +1712,7 @@ export default function AdminFinanzas() {
         paymentMethod: libreriaIngresoForm.paymentMethod,
         category: libreriaIngresoForm.category,
         concept: libreriaIngresoForm.concept.trim() || 'Ingreso Librería',
-        notes: libreriaIngresoForm.notes.trim() || undefined,
+        notes: libreriaIngresoForm.notes.trim() || '',
         registeredByUid: user?.uid,
         registeredByName: user?.displayName || user?.email || 'Financiero',
         createdAt: serverTimestamp()
@@ -1726,7 +1756,7 @@ export default function AdminFinanzas() {
         concept: libreriaEgresoForm.destination.trim(),
         category: libreriaEgresoForm.destination.trim(),
         paymentMethod: 'Efectivo',
-        notes: libreriaEgresoForm.notes.trim() || undefined,
+        notes: libreriaEgresoForm.notes.trim() || '',
         registeredByUid: user?.uid,
         registeredByName: user?.displayName || user?.email || 'Financiero',
         createdAt: serverTimestamp()
@@ -1818,7 +1848,7 @@ export default function AdminFinanzas() {
         amount: parseFloat(celebForm.amount),
         paymentMethod: celebForm.paymentMethod,
         destination: celebForm.destination,
-        notes: celebForm.notes.trim() || undefined,
+        notes: celebForm.notes.trim() || '',
         registeredByUid: user?.uid,
         registeredByName: user?.displayName || user?.email || 'Financiero',
         createdAt: serverTimestamp()
@@ -1862,7 +1892,7 @@ export default function AdminFinanzas() {
         sobreBilletes: sobre,
         bolsaMonedas: bolsa,
         cajaChica: caja,
-        notes: arqueoNotes.trim() || undefined,
+        notes: arqueoNotes.trim() || '',
         registeredByUid: user?.uid,
         registeredByName: user?.displayName || user?.email || 'Financiero',
         createdAt: serverTimestamp()
@@ -1929,7 +1959,7 @@ export default function AdminFinanzas() {
         diferencia,
         sobreBilletes: billetes,
         bolsaMonedas: monedas,
-        notes: notes.trim() || undefined,
+        notes: notes.trim() || '',
         registeredByUid: user?.uid,
         registeredByName: user?.displayName || user?.email || 'Financiero',
         createdAt: serverTimestamp()
@@ -1946,22 +1976,22 @@ export default function AdminFinanzas() {
 
   // Delete Celebration Income
   const handleDeleteCelebIncome = async (id: string) => {
-    if (!window.confirm("¿Seguro que deseas eliminar este ingreso?")) return;
-    try {
-      await deleteDoc(doc(db, 'finanzas_celebraciones', id));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `finanzas_celebraciones/${id}`);
-    }
+    setGenericItemToDelete({
+      id,
+      title: 'Eliminar Ingreso de Celebraciones',
+      description: '¿Estás seguro de que deseas eliminar este ingreso de Celebraciones?',
+      collection: 'finanzas_celebraciones'
+    });
   };
 
   // Delete Arqueo
   const handleDeleteArqueo = async (id: string) => {
-    if (!window.confirm("¿Seguro que deseas eliminar este registro de arqueo?")) return;
-    try {
-      await deleteDoc(doc(db, 'finanzas_arqueos', id));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `finanzas_arqueos/${id}`);
-    }
+    setGenericItemToDelete({
+      id,
+      title: 'Eliminar Registro de Arqueo',
+      description: '¿Estás seguro de que deseas eliminar este registro de arqueo de caja?',
+      collection: 'finanzas_arqueos'
+    });
   };
 
   // =============================================================
@@ -2022,7 +2052,7 @@ export default function AdminFinanzas() {
         category: cajaForm.category,
         concept: cajaForm.concept.trim(),
         amount: parseFloat(cajaForm.amount),
-        notes: cajaForm.notes.trim() || undefined,
+        notes: cajaForm.notes.trim() || '',
         registeredByUid: user?.uid,
         registeredByName: user?.displayName || user?.email || 'Financiero',
         createdAt: serverTimestamp()
@@ -2046,12 +2076,12 @@ export default function AdminFinanzas() {
 
   // Delete Caja Chica Movement
   const handleDeleteCajaMovement = async (id: string) => {
-    if (!window.confirm("¿Seguro que deseas eliminar este movimiento de Caja Chica?")) return;
-    try {
-      await deleteDoc(doc(db, 'finanzas_caja_chica', id));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `finanzas_caja_chica/${id}`);
-    }
+    setGenericItemToDelete({
+      id,
+      title: 'Eliminar Movimiento de Caja Chica',
+      description: '¿Estás seguro de que deseas eliminar este movimiento de Caja Chica?',
+      collection: 'finanzas_caja_chica'
+    });
   };
 
   // =============================================================
@@ -2109,7 +2139,7 @@ export default function AdminFinanzas() {
         category: cafeteriaForm.category,
         concept: cafeteriaForm.concept.trim(),
         amount: parseFloat(cafeteriaForm.amount),
-        notes: cafeteriaForm.notes.trim() || undefined,
+        notes: cafeteriaForm.notes.trim() || '',
         registeredByUid: user?.uid,
         registeredByName: user?.displayName || user?.email || 'Financiero',
         createdAt: serverTimestamp()
@@ -2132,12 +2162,13 @@ export default function AdminFinanzas() {
   };
 
   const handleDeleteCafeteriaMovement = async (id: string) => {
-    if (!window.confirm("¿Seguro que deseas eliminar este movimiento de Cafetería?")) return;
-    try {
-      await deleteDoc(doc(db, 'finanzas_cafeteria', id));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `finanzas_cafeteria/${id}`);
-    }
+    setGenericItemToDelete({
+      id,
+      title: 'Eliminar Movimiento de Cafetería',
+      description: '¿Estás seguro de que deseas eliminar este movimiento de Cafetería?',
+      collection: 'finanzas_cafeteria',
+      secondCollection: 'finanzas_caja_chica'
+    });
   };
 
   // =============================================================
@@ -2195,7 +2226,7 @@ export default function AdminFinanzas() {
         category: libreriaForm.category,
         concept: libreriaForm.concept.trim(),
         amount: parseFloat(libreriaForm.amount),
-        notes: libreriaForm.notes.trim() || undefined,
+        notes: libreriaForm.notes.trim() || '',
         registeredByUid: user?.uid,
         registeredByName: user?.displayName || user?.email || 'Financiero',
         createdAt: serverTimestamp()
@@ -2218,12 +2249,13 @@ export default function AdminFinanzas() {
   };
 
   const handleDeleteLibreriaMovement = async (id: string) => {
-    if (!window.confirm("¿Seguro que deseas eliminar este movimiento de Librería?")) return;
-    try {
-      await deleteDoc(doc(db, 'finanzas_libreria', id));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `finanzas_libreria/${id}`);
-    }
+    setGenericItemToDelete({
+      id,
+      title: 'Eliminar Movimiento de Librería',
+      description: '¿Estás seguro de que deseas eliminar este movimiento de Librería?',
+      collection: 'finanzas_libreria',
+      secondCollection: 'finanzas_caja_chica'
+    });
   };
 
   // =============================================================
@@ -3288,7 +3320,13 @@ export default function AdminFinanzas() {
                                   </td>
                                   <td className="py-4 px-6 text-center whitespace-nowrap">
                                     <button
-                                      onClick={() => handleDeleteCelebIncome(mov.id)}
+                                      onClick={() => {
+                                        if (mov.type === 'egreso' || (mov as any).source === 'egresos') {
+                                          handleDeleteCelebEgreso(mov.id);
+                                        } else {
+                                          handleDeleteCelebIncome(mov.id);
+                                        }
+                                      }}
                                       className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer"
                                       title="Eliminar movimiento"
                                     >
@@ -6370,25 +6408,7 @@ export default function AdminFinanzas() {
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  onClick={handleOpenDriveFolder}
-                  className="px-4 py-2.5 bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold rounded-xl text-xs hover:bg-emerald-100 transition-all flex items-center gap-2 shadow-2xs cursor-pointer"
-                  title="Abrir carpeta Finanzas/Reembolsos/Adjuntos en Google Drive"
-                >
-                  <HardDrive className="w-4 h-4 text-emerald-600" />
-                  Ver Carpetas & Adjuntos en Drive
-                  <ExternalLink className="w-3.5 h-3.5 text-emerald-600" />
-                </button>
-                <button
-                  onClick={() => navigate('/reembolso')}
-                  className="px-5 py-2.5 bg-primary text-white font-bold rounded-xl text-xs hover:bg-secondary hover:text-primary transition-all flex items-center gap-2 shadow-md cursor-pointer"
-                  title="Crear nueva solicitud de reembolso"
-                >
-                  <Plus className="w-4 h-4" />
-                  Nueva Solicitud de Reembolso
-                </button>
-              </div>
+
             </div>
 
             {/* Stats Cards Row */}
@@ -7365,6 +7385,45 @@ export default function AdminFinanzas() {
                   </button>
                   <button
                     onClick={() => bankMovementToDelete.id && handleDeleteBankMovement(bankMovementToDelete.id)}
+                    className="px-4 py-2 bg-red-600 text-white font-bold rounded-xl text-xs hover:bg-red-700 transition-all cursor-pointer shadow-md"
+                  >
+                    Eliminar Definitivamente
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* MODAL: CONFIRMAR ELIMINAR CUALQUIER OTRO MOVIMIENTO */}
+        <AnimatePresence>
+          {genericItemToDelete && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-100 p-6 space-y-4"
+              >
+                <div className="flex items-center gap-3 text-red-600">
+                  <div className="p-3 bg-red-100 rounded-2xl">
+                    <Trash2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-kenao text-primary">{genericItemToDelete.title}</h3>
+                    <p className="text-xs text-primary/60">{genericItemToDelete.description}</p>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    onClick={() => setGenericItemToDelete(null)}
+                    className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs hover:bg-slate-200 transition-all cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={confirmDeleteGenericItem}
                     className="px-4 py-2 bg-red-600 text-white font-bold rounded-xl text-xs hover:bg-red-700 transition-all cursor-pointer shadow-md"
                   >
                     Eliminar Definitivamente

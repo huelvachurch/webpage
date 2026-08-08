@@ -271,8 +271,8 @@ export default function SolicitudReembolso() {
             }
           } catch (uploadErr: any) {
             console.warn(`Drive upload no disponible para ${item.file.name}, usando almacenamiento seguro local.`, uploadErr);
-            setSubmitError(`No se pudo subir el archivo adjunto: ${uploadErr.message}`);
-            setIsSubmitting(false);
+            alert(`No se pudo subir el archivo adjunto: ${uploadErr.message}`);
+            setSubmitting(false);
             setUploadProgressMsg('');
             return; // Abort submission
           }
@@ -393,10 +393,7 @@ export default function SolicitudReembolso() {
 
         {/* Page Title */}
         <div className="text-center mb-8">
-          <span className="px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-xs font-extrabold uppercase tracking-wider inline-flex items-center gap-1.5 mb-3">
-            <Receipt className="w-3.5 h-3.5" />
-            Tesorería & Gestión de Gastos
-          </span>
+
           <h1 className="text-3xl sm:text-4xl font-kenao text-primary mb-2">
             Solicitud de Reembolso
           </h1>
@@ -673,9 +670,7 @@ export default function SolicitudReembolso() {
                             <Banknote className="w-4 h-4 text-amber-600" />
                             Efectivo (Caja Chica)
                           </div>
-                          <span className="text-[11px] text-primary/60 block mt-1 leading-relaxed">
-                            Máximo <strong>40,00 €</strong>. Requiere <strong>1 firma</strong> de un miembro financiero.
-                          </span>
+
                           {isAmountOverLimit && (
                             <span className="inline-block mt-2 px-2 py-0.5 bg-red-100 text-red-700 font-extrabold rounded text-[10px] uppercase">
                               Desactivado (&gt;40€)
@@ -705,9 +700,7 @@ export default function SolicitudReembolso() {
                             <CreditCard className="w-4 h-4 text-blue-600" />
                             Transferencia Bancaria
                           </div>
-                          <span className="text-[11px] text-primary/60 block mt-1 leading-relaxed">
-                            Sin límite de monto. Requiere <strong>2 firmas</strong> de miembros financieros.
-                          </span>
+
                         </div>
                       </div>
 
@@ -751,16 +744,13 @@ export default function SolicitudReembolso() {
 
                   <div className="space-y-4">
                     
-                    {/* File Attachment Dropzone (Uploads to Google Drive) */}
+                    {/* File Attachment Dropzone */}
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <label className="block text-xs font-bold text-primary/80">
-                          Adjuntar Tickets, Fotos o Facturas (Respaldado en Google Drive)
+                          Adjuntar Tickets, Fotos o Facturas
                         </label>
-                        <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
-                          <HardDrive className="w-3.5 h-3.5 text-emerald-600" />
-                          Drive: huelvachurch@gmail.com
-                        </span>
+
                       </div>
 
                       {/* Dropzone container */}
@@ -779,9 +769,6 @@ export default function SolicitudReembolso() {
                           <p className="text-xs font-bold text-primary">
                             Haz clic o arrastra aquí tus archivos o fotos de tickets
                           </p>
-                          <p className="text-[11px] text-primary/50">
-                            Imágenes (JPG, PNG), PDF, Facturas (se guardarán en Drive)
-                          </p>
                         </div>
                       </div>
 
@@ -789,7 +776,7 @@ export default function SolicitudReembolso() {
                       {attachedFiles.length > 0 && (
                         <div className="mt-3 space-y-2">
                           <span className="text-[11px] font-bold text-primary/60 block">
-                            Archivos listos para subir a Drive ({attachedFiles.length}):
+                            Archivos listos para subir ({attachedFiles.length}):
                           </span>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {attachedFiles.map((item) => (
@@ -830,10 +817,6 @@ export default function SolicitudReembolso() {
                           </div>
                         </div>
                       )}
-
-                      <span className="text-[10px] text-primary/50 mt-1.5 block">
-                        Ruta de respaldo: <strong>Finanzas &gt; Reembolsos &gt; Adjuntos</strong> en Google Drive.
-                      </span>
                     </div>
 
                     <div>
@@ -849,18 +832,7 @@ export default function SolicitudReembolso() {
                       />
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-bold text-primary/70 mb-1">
-                        Observaciones Adicionales (Opcional)
-                      </label>
-                      <textarea
-                        rows={3}
-                        placeholder="Cualquier detalle aclaratorio para el equipo de tesorería..."
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                        className="w-full p-3 rounded-xl border border-slate-200 text-xs text-primary outline-none focus:ring-2 focus:ring-secondary"
-                      />
-                    </div>
+
                   </div>
                 </div>
 

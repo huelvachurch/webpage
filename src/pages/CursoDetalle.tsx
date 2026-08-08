@@ -13,6 +13,7 @@ import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
+import { TheoryMarkdown } from '../components/TheoryMarkdown';
 
 interface Course {
   id: string;
@@ -133,8 +134,22 @@ export default function CursoDetalle() {
             ...data
           } as Enrollment);
         } else {
-          // If no active enrollment exists, redirect back to course landing katalog
-          navigate('/cursos');
+          // If no active enrollment exists in DB, check if user has admin/profesor privileges
+          const isAdminOrProf = roles?.includes('admin') || roles?.includes('profesor') || roles?.includes('superadmin');
+          if (isAdminOrProf) {
+            setEnrollment({
+              id: 'admin-preview-enrollment',
+              courseId: id,
+              studentId: user.uid,
+              status: 'active',
+              progress: 100,
+              completedSteps: [],
+              enrolledAt: { seconds: Math.floor(Date.now() / 1000) }
+            } as Enrollment);
+          } else {
+            // If normal user without enrollment, redirect back to course landing catalog
+            navigate('/cursos');
+          }
         }
         setIsLoading(false);
       }, (error) => {
@@ -143,7 +158,7 @@ export default function CursoDetalle() {
       });
       return () => unsubscribe();
     }
-  }, [id, user, navigate]);
+  }, [id, user, roles, navigate]);
 
   // Read Syllabus structure (classes & steps)
   useEffect(() => {
@@ -219,6 +234,39 @@ export default function CursoDetalle() {
       <div className="pt-36 text-center text-primary/40 font-semibold flex flex-col items-center justify-center min-h-[60vh]">
         <RefreshCw className="w-8 h-8 animate-spin mb-4 text-secondary" />
         Preparando aula virtual...
+      </div>
+    );
+  }
+
+  // Handle pending enrollment status for non-admin/non-teacher users
+  if (enrollment.status === 'pending' && !(roles?.includes('admin') || roles?.includes('profesor') || roles?.includes('superadmin'))) {
+    return (
+      <div className="pt-36 pb-24 bg-slate-50 min-h-screen flex items-center justify-center px-4">
+        <div className="bg-white p-8 md:p-12 rounded-[2.5rem] border border-amber-200 shadow-sm max-w-lg w-full text-center space-y-6">
+          <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto text-amber-600">
+            <Clock className="w-8 h-8" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold text-primary mb-2">Solicitud Pendiente de Aprobación</h2>
+            <p className="text-slate-600 text-sm leading-relaxed">
+              Tu solicitud para acceder a <strong className="text-primary">{course.title}</strong> se ha registrado correctamente y está pendiente de ser aprobada por el profesor o administración del curso.
+            </p>
+          </div>
+          <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              onClick={() => navigate('/mis-cursos')}
+              className="px-6 py-3 bg-primary text-white rounded-2xl text-xs font-bold hover:bg-secondary hover:text-primary transition-all cursor-pointer shadow-md"
+            >
+              Ir a Mis Cursos
+            </button>
+            <button
+              onClick={() => navigate('/cursos')}
+              className="px-6 py-3 bg-slate-100 text-slate-700 rounded-2xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer"
+            >
+              Catálogo de Cursos
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -603,7 +651,7 @@ export default function CursoDetalle() {
               /* A. THE THEORY RENDER LAYOUT SHEET */
               <div className="space-y-8 leading-relaxed">
                 <div className="prose prose-slate max-w-none text-slate-800 leading-relaxed tracking-normal font-sans">
-                  <ReactMarkdown>{activeStep.content || ''}</ReactMarkdown>
+                  <TheoryMarkdown content={activeStep.content || ''} />
                 </div>
 
                 {/* Attachments downloads block if files exist */}
