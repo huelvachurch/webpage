@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { 
   collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, 
-  orderBy, serverTimestamp, where, getDocs 
+  orderBy, serverTimestamp, where, getDocs, Timestamp 
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../../firebase';
 import { useAuth } from '../../AuthContext';
@@ -25,6 +25,7 @@ interface Course {
   instructorName: string;
   modality: 'self-paced' | 'scheduled';
   durationMode: 'unlimited' | 'limited' | 'flexible' | 'fixed';
+  requiresCellSupervision?: boolean;
   startDate?: any;
   endDate?: any;
   timeLimitDays?: number;
@@ -38,10 +39,14 @@ interface Enrollment {
   courseId: string;
   studentId: string;
   studentName: string;
+  cellId?: string;
+  cellName?: string;
   status: 'pending' | 'active' | 'completed' | 'dropped';
   grade?: number;
   progress: number;
   enrolledAt: any;
+  leaderApproved?: boolean;
+  approvedClassIds?: string[];
 }
 
 interface ClassItem {
@@ -50,6 +55,7 @@ interface ClassItem {
   description: string;
   order: number;
   requiresPrevious: boolean;
+  requiresLeaderApproval?: boolean;
   dayNumber: number;
 }
 
@@ -265,6 +271,7 @@ export default function AdminCursos() {
     description: '',
     modality: 'self-paced' as 'self-paced' | 'scheduled',
     durationMode: 'unlimited' as 'unlimited' | 'limited' | 'flexible' | 'fixed',
+    requiresCellSupervision: false,
     imageUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=1200&auto=format&fit=crop',
   });
 
@@ -274,6 +281,7 @@ export default function AdminCursos() {
     description: '',
     modality: 'self-paced' as 'self-paced' | 'scheduled',
     durationMode: 'unlimited' as 'unlimited' | 'limited' | 'flexible' | 'fixed',
+    requiresCellSupervision: false,
     startDate: '',
     endDate: '',
     timeLimitDays: 0,
@@ -281,8 +289,8 @@ export default function AdminCursos() {
     status: 'draft' as 'draft' | 'published' | 'archived',
   });
 
-  const isAdmin = roles.includes('admin');
-  const isProfesor = roles.includes('profesor') || roles.includes('superadmin');
+  const isAdmin = roles.includes('admin') || roles.includes('superadmin');
+  const isProfesor = roles.includes('profesor') || isAdmin;
 
   // Redirect if not authorized
   useEffect(() => {
@@ -317,12 +325,18 @@ export default function AdminCursos() {
   // Fetch enrollments database
   useEffect(() => {
     if (isAuthReady && user && isProfesor) {
-      const q = query(collection(db, 'enrollments'), orderBy('enrolledAt', 'desc'));
+      const q = query(collection(db, 'enrollments'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const enrollmentsData = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         })) as Enrollment[];
+        // Sort in memory to avoid missing docs without enrolledAt field
+        enrollmentsData.sort((a, b) => {
+          const timeA = a.enrolledAt?.seconds || 0;
+          const timeB = b.enrolledAt?.seconds || 0;
+          return timeB - timeA;
+        });
         setEnrollments(enrollmentsData);
       }, (error) => {
         handleFirestoreError(error, OperationType.LIST, 'enrollments');
@@ -386,16 +400,25 @@ export default function AdminCursos() {
     }
   }, [activeWorkspaceCourse]);
 
+  const formatDateForInput = (d: any) => {
+    if (!d) return '';
+    if (typeof d === 'string') return d.split('T')[0];
+    if (d && typeof d.seconds === 'number') return new Date(d.seconds * 1000).toISOString().split('T')[0];
+    if (d instanceof Date) return d.toISOString().split('T')[0];
+    return '';
+  };
+
   // Setup initial adjustments form values when course is chosen
   useEffect(() => {
     if (activeWorkspaceCourse) {
       setAjustesFormData({
-        title: activeWorkspaceCourse.title,
-        description: activeWorkspaceCourse.description,
-        modality: activeWorkspaceCourse.modality,
-        durationMode: activeWorkspaceCourse.durationMode,
-        startDate: activeWorkspaceCourse.startDate ? new Date(activeWorkspaceCourse.startDate.seconds * 1000).toISOString().split('T')[0] : '',
-        endDate: activeWorkspaceCourse.endDate ? new Date(activeWorkspaceCourse.endDate.seconds * 1000).toISOString().split('T')[0] : '',
+        title: activeWorkspaceCourse.title || '',
+        description: activeWorkspaceCourse.description || '',
+        modality: activeWorkspaceCourse.modality || 'self-paced',
+        durationMode: activeWorkspaceCourse.durationMode || 'unlimited',
+        requiresCellSupervision: activeWorkspaceCourse.requiresCellSupervision || false,
+        startDate: formatDateForInput(activeWorkspaceCourse.startDate),
+        endDate: formatDateForInput(activeWorkspaceCourse.endDate),
         timeLimitDays: activeWorkspaceCourse.timeLimitDays || 0,
         imageUrl: activeWorkspaceCourse.imageUrl || '',
         status: activeWorkspaceCourse.status || 'draft',
@@ -421,6 +444,7 @@ export default function AdminCursos() {
         description: newCourseFormData.description,
         modality: newCourseFormData.modality,
         durationMode: newCourseFormData.durationMode,
+        requiresCellSupervision: newCourseFormData.requiresCellSupervision || false,
         imageUrl: newCourseFormData.imageUrl,
         instructorId: user.uid,
         instructorName: user.displayName || 'Profesor',
@@ -463,29 +487,21 @@ export default function AdminCursos() {
     if (!activeWorkspaceCourse) return;
     setIsSaving(true);
 
-    // Validate publishing eligibility
-    if (ajustesFormData.status === 'published') {
-      const totalClasses = workspaceClasses.length;
-      const totalSteps = Object.values(workspaceSteps).reduce((sum, list) => sum + list.length, 0);
-
-      if (totalClasses === 0 || totalSteps === 0) {
-        alert('No se puede publicar el curso todavía. Para poder publicarlo de forma oficial, debes agregar una estructura de clases y por lo menos un paso con teoría o cuestionario.');
-        setIsSaving(false);
-        return;
-      }
-    }
-
     try {
+      const startDateVal = ajustesFormData.startDate ? new Date(ajustesFormData.startDate) : null;
+      const endDateVal = ajustesFormData.endDate ? new Date(ajustesFormData.endDate) : null;
+
       const updatePayload = {
         title: ajustesFormData.title,
         description: ajustesFormData.description,
         modality: ajustesFormData.modality,
         durationMode: ajustesFormData.durationMode,
+        requiresCellSupervision: ajustesFormData.requiresCellSupervision || false,
         timeLimitDays: ajustesFormData.timeLimitDays,
         imageUrl: ajustesFormData.imageUrl,
         status: ajustesFormData.status,
-        startDate: ajustesFormData.startDate ? serverTimestamp() : null, // Simplification
-        endDate: ajustesFormData.endDate ? serverTimestamp() : null,
+        startDate: startDateVal && !isNaN(startDateVal.getTime()) ? Timestamp.fromDate(startDateVal) : null,
+        endDate: endDateVal && !isNaN(endDateVal.getTime()) ? Timestamp.fromDate(endDateVal) : null,
         updatedAt: serverTimestamp(),
       };
 
@@ -525,13 +541,27 @@ export default function AdminCursos() {
     }
   };
 
-  const handleUpdateClassFields = async (classId: string, updatedFields: Partial<ClassItem>) => {
+  const classUpdateTimeoutRef = useRef<Record<string, any>>({});
+  const stepUpdateTimeoutRef = useRef<Record<string, any>>({});
+
+  const handleUpdateClassFields = (classId: string, updatedFields: Partial<ClassItem>) => {
     if (!activeWorkspaceCourse) return;
-    try {
-      await updateDoc(doc(db, 'courses', activeWorkspaceCourse.id, 'classes', classId), updatedFields);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `courses/${activeWorkspaceCourse.id}/classes/${classId}`);
+    const courseId = activeWorkspaceCourse.id;
+
+    // Instantly update local state so typing is smooth and accent keys (tildes) work properly
+    setWorkspaceClasses(prev => prev.map(c => c.id === classId ? { ...c, ...updatedFields } : c));
+
+    // Debounce Firestore update
+    if (classUpdateTimeoutRef.current[classId]) {
+      clearTimeout(classUpdateTimeoutRef.current[classId]);
     }
+    classUpdateTimeoutRef.current[classId] = setTimeout(async () => {
+      try {
+        await updateDoc(doc(db, 'courses', courseId, 'classes', classId), updatedFields);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `courses/${courseId}/classes/${classId}`);
+      }
+    }, 600);
   };
 
   const handleDeleteWorkspaceClass = (classId: string) => {
@@ -594,13 +624,34 @@ export default function AdminCursos() {
     }
   };
 
-  const handleUpdateStepFields = async (fields: Partial<StepItem>) => {
+  const handleUpdateStepFields = (fields: Partial<StepItem>) => {
     if (!activeWorkspaceCourse || !activeClassId || !activeStepId) return;
-    try {
-      await updateDoc(doc(db, 'courses', activeWorkspaceCourse.id, 'classes', activeClassId, 'steps', activeStepId), fields);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `courses/${activeWorkspaceCourse.id}/classes/${activeClassId}/steps/${activeStepId}`);
+    const courseId = activeWorkspaceCourse.id;
+    const classId = activeClassId;
+    const stepId = activeStepId;
+
+    // Instantly update local state
+    setWorkspaceSteps(prev => {
+      const list = prev[classId] || [];
+      const idx = list.findIndex(s => s.id === stepId);
+      if (idx === -1) return prev;
+      const updatedList = [...list];
+      updatedList[idx] = { ...updatedList[idx], ...fields };
+      return { ...prev, [classId]: updatedList };
+    });
+
+    // Debounce Firestore update
+    const key = `${classId}_${stepId}`;
+    if (stepUpdateTimeoutRef.current[key]) {
+      clearTimeout(stepUpdateTimeoutRef.current[key]);
     }
+    stepUpdateTimeoutRef.current[key] = setTimeout(async () => {
+      try {
+        await updateDoc(doc(db, 'courses', courseId, 'classes', classId, 'steps', stepId), fields);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `courses/${courseId}/classes/${classId}/steps/${stepId}`);
+      }
+    }, 600);
   };
 
   const handleDeleteWorkspaceStep = (classId: string, stepId: string) => {
@@ -694,9 +745,25 @@ export default function AdminCursos() {
         grade,
         updatedAt: serverTimestamp(),
       });
-      alert('Nota calificada correctamente en el expediente del alumno.');
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `enrollments/${enrollmentId}`);
+    }
+  };
+
+  const isParticipantOfCourse = (e: Enrollment, course: Course | null | { id: string; title: string }) => {
+    if (!e || !course) return false;
+    if (e.courseId && (e.courseId === course.id || e.courseId.trim() === course.id.trim())) return true;
+    if ((e as any).courseName && (e as any).courseName.toLowerCase().trim() === course.title.toLowerCase().trim()) return true;
+    if ((e as any).courseTitle && (e as any).courseTitle.toLowerCase().trim() === course.title.toLowerCase().trim()) return true;
+    if (e.courseId && e.courseId.toLowerCase().trim() === course.title.toLowerCase().trim()) return true;
+    return false;
+  };
+
+  const handleDeleteEnrollment = async (enrollmentId: string) => {
+    try {
+      await deleteDoc(doc(db, 'enrollments', enrollmentId));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `enrollments/${enrollmentId}`);
     }
   };
 
@@ -755,7 +822,7 @@ export default function AdminCursos() {
               {/* Course items grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {filteredCoursesList.map((course) => {
-                  const courseEnrollments = enrollments.filter(e => e.courseId === course.id);
+                  const courseEnrollments = enrollments.filter(e => isParticipantOfCourse(e, course));
                   const pendingCount = courseEnrollments.filter(e => e.status === 'pending').length;
 
                   return (
@@ -910,7 +977,7 @@ export default function AdminCursos() {
                     >
                       <Users className="w-4 h-4" />
                       Participantes
-                      {enrollments.filter(e => e.courseId === activeWorkspaceCourse.id && e.status === 'pending').length > 0 && (
+                      {enrollments.filter(e => activeWorkspaceCourse && isParticipantOfCourse(e, activeWorkspaceCourse) && e.status === 'pending').length > 0 && (
                         <span className="flex-shrink-0 w-2.5 h-2.5 bg-red-500 rounded-full animate-bounce" />
                       )}
                     </button>
@@ -968,7 +1035,7 @@ export default function AdminCursos() {
                                 className="hidden lg:flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-primary bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-xl transition-all cursor-pointer border border-slate-200/60 shadow-2xs"
                                 title="Ocultar columna de Programa para ampliar editor"
                               >
-                                <span>Ocultar ◄</span>
+                                <span>Ocultar</span>
                               </button>
                             </div>
                           </div>
@@ -1008,6 +1075,11 @@ export default function AdminCursos() {
                                       {clase.requiresPrevious && (
                                         <span className="text-[8px] font-black uppercase tracking-wider bg-red-50 text-red-700 px-2 py-0.5 rounded-md border border-red-100">
                                           Dependiente
+                                        </span>
+                                      )}
+                                      {clase.requiresLeaderApproval && (
+                                        <span className="text-[8px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 px-2 py-0.5 rounded-md border border-amber-200">
+                                          Supervisada
                                         </span>
                                       )}
                                       {(activeWorkspaceCourse.durationMode === 'limited' || activeWorkspaceCourse.modality === 'scheduled') && (
@@ -1191,21 +1263,41 @@ export default function AdminCursos() {
                               </div>
 
                               {/* Modality dependencies dynamically */}
-                              {activeWorkspaceCourse.modality === 'self-paced' && activeWorkspaceCourse.durationMode === 'unlimited' && (
-                                <div className="bg-slate-50 border border-slate-100 p-5 rounded-2xl flex items-start gap-3.5">
+                              <div className="bg-slate-50 border border-slate-100 p-5 rounded-2xl flex items-start gap-3.5">
+                                <input
+                                  id="checkbox-dependency"
+                                  type="checkbox"
+                                  checked={activeClass.requiresPrevious}
+                                  onChange={(e) => handleUpdateClassFields(activeClass.id, { requiresPrevious: e.target.checked })}
+                                  className="w-4 h-4 border border-slate-300 rounded-sm text-secondary focus:ring-secondary mt-1 cursor-pointer"
+                                />
+                                <div>
+                                  <label htmlFor="checkbox-dependency" className="block text-sm font-bold text-primary cursor-pointer">
+                                    ¿Bloquear hasta completar clase anterior?
+                                  </label>
+                                  <span className="block text-xs text-primary/50 text-wrap leading-relaxed mt-1">
+                                    El alumno no podrá ingresar ni ver el contenido de esta clase a menos de que haya completado al 100% todos los pasos de la clase precedente.
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Leader approval dependency option */}
+                              {activeWorkspaceCourse.requiresCellSupervision && (
+                                <div className="bg-amber-50/80 border border-amber-200 p-5 rounded-2xl flex items-start gap-3.5">
                                   <input
-                                    id="checkbox-dependency"
+                                    id="checkbox-leader-approval"
                                     type="checkbox"
-                                    checked={activeClass.requiresPrevious}
-                                    onChange={(e) => handleUpdateClassFields(activeClass.id, { requiresPrevious: e.target.checked })}
-                                    className="w-4 h-4 border border-slate-300 rounded-sm text-secondary focus:ring-secondary mt-1 cursor-pointer"
+                                    checked={activeClass.requiresLeaderApproval || false}
+                                    onChange={(e) => handleUpdateClassFields(activeClass.id, { requiresLeaderApproval: e.target.checked })}
+                                    className="w-4 h-4 border border-amber-300 rounded-sm text-amber-600 focus:ring-amber-500 mt-1 cursor-pointer"
                                   />
                                   <div>
-                                    <label htmlFor="checkbox-dependency" className="block text-sm font-bold text-primary cursor-pointer">
-                                      ¿Bloquear hasta completar clase anterior?
+                                    <label htmlFor="checkbox-leader-approval" className="block text-sm font-bold text-primary cursor-pointer flex items-center gap-2">
+                                      <span>¿Bloquear hasta que el líder de célula acepte?</span>
+                                      <span className="bg-amber-200 text-amber-900 text-[9px] font-black uppercase px-2 py-0.5 rounded-full">Supervisión</span>
                                     </label>
-                                    <span className="block text-xs text-primary/50 text-wrap leading-relaxed mt-1">
-                                      El alumno no podrá ingresar ni ver el contenido de esta clase a menos de que haya completado al 100% todos los pasos de la clase precedente.
+                                    <span className="block text-xs text-amber-900/70 text-wrap leading-relaxed mt-1">
+                                      Esta clase requerirá que el Líder de la Célula del alumno entre a su Portal de Líderes y haga clic en "Aprobar / Desbloquear Clase" para que el alumno pueda acceder.
                                     </span>
                                   </div>
                                 </div>
@@ -1323,7 +1415,7 @@ export default function AdminCursos() {
                                       }`}
                                     >
                                       <Edit3 className="w-4 h-4" />
-                                      Editor de Teoría (Bloques)
+                                      Editor
                                     </button>
                                     <button
                                       type="button"
@@ -1492,7 +1584,7 @@ export default function AdminCursos() {
                                       }`}
                                     >
                                       <Edit2 className="w-3.5 h-3.5" />
-                                      Editor de Preguntas ({(activeStep.questions || []).length})
+                                      Editor ({(activeStep.questions || []).length})
                                     </button>
 
                                     <button
@@ -1505,7 +1597,7 @@ export default function AdminCursos() {
                                       }`}
                                     >
                                       <Eye className="w-3.5 h-3.5" />
-                                      Vista Previa del Cuestionario
+                                      Vista Previa
                                     </button>
                                   </div>
 
@@ -1820,7 +1912,7 @@ export default function AdminCursos() {
 
                                     {(activeStep.questions || []).length === 0 ? (
                                       <div className="py-12 text-center text-slate-400 text-sm italic">
-                                        No hay preguntas configuradas para este cuestionario todavía. Haz clic en la pestaña "Editor de Preguntas" para agregar la primera.
+                                        No hay preguntas configuradas para este cuestionario todavía. Haz clic en la pestaña "Editor" para agregar la primera.
                                       </div>
                                     ) : (
                                       <div className="space-y-8">
@@ -2104,14 +2196,14 @@ export default function AdminCursos() {
                       </div>
 
                       <div className="space-y-4 max-w-4xl">
-                        {enrollments.filter(e => e.courseId === activeWorkspaceCourse.id).length === 0 ? (
+                        {enrollments.filter(e => activeWorkspaceCourse && isParticipantOfCourse(e, activeWorkspaceCourse)).length === 0 ? (
                           <div className="text-center py-20 bg-slate-50/50 rounded-3xl border border-slate-100">
                             <Users className="w-12 h-12 text-primary/10 mx-auto mb-4" />
                             <h3 className="text-xl font-bold text-primary mb-1">No hay alumnos inscritos</h3>
                             <p className="text-xs text-primary/40">Los alumnos que soliciten inscribirse en el catálogo público aparecerán aquí.</p>
                           </div>
                         ) : (
-                          enrollments.filter(e => e.courseId === activeWorkspaceCourse.id).map((enrollment) => {
+                          enrollments.filter(e => activeWorkspaceCourse && isParticipantOfCourse(e, activeWorkspaceCourse)).map((enrollment) => {
                             const isPending = enrollment.status === 'pending';
                             const isActive = enrollment.status === 'active';
                             const isCompleted = enrollment.status === 'completed';
@@ -2130,7 +2222,7 @@ export default function AdminCursos() {
                                       {isPending ? 'Pendiente' : isActive ? 'Activo' : isCompleted ? 'Completado' : 'Dado de baja'}
                                     </span>
                                   </p>
-                                  
+                                    
                                   {/* Enrollment info timeline */}
                                   <div className="mt-2 text-xs text-primary/40 flex flex-wrap gap-4 font-semibold">
                                     <span>Inscrito el: {enrollment.enrolledAt ? new Date(enrollment.enrolledAt.seconds * 1000).toLocaleDateString() : 'Desconocido'}</span>
@@ -2172,10 +2264,10 @@ export default function AdminCursos() {
                                       >
                                         <Award className="w-3.5 h-3.5" /> Graduar alumno
                                       </button>
-                                      
+                                        
                                       <button
                                         onClick={() => handleEnrollmentStatusChange(enrollment.id, 'dropped')}
-                                        className="bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 text-xs font-black uppercase tracking-wider px-4 py-2 rounded-xl transition-all flex items-center gap-1 cursor-pointer"
+                                        className="bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200 text-xs font-black uppercase tracking-wider px-4 py-2 rounded-xl transition-all flex items-center gap-1 cursor-pointer"
                                       >
                                         Dar de baja
                                       </button>
@@ -2190,6 +2282,14 @@ export default function AdminCursos() {
                                       Re-activar alumno
                                     </button>
                                   )}
+
+                                  <button
+                                    onClick={() => handleDeleteEnrollment(enrollment.id)}
+                                    className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                                    title="Eliminar Expediente"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
                                 </div>
                               </div>
                             );
@@ -2282,12 +2382,43 @@ export default function AdminCursos() {
                           </div>
                         </div>
 
+                        {/* Requisito de Supervisión por Célula / Líder */}
+                        <div className="bg-amber-50/70 border border-amber-200 p-5 rounded-2xl space-y-3">
+                          <div className="flex items-center justify-between gap-4">
+                            <div>
+                              <label className="block text-sm font-bold text-primary">
+                                Supervisión por Líder
+                              </label>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                Requisito de estar vinculado a una Célula para inscribirse y aprobación del líder.
+                              </p>
+                            </div>
+                            <select
+                              value={ajustesFormData.requiresCellSupervision ? 'yes' : 'no'}
+                              onChange={(e) => setAjustesFormData({ ...ajustesFormData, requiresCellSupervision: e.target.value === 'yes' })}
+                              className="px-4 py-2.5 rounded-xl border border-amber-300 bg-white text-xs font-bold uppercase text-primary cursor-pointer focus:ring-2 focus:ring-amber-400"
+                            >
+                              <option value="no">No</option>
+                              <option value="yes">Sí</option>
+                            </select>
+                          </div>
+                          {ajustesFormData.requiresCellSupervision && (
+                            <div className="text-xs text-amber-950 bg-amber-100/90 p-3 rounded-xl leading-relaxed font-medium">
+                              🧩 <strong>Configuración activa para este curso:</strong>
+                              <ul className="list-disc pl-4 mt-1 space-y-0.5 text-[11px]">
+                                <li>El alumno debe pertenecer a una Célula activa de la iglesia para solicitar acceso.</li>
+                                <li>Su Líder de Célula recibirá la notificación para aprobar el inicio de la formación.</li>
+                                <li>Las clases marcadas con <em>"¿Bloquear hasta que el líder acepte?"</em> se desbloquearán desde el Portal de Líderes.</li>
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+
                         {ajustesFormData.durationMode === 'limited' && (
                           <div>
                             <label className="block text-xs font-black uppercase tracking-widest text-primary/40 mb-2">Días habilitados límites</label>
                             <input 
                               type="number" 
-                              required
                               className="w-full px-4 py-3 rounded-xl border border-slate-100 outline-none focus:ring-2 focus:ring-secondary text-sm"
                               value={ajustesFormData.timeLimitDays}
                               onChange={(e) => setAjustesFormData({...ajustesFormData, timeLimitDays: parseInt(e.target.value) || 0})}
@@ -2301,7 +2432,6 @@ export default function AdminCursos() {
                               <label className="block text-xs font-black uppercase tracking-widest text-primary/40 mb-2">Fecha Inicio</label>
                               <input 
                                 type="date" 
-                                required
                                 className="w-full px-4 py-3 rounded-xl border border-slate-100 outline-none focus:ring-2 focus:ring-secondary text-sm"
                                 value={ajustesFormData.startDate}
                                 onChange={(e) => setAjustesFormData({...ajustesFormData, startDate: e.target.value})}
@@ -2311,7 +2441,6 @@ export default function AdminCursos() {
                               <label className="block text-xs font-black uppercase tracking-widest text-primary/40 mb-2">Fecha Fin</label>
                               <input 
                                 type="date" 
-                                required
                                 className="w-full px-4 py-3 rounded-xl border border-slate-100 outline-none focus:ring-2 focus:ring-secondary text-sm"
                                 value={ajustesFormData.endDate}
                                 onChange={(e) => setAjustesFormData({...ajustesFormData, endDate: e.target.value})}
@@ -2327,8 +2456,7 @@ export default function AdminCursos() {
                               <img src={ajustesFormData.imageUrl || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3'} alt="" className="w-full h-full object-cover" />
                             </div>
                             <input 
-                              type="url" 
-                              required
+                              type="text" 
                               placeholder="https://girasoles.jpg..."
                               className="w-full px-4 py-3 rounded-xl border border-slate-100 outline-none focus:ring-2 focus:ring-secondary text-sm flex-grow"
                               value={ajustesFormData.imageUrl}
@@ -2467,6 +2595,33 @@ export default function AdminCursos() {
                       )}
                     </select>
                   </div>
+                </div>
+
+                {/* Requisito de Supervisión por Célula */}
+                <div className="bg-amber-50/60 border border-amber-200/80 p-4 rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="block text-xs font-bold text-primary">
+                        Supervisión por Líder
+                      </label>
+                      <p className="text-[11px] text-slate-500">
+                        ¿Requiere estar en célula y aprobación del líder?
+                      </p>
+                    </div>
+                    <select
+                      value={newCourseFormData.requiresCellSupervision ? 'yes' : 'no'}
+                      onChange={(e) => setNewCourseFormData({ ...newCourseFormData, requiresCellSupervision: e.target.value === 'yes' })}
+                      className="px-3 py-2 rounded-xl border border-amber-300 bg-white text-xs font-bold uppercase text-primary cursor-pointer focus:ring-2 focus:ring-amber-400"
+                    >
+                      <option value="no">No</option>
+                      <option value="yes">Sí</option>
+                    </select>
+                  </div>
+                  {newCourseFormData.requiresCellSupervision && (
+                    <p className="text-[10px] text-amber-900 bg-amber-100/80 p-2.5 rounded-xl leading-relaxed font-medium">
+                      🧩 <strong>Requisito activo:</strong> El alumno debe estar vinculado a una Célula. El Líder de Célula deberá aprobar el inicio y podrá desbloquear clases requeridas desde el Portal de Líderes.
+                    </p>
+                  )}
                 </div>
 
                 <div className="pt-6 border-t border-slate-100 flex gap-3">

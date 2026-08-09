@@ -13,6 +13,7 @@ interface Course {
   instructorName: string;
   imageUrl: string;
   modality: string;
+  requiresCellSupervision?: boolean;
 }
 
 interface Enrollment {
@@ -22,6 +23,7 @@ interface Enrollment {
   progress: number;
   grade?: number;
   enrolledAt: any;
+  leaderApproved?: boolean;
   course?: Course;
 }
 
@@ -36,7 +38,7 @@ export default function MisCursos() {
       if (!user) {
         navigate('/login');
       } else {
-        const isStudent = roles?.includes('alumno') || roles?.includes('admin') || roles?.includes('profesor');
+        const isStudent = true; // anyone can have courses
         if (!isStudent) {
           navigate('/cursos');
         }
@@ -166,7 +168,13 @@ export default function MisCursos() {
 function CourseCard({ enrollment }: { enrollment: Enrollment }) {
   if (!enrollment.course) return null;
 
-  const canAccess = enrollment.status === 'active' || enrollment.status === 'completed';
+  const isPendingLeaderApproval = (
+    enrollment.status === 'active' &&
+    Boolean(enrollment.course?.requiresCellSupervision) &&
+    enrollment.leaderApproved !== true
+  );
+
+  const canAccess = (enrollment.status === 'active' && !isPendingLeaderApproval) || enrollment.status === 'completed';
 
   return (
     <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden group hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
@@ -233,21 +241,28 @@ function CourseCard({ enrollment }: { enrollment: Enrollment }) {
                   className="h-full bg-secondary"
                 />
               </div>
-              <Link
-                to={`/cursos/${enrollment.courseId}`}
-                className="w-full mt-3 flex items-center justify-center gap-2 bg-emerald-600 text-white py-3 px-4 rounded-2xl font-bold text-xs hover:bg-emerald-700 transition-all shadow-md group/btn"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" />
-                <span>Ingresar al Curso</span>
-                <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
-              </Link>
+              {isPendingLeaderApproval ? (
+                <div className="w-full mt-3 flex items-center justify-center gap-2 bg-amber-50 text-amber-800 py-3.5 px-4 rounded-2xl font-bold text-xs border border-amber-200">
+                  <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Pendiente aceptación de supervisión</span>
+                </div>
+              ) : (
+                <Link
+                  to={`/cursos/${enrollment.courseId}`}
+                  className="w-full mt-3 flex items-center justify-center gap-2 bg-emerald-600 text-white py-3 px-4 rounded-2xl font-bold text-xs hover:bg-emerald-700 transition-all shadow-md group/btn"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>Ingresar al Curso</span>
+                  <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
+                </Link>
+              )}
             </div>
           )}
 
           {enrollment.status === 'pending' && (
-            <div className="flex items-center gap-2 text-amber-700 bg-amber-50 px-4 py-2.5 rounded-xl text-xs font-bold border border-amber-200">
-              <Clock className="w-4 h-4 text-amber-600" />
-              Esperando aprobación del profesor
+            <div className="flex items-center gap-2 text-amber-800 bg-amber-50 px-4 py-3 rounded-2xl text-xs font-bold border border-amber-200">
+              <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Pendiente aceptación de inscripción</span>
             </div>
           )}
 

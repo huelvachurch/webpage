@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, Filter, GraduationCap, Calendar, Clock, User, ChevronRight, CheckCircle, AlertCircle, LogIn, Play } from 'lucide-react';
-import { collection, addDoc, onSnapshot, query, where, orderBy, serverTimestamp, doc, updateDoc, setDoc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, where, orderBy, serverTimestamp, doc, updateDoc, setDoc, getDoc, getDocs } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
@@ -15,6 +15,7 @@ interface Course {
   instructorName: string;
   modality: 'self-paced' | 'scheduled';
   durationMode: 'unlimited' | 'limited' | 'flexible' | 'fixed';
+  requiresCellSupervision?: boolean;
   startDate?: any;
   endDate?: any;
   timeLimitDays?: number;
@@ -31,6 +32,10 @@ interface Enrollment {
   id: string;
   courseId: string;
   studentId: string;
+  cellId?: string;
+  cellName?: string;
+  leaderApproved?: boolean;
+  approvedClassIds?: string[];
   status: 'pending' | 'active' | 'completed' | 'dropped';
 }
 
@@ -41,20 +46,57 @@ export default function Cursos() {
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [requestedAlumno, setRequestedAlumno] = useState(false);
   const [requestingAlumno, setRequestingAlumno] = useState(false);
+  const [isLinkedToCell, setIsLinkedToCell] = useState(false);
 
-  // Fetch whether user has requested Alumno role
+  // Check whether user is linked to a cell (cell member, leader, or co-leader)
   useEffect(() => {
     if (user) {
       const userRef = doc(db, 'users', user.uid);
-      const unsubscribe = onSnapshot(userRef, (snapshot) => {
+      const unsubscribe = onSnapshot(userRef, async (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data();
           setRequestedAlumno(data.requestedAlumnoRole === true);
+          if (data.celulaId) {
+            setIsLinkedToCell(true);
+            return;
+          }
         }
+
+        try {
+          // Check if leader of a cell
+          const qLeader = query(collection(db, 'celulas'), where('leaderId', '==', user.uid));
+          const leaderSnap = await getDocs(qLeader);
+          if (!leaderSnap.empty) {
+            setIsLinkedToCell(true);
+            return;
+          }
+
+          // Check if co-leader of a cell
+          const qCoLeader = query(collection(db, 'celulas'), where('coLeaderId', '==', user.uid));
+          const coLeaderSnap = await getDocs(qCoLeader);
+          if (!coLeaderSnap.empty) {
+            setIsLinkedToCell(true);
+            return;
+          }
+
+          // Check cell_members collection
+          const qMembers = query(collection(db, 'cell_members'), where('userId', '==', user.uid));
+          const membersSnap = await getDocs(qMembers);
+          if (!membersSnap.empty) {
+            setIsLinkedToCell(true);
+            return;
+          }
+        } catch (err) {
+          console.error("Error checking user cell linkage:", err);
+        }
+
+        setIsLinkedToCell(false);
       }, (error) => {
         console.error("Error reading user profile changes:", error);
       });
       return () => unsubscribe();
+    } else {
+      setIsLinkedToCell(false);
     }
   }, [user]);
 
@@ -137,21 +179,56 @@ export default function Cursos() {
 
     setIsEnrolling(courseId);
     try {
+      const selectedCourse = courses.find(c => c.id === courseId);
+      
+      // Fetch user profile data to check cell membership
+      const userSnap = await getDoc(doc(db, 'users', user.uid));
+      const userData = userSnap.exists() ? userSnap.data() : null;
+
+      let effectiveCellId = userData?.celulaId || null;
+      let effectiveCellName = userData?.celulaName || null;
+
+      // If user doc doesn't have celulaId, check if user is a leader of a cell in 'celulas' collection
+      if (!effectiveCellId) {
+        const cellQuery = query(collection(db, 'celulas'), where('leaderId', '==', user.uid));
+        const cellSnap = await getDocs(cellQuery);
+        if (!cellSnap.empty) {
+          effectiveCellId = cellSnap.docs[0].id;
+          effectiveCellName = cellSnap.docs[0].data().name || 'Mi Célula';
+        }
+      }
+
+      // If course requires cell supervision, check if user has a cell
+      if (selectedCourse?.requiresCellSupervision) {
+        if (!effectiveCellId) {
+          alert(`El curso "${selectedCourse.title}" es de formación supervisada y requiere que estés vinculado a una Célula de la iglesia.\n\nPor favor, únete o solicita ingresar a una Célula desde la sección "Mi Célula" antes de continuar.`);
+          navigate('/mi-celula');
+          return;
+        }
+      }
+
+      const titleToSave = selectedCourse ? getCourseTitle(selectedCourse) : '';
       await addDoc(collection(db, 'enrollments'), {
         courseId,
+        courseName: titleToSave,
+        courseTitle: titleToSave,
         studentId: user.uid,
         studentName: user.displayName || 'Alumno',
+        cellId: effectiveCellId,
+        cellName: effectiveCellName,
         status: 'pending',
+        leaderApproved: !selectedCourse?.requiresCellSupervision ? null : false, // null for no supervision required, false for pending
+        approvedClassIds: [],
         progress: 0,
         enrolledAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-      // also grant 'alumno' role automatically if not there
-      if (!roles?.includes('alumno')) {
-        const userDocRef = doc(db, 'users', user.uid);
-        await setDoc(userDocRef, { roles: [...(roles || []), 'alumno'] }, { merge: true });
+
+      if (selectedCourse?.requiresCellSupervision) {
+        alert(`¡Inscripción solicitada!\n\nUn administrador deberá aceptar tu inscripción, y posteriormente se enviará la solicitud de inicio al Líder de tu Célula.`);
+      } else {
+        alert(`¡Inscripción solicitada!\n\nUn administrador revisará tu solicitud pronto.`);
       }
-      // Success will be reflected via onSnapshot
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'enrollments');
     } finally {
@@ -160,7 +237,11 @@ export default function Cursos() {
   };
 
   const getEnrollmentStatus = (courseId: string) => {
-    return enrollments.find(e => e.courseId === courseId)?.status;
+    return enrollments.find(e => e.courseId === courseId || e.courseId?.trim() === courseId.trim())?.status;
+  };
+
+  const getEnrollment = (courseId: string) => {
+    return enrollments.find(e => e.courseId === courseId || e.courseId?.trim() === courseId.trim());
   };
 
   const getCourseTitle = (course: Course) => {
@@ -175,16 +256,25 @@ export default function Cursos() {
     return course.description;
   };
 
+  const isTeacherOrAdmin = roles?.includes('admin') || roles?.includes('profesor') || roles?.includes('superadmin');
+
   const filteredCourses = courses.filter(c => {
     const title = getCourseTitle(c);
     const desc = getCourseDesc(c);
     const matchesSearch = title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          desc.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesModality = modalityFilter === 'all' || c.modality === modalityFilter;
+
+    // Courses requiring cell supervision are only visible to users linked to a cell, admins/teachers, or users with an existing enrollment
+    const hasEnrollment = Boolean(getEnrollment(c.id));
+    if (c.requiresCellSupervision && !isLinkedToCell && !isTeacherOrAdmin && !hasEnrollment) {
+      return false;
+    }
+
     return matchesSearch && matchesModality;
   });
 
-  const isStudent = roles?.includes('alumno') || roles?.includes('admin') || roles?.includes('profesor');
+  const isStudent = true; // anyone can see and enroll
 
   return (
     <div className="pt-32 pb-24 bg-slate-50 min-h-screen">
@@ -266,8 +356,13 @@ export default function Cursos() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {filteredCourses.map((course, index) => {
                 const status = getEnrollmentStatus(course.id);
-                const isTeacherOrAdmin = roles?.includes('admin') || roles?.includes('profesor') || roles?.includes('superadmin') || course.instructorId === user?.uid;
-                const canAccess = status === 'active' || isTeacherOrAdmin;
+                const userEnrollment = getEnrollment(course.id);
+                const isPendingLeaderApproval = (
+                  status === 'active' && 
+                  Boolean(course.requiresCellSupervision) && 
+                  userEnrollment?.leaderApproved !== true
+                );
+                const canAccess = status === 'active' && !isPendingLeaderApproval;
 
                 return (
                   <motion.div
@@ -285,10 +380,15 @@ export default function Cursos() {
                           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                           referrerPolicy="no-referrer"
                         />
-                        <div className="absolute top-6 left-6">
+                        <div className="absolute top-6 left-6 flex flex-wrap gap-2">
                           <span className="px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest bg-white/90 backdrop-blur-md shadow-sm text-primary">
                             {course.modality === 'self-paced' ? t('courses.selfPaced') : t('courses.scheduled')}
                           </span>
+                          {course.requiresCellSupervision && (
+                            <span className="px-3 py-2 rounded-full text-[10px] font-black uppercase tracking-widest bg-amber-500 text-white shadow-sm flex items-center gap-1 font-sans">
+                              Supervisada
+                            </span>
+                          )}
                         </div>
                         <div className="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                           <span className="bg-white text-primary px-6 py-2.5 rounded-full font-bold text-xs flex items-center gap-2 shadow-xl">
@@ -305,10 +405,15 @@ export default function Cursos() {
                           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                           referrerPolicy="no-referrer"
                         />
-                        <div className="absolute top-6 left-6">
+                        <div className="absolute top-6 left-6 flex flex-wrap gap-2">
                           <span className="px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest bg-white/90 backdrop-blur-md shadow-sm text-primary">
                             {course.modality === 'self-paced' ? t('courses.selfPaced') : t('courses.scheduled')}
                           </span>
+                          {course.requiresCellSupervision && (
+                            <span className="px-3 py-2 rounded-full text-[10px] font-black uppercase tracking-widest bg-amber-500 text-white shadow-sm flex items-center gap-1 font-sans">
+                              Supervisada
+                            </span>
+                          )}
                         </div>
                       </div>
                     )}
@@ -332,59 +437,55 @@ export default function Cursos() {
                         {getCourseDesc(course)}
                       </p>
                       
-                      <div className="mt-auto pt-8 border-t border-slate-50 flex items-center justify-between gap-3">
-                        <div className="flex flex-col">
-                          <span className="text-[10px] font-black text-primary/20 uppercase tracking-widest mb-1">Duración</span>
-                          <span className="text-sm font-bold text-primary flex items-center gap-2">
-                            {course.durationMode === 'unlimited' ? (
-                              <>Ilimitado</>
-                            ) : course.durationMode === 'limited' ? (
-                              <>{course.timeLimitDays} días</>
-                            ) : (
-                              <>Consultar fechas</>
-                            )}
-                          </span>
-                        </div>
-                        
-                        {status === 'active' ? (
-                          <Link
-                            to={`/cursos/${course.id}`}
-                            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3.5 rounded-2xl font-bold text-xs transition-all shadow-md group/btn shrink-0"
-                          >
-                            <Play className="w-4 h-4 fill-current shrink-0" />
-                            <span>Ingresar al Curso</span>
-                            <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform shrink-0" />
-                          </Link>
-                        ) : status === 'pending' ? (
-                          <div className="flex items-center gap-2 px-5 py-3.5 rounded-2xl font-bold text-xs bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
-                            <Clock className="w-4 h-4 text-amber-600 shrink-0" />
-                            <span>Solicitud Pendiente</span>
-                          </div>
-                        ) : isTeacherOrAdmin ? (
-                          <Link
-                            to={`/cursos/${course.id}`}
-                            className="flex items-center gap-2 bg-primary text-white hover:bg-secondary hover:text-primary px-6 py-3.5 rounded-2xl font-bold text-xs transition-all shadow-md group/btn shrink-0"
-                          >
-                            <Play className="w-4 h-4 fill-current shrink-0" />
-                            <span>Ver / Probar Curso</span>
-                            <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform shrink-0" />
-                          </Link>
-                        ) : (
-                          <button
-                            onClick={() => handleEnroll(course.id)}
-                            disabled={isEnrolling === course.id}
-                            className="flex items-center gap-2 bg-primary text-white px-7 py-3.5 rounded-2xl font-bold hover:bg-secondary hover:text-primary transition-all shadow-md group/btn shrink-0 cursor-pointer"
-                          >
-                            {isEnrolling === course.id ? (
-                              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                            ) : (
-                              <>
-                                <span>Solicitar Ingreso</span>
-                                <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
-                              </>
-                            )}
-                          </button>
-                        )}
+                      <div className="mt-auto pt-6 border-t border-slate-100 flex items-center justify-center w-full">
+                        {(() => {
+                          if (status === 'active') {
+                            if (course.requiresCellSupervision && getEnrollment(course.id)?.leaderApproved === false) {
+                              return (
+                                <div className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-2xl font-bold text-xs bg-amber-50 text-amber-800 border border-amber-200 text-center">
+                                  <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                                  <span>Pendiente aceptación de supervisión</span>
+                                </div>
+                              );
+                            }
+                            return (
+                              <Link
+                                to={`/cursos/${course.id}`}
+                                className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3.5 rounded-2xl font-bold text-xs transition-all shadow-md group/btn"
+                              >
+                                <Play className="w-4 h-4 fill-current shrink-0" />
+                                <span>Ingresar al Curso</span>
+                                <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform shrink-0" />
+                              </Link>
+                            );
+                          }
+
+                          if (status === 'pending') {
+                            return (
+                              <div className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-2xl font-bold text-xs bg-amber-50 text-amber-800 border border-amber-200 text-center">
+                                <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                                <span>Pendiente aceptación de inscripción</span>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <button
+                              onClick={() => handleEnroll(course.id)}
+                              disabled={isEnrolling === course.id}
+                              className="w-full flex items-center justify-center gap-2 bg-primary text-white px-7 py-3.5 rounded-2xl font-bold text-xs hover:bg-secondary hover:text-primary transition-all shadow-md group/btn cursor-pointer"
+                            >
+                              {isEnrolling === course.id ? (
+                                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                              ) : (
+                                <>
+                                  <span>Inscribirse</span>
+                                  <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
+                                </>
+                              )}
+                            </button>
+                          );
+                        })()}
                       </div>
                     </div>
                   </motion.div>

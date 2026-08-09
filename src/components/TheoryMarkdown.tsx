@@ -21,7 +21,17 @@ function extractTextFromChildren(children: any): string {
   return '';
 }
 
+// Helper to sanitize markdown and remove accidental ## headers in enumerations or lists
+function sanitizeMarkdownContent(raw: string): string {
+  if (!raw) return '';
+  return raw
+    .replace(/^(\s*\d+\.\s*)#{1,4}\s+/gm, '$1')
+    .replace(/^(>|\s*[-*])\s*#{1,4}\s+/gm, '$1 ');
+}
+
 export const TheoryMarkdown: React.FC<TheoryMarkdownProps> = ({ content }) => {
+  const processedContent = sanitizeMarkdownContent(content);
+
   return (
     <ReactMarkdown
       rehypePlugins={[rehypeRaw]}
@@ -32,27 +42,19 @@ export const TheoryMarkdown: React.FC<TheoryMarkdownProps> = ({ content }) => {
           const lower = rawText.toLowerCase();
 
           // 1. VERSÍCULO BÍBLICO (Bible Verse)
-          // Matches: "Versículo:", "Versiculo:", "Cita Bíblica:", or starting with bible references
           const isVerse = lower.startsWith('versículo') || lower.startsWith('versiculo') || lower.startsWith('cita bíblica') || lower.startsWith('cita biblica');
           
           if (isVerse) {
-            // Try to extract Reference (e.g., "Juan 3:16-17") and Verse Text
-            // Common patterns:
-            // "Versículo: Juan 3:16-17 \n 16 Porque de tal manera..."
-            // "Versículo: Juan 3:16-17 - 16 Porque..."
             let reference = '';
             let verseBody = rawText;
 
-            // Remove "Versículo:" prefix
             const cleanPrefix = rawText.replace(/^(versículo|versiculo|cita bíblica|cita biblica)\s*:?\s*/i, '');
             
-            // Look for reference pattern or colon/dash separator
             const lines = cleanPrefix.split('\n').filter(l => l.trim().length > 0);
             if (lines.length >= 2) {
               reference = lines[0].replace(/^\*\*|\*\*$/g, '').trim();
               verseBody = lines.slice(1).join('\n').trim();
             } else {
-              // Try split by first dash or colon if format is "Juan 3:16-17 - 16 Porque..."
               const match = cleanPrefix.match(/^(\*\*[^*]+\*\*|[A-Z1-3a-záéíóúñ\s]+\s+\d+:\d+(?:-\d+)?)\s*(?::|—|-)?\s*([\s\S]*)/i);
               if (match) {
                 reference = match[1].replace(/^\*\*|\*\*$/g, '').trim();
@@ -74,7 +76,7 @@ export const TheoryMarkdown: React.FC<TheoryMarkdownProps> = ({ content }) => {
                     Sagrada Escritura
                   </span>
                 </div>
-                <div className="text-amber-950 font-serif leading-relaxed text-xs md:text-sm italic pl-1">
+                <div className="text-slate-800 font-sans leading-relaxed text-xs md:text-sm pl-1">
                   {verseBody || cleanPrefix}
                 </div>
               </div>
@@ -82,11 +84,9 @@ export const TheoryMarkdown: React.FC<TheoryMarkdownProps> = ({ content }) => {
           }
 
           // 2. PREGUNTA DE REFLEXIÓN / ESTUDIO (Question Card)
-          // Matches: "Pregunta:", "PREGUNTA:", or starting with "?" / "¿"
           const isQuestion = lower.startsWith('pregunta') || lower.startsWith('?') || lower.startsWith('¿');
 
           if (isQuestion) {
-            // Remove "Pregunta:" or "PREGUNTA:" or leading "?" / "¿" from output
             let questionText = rawText
               .replace(/^(pregunta)\s*:?\s*/i, '')
               .trim();
@@ -102,7 +102,7 @@ export const TheoryMarkdown: React.FC<TheoryMarkdownProps> = ({ content }) => {
                     <span className="inline-block text-[10px] font-black uppercase tracking-wider text-sky-800 bg-sky-100/70 px-2.5 py-0.5 rounded-md mb-2">
                       Pregunta de reflexión
                     </span>
-                    <div className="text-sky-950 font-bold text-xs md:text-sm leading-relaxed">
+                    <div className="text-slate-800 font-sans text-xs md:text-sm leading-relaxed">
                       {questionText}
                     </div>
                   </div>
@@ -133,7 +133,7 @@ export const TheoryMarkdown: React.FC<TheoryMarkdownProps> = ({ content }) => {
                     <span className="inline-block text-[10px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-100/80 px-2.5 py-0.5 rounded-md mb-2">
                       {badgeTitle}
                     </span>
-                    <div className="text-emerald-950 font-medium text-xs md:text-sm leading-relaxed">
+                    <div className="text-slate-800 font-sans text-xs md:text-sm leading-relaxed">
                       {cleanNote}
                     </div>
                   </div>
@@ -149,7 +149,6 @@ export const TheoryMarkdown: React.FC<TheoryMarkdownProps> = ({ content }) => {
             let cleanQuote = rawText.replace(/^(frase|cita)\s*:?\s*/i, '').trim();
             let author = '';
 
-            // Extract author if separated by "—" or " - "
             const dashIdx = cleanQuote.lastIndexOf('—') !== -1 ? cleanQuote.lastIndexOf('—') : cleanQuote.lastIndexOf(' - ');
             if (dashIdx !== -1) {
               author = cleanQuote.substring(dashIdx + 1).replace(/^—|-|\s*/g, '').trim();
@@ -161,7 +160,7 @@ export const TheoryMarkdown: React.FC<TheoryMarkdownProps> = ({ content }) => {
                 <div className="flex gap-3">
                   <Quote className="w-8 h-8 text-secondary/40 shrink-0 mt-1" />
                   <div className="flex-1 min-w-0">
-                    <div className="text-slate-200 font-serif italic text-xs md:text-sm leading-relaxed">
+                    <div className="text-slate-200 font-sans text-xs md:text-sm leading-relaxed">
                       {cleanQuote}
                     </div>
                     {author && (
@@ -177,7 +176,7 @@ export const TheoryMarkdown: React.FC<TheoryMarkdownProps> = ({ content }) => {
 
           // 5. DEFAULT BLOCKQUOTE (Standard Quote)
           return (
-            <blockquote className="my-4 border-l-4 border-slate-300 pl-4 py-1.5 italic text-slate-700 bg-slate-100/50 rounded-r-xl text-xs md:text-sm">
+            <blockquote className="my-4 border-l-4 border-slate-300 pl-4 py-1.5 italic text-slate-700 bg-slate-100/50 rounded-r-xl text-xs md:text-sm font-sans">
               {children}
             </blockquote>
           );
@@ -185,12 +184,12 @@ export const TheoryMarkdown: React.FC<TheoryMarkdownProps> = ({ content }) => {
 
         // Custom Heading Renderers for clean typography hierarchy
         h1: ({ children }) => (
-          <h1 className="text-xl md:text-2xl font-kenao text-primary mt-6 mb-3 pb-1 border-b border-slate-200">
+          <h1 className="text-xl md:text-2xl font-bold text-primary mt-6 mb-3 pb-1 border-b border-slate-200">
             {children}
           </h1>
         ),
         h2: ({ children }) => (
-          <h2 className="text-lg md:text-xl font-kenao text-primary mt-5 mb-2.5">
+          <h2 className="text-lg md:text-xl font-bold text-primary mt-5 mb-2.5">
             {children}
           </h2>
         ),
@@ -208,37 +207,37 @@ export const TheoryMarkdown: React.FC<TheoryMarkdownProps> = ({ content }) => {
 
         // Custom Paragraph Renderer
         p: ({ children }) => (
-          <p className="my-2.5 text-slate-700 leading-relaxed text-xs md:text-sm">
+          <p className="my-2.5 text-slate-700 leading-relaxed text-xs md:text-sm font-sans">
             {children}
           </p>
         ),
 
         // Custom Lists
         ul: ({ children }) => (
-          <ul className="my-3 space-y-1.5 pl-6 list-disc text-xs md:text-sm text-slate-700">
+          <ul className="my-3 space-y-1.5 pl-6 list-disc text-xs md:text-sm text-slate-700 font-sans">
             {children}
           </ul>
         ),
         ol: ({ children }) => (
-          <ol className="my-3 space-y-1.5 pl-6 list-decimal text-xs md:text-sm text-slate-700">
+          <ol className="my-3 space-y-1.5 pl-6 list-decimal text-xs md:text-sm text-slate-700 font-sans">
             {children}
           </ol>
         ),
         li: ({ children }) => (
-          <li className="pl-1 text-xs md:text-sm text-slate-700 marker:text-secondary marker:font-bold">
+          <li className="pl-1 text-xs md:text-sm text-slate-700 font-sans marker:text-secondary marker:font-bold">
             {children}
           </li>
         ),
 
         // Strong/Bold
         strong: ({ children }) => (
-          <strong className="font-bold text-primary bg-primary/5 px-1 py-0.5 rounded">
+          <strong className="font-bold text-slate-900">
             {children}
           </strong>
         )
       }}
     >
-      {content}
+      {processedContent}
     </ReactMarkdown>
   );
 };

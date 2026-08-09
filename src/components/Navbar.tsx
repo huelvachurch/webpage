@@ -82,7 +82,7 @@ export default function Navbar() {
   const isProfesor = roles.includes('profesor') || isSuperAdmin;
   const isSupervisor = roles.includes('supervisor') || isSuperAdmin;
   const isLider = roles.includes('lider') || isSuperAdmin;
-  const isStudent = roles.includes('alumno') || isProfesor || isSuperAdmin;
+  const isStudent = true; // anyone can access their courses
   const isMaestro = roles.includes('maestro') || isSuperAdmin;
   const isFinanciero = roles.includes('financiero') || isAdmin;
 

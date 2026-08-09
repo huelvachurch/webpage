@@ -149,11 +149,31 @@ export const VisualBlockEditor: React.FC<VisualBlockEditorProps> = ({
   const [blocks, setBlocks] = useState<Block[]>([]);
   const lastParsedContent = useRef(content);
 
-  // Parse markdown into blocks on mount
+  // Parse markdown or BLOCKS_JSON into blocks on mount
   useEffect(() => {
     if (content === lastParsedContent.current) return;
     lastParsedContent.current = content;
 
+    if (!content) {
+      setBlocks([]);
+      return;
+    }
+
+    // 1. Check if BLOCKS_JSON comment exists for exact block recovery
+    const jsonMatch = content.match(/<!-- BLOCKS_JSON:([\s\S]*?)-->/);
+    if (jsonMatch) {
+      try {
+        const parsedBlocks = JSON.parse(jsonMatch[1]);
+        if (Array.isArray(parsedBlocks)) {
+          setBlocks(parsedBlocks);
+          return;
+        }
+      } catch (e) {
+        console.error("Error parsing BLOCKS_JSON payload:", e);
+      }
+    }
+
+    // 2. Fallback: Parse markdown lines into blocks for legacy or external content
     const lines = (content || "").split("\n");
     const newBlocks: Block[] = [];
     let currentBlock: any = null;
@@ -284,8 +304,10 @@ export const VisualBlockEditor: React.FC<VisualBlockEditorProps> = ({
       })
       .join("\n\n");
 
-    onChange(markdown);
-    lastParsedContent.current = markdown;
+    const fullPayload = `${markdown}\n\n<!-- BLOCKS_JSON:${JSON.stringify(updatedBlocks)} -->`;
+
+    onChange(fullPayload);
+    lastParsedContent.current = fullPayload;
   };
 
   const updateBlock = (index: number, updates: Partial<Block>) => {

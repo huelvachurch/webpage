@@ -16,6 +16,9 @@ import AdminComunicaciones from './pages/admin/AdminComunicaciones';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminUsuarios from './pages/admin/AdminUsuarios';
 import AdminCursos from './pages/admin/AdminCursos';
+import AdminDocencia from './pages/admin/AdminDocencia';
+import AdminInscripciones from './pages/admin/AdminInscripciones';
+import AdminNotificaciones from './pages/admin/AdminNotificaciones';
 import AdminNewsletter from './pages/admin/AdminNewsletter';
 import AdminSettings from './pages/admin/AdminSettings';
 import AdminFinanzas from './pages/admin/AdminFinanzas';
@@ -326,7 +329,12 @@ function AppContent() {
             <Route index element={<Navigate to="usuarios" replace />} />
           </Route>
           <Route path="/admin/cursos" element={<Navigate to="/admin/docencia" replace />} />
-          <Route path="/admin/docencia" element={<AdminCursos />} />
+          <Route path="/admin/docencia" element={<AdminDocencia />}>
+            <Route path="cursos" element={<AdminCursos />} />
+            <Route path="inscripciones" element={<AdminInscripciones />} />
+            <Route path="notificaciones" element={<AdminNotificaciones />} />
+            <Route index element={<Navigate to="cursos" replace />} />
+          </Route>
           <Route path="/admin/newsletter" element={<Navigate to="/admin/boletines" replace />} />
           <Route path="/admin/boletines" element={<AdminNewsletter />} />
           <Route path="/admin/finanzas" element={<AdminFinanzas />} />

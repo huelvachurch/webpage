@@ -3,11 +3,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   ArrowLeft, BookOpen, Clock, Calendar, CheckCircle, ChevronRight, Lock, 
   Menu, Download, Award, AlertCircle, HelpCircle, GraduationCap, ArrowRight,
-  RefreshCw, Check, FileText
+  RefreshCw, Check, FileText, Send, ShieldCheck
 } from 'lucide-react';
 import { 
   doc, onSnapshot, collection, query, orderBy, where, updateDoc, 
-  serverTimestamp, addDoc, getDocs 
+  serverTimestamp, addDoc, getDocs, arrayUnion 
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../AuthContext';
@@ -22,6 +22,7 @@ interface Course {
   instructorName: string;
   modality: 'self-paced' | 'scheduled';
   durationMode: 'unlimited' | 'limited' | 'flexible' | 'fixed';
+  requiresCellSupervision?: boolean;
   timeLimitDays?: number;
   startDate?: any;
   endDate?: any;
@@ -36,6 +37,11 @@ interface Enrollment {
   progress: number;
   grade?: number;
   completedSteps?: string[];
+  leaderApproved?: boolean;
+  approvedClassIds?: string[];
+  classUnlockRequests?: string[];
+  cellId?: string;
+  cellName?: string;
   enrolledAt: any;
 }
 
@@ -45,6 +51,7 @@ interface ClassItem {
   description: string;
   order: number;
   requiresPrevious: boolean;
+  requiresLeaderApproval?: boolean;
   dayNumber: number;
 }
 
@@ -89,6 +96,23 @@ export default function CursoDetalle() {
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [quizPassed, setQuizPassed] = useState(false);
   const [quizScore, setQuizScore] = useState(0);
+  const [isRequestingUnlock, setIsRequestingUnlock] = useState(false);
+
+  const handleRequestClassUnlock = async () => {
+    if (!enrollment || !activeClassId) return;
+    setIsRequestingUnlock(true);
+    try {
+      await updateDoc(doc(db, 'enrollments', enrollment.id), {
+        classUnlockRequests: arrayUnion(activeClassId),
+        updatedAt: serverTimestamp()
+      });
+      alert(`¡Solicitud enviada a tu Líder!\n\nSe ha notificado al Liderazgo de tu Célula para desbloquear la clase.`);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `enrollments/${enrollment.id}`);
+    } finally {
+      setIsRequestingUnlock(false);
+    }
+  };
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -238,19 +262,44 @@ export default function CursoDetalle() {
     );
   }
 
-  // Handle pending enrollment status for non-admin/non-teacher users
-  if (enrollment.status === 'pending' && !(roles?.includes('admin') || roles?.includes('profesor') || roles?.includes('superadmin'))) {
+  // Handle pending enrollment status or pending leader approval for non-admin/non-teacher users
+  const isPendingEnrollment = enrollment.status === 'pending';
+  const isPendingLeaderApproval = (
+    enrollment.status === 'active' && 
+    Boolean(course?.requiresCellSupervision) && 
+    enrollment.leaderApproved !== true
+  );
+
+  const isAccessBlocked = (isPendingEnrollment || isPendingLeaderApproval) && !(roles?.includes('admin') || roles?.includes('profesor') || roles?.includes('superadmin'));
+
+  if (isAccessBlocked) {
     return (
       <div className="pt-36 pb-24 bg-slate-50 min-h-screen flex items-center justify-center px-4">
         <div className="bg-white p-8 md:p-12 rounded-[2.5rem] border border-amber-200 shadow-sm max-w-lg w-full text-center space-y-6">
-          <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto text-amber-600">
+          <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto text-amber-600 shadow-xs">
             <Clock className="w-8 h-8" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-primary mb-2">Solicitud Pendiente de Aprobación</h2>
-            <p className="text-slate-600 text-sm leading-relaxed">
-              Tu solicitud para acceder a <strong className="text-primary">{course.title}</strong> se ha registrado correctamente y está pendiente de ser aprobada por el profesor o administración del curso.
+            <h2 className="text-2xl font-bold text-primary mb-2">
+              {isPendingEnrollment ? 'Solicitud de Inscripción Pendiente' : 'Solicitud de Inicio Pendiente'}
+            </h2>
+            <p className="text-slate-600 text-sm leading-relaxed mb-4">
+              {isPendingEnrollment ? (
+                <>Tu solicitud de inscripción para acceder a <strong className="text-primary">{course.title}</strong> ha sido enviada y está a la espera de ser aceptada por un administrador.</>
+              ) : (
+                <>Tu solicitud de inicio para acceder a <strong className="text-primary">{course.title}</strong> ha sido enviada al Liderazgo de tu Célula{enrollment.cellName ? ` (${enrollment.cellName})` : ''}.</>
+              )}
             </p>
+            <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200/80 text-amber-900 text-xs leading-relaxed text-left">
+              <strong>💡 ¿Qué sucede ahora?</strong>
+              <p className="mt-1 text-amber-800">
+                {isPendingEnrollment ? (
+                  <>Una vez que un administrador acepte tu inscripción, {course?.requiresCellSupervision ? 'se enviará una solicitud de inicio al Liderazgo de tu célula.' : 'podrás ingresar al curso y comenzar a aprender.'}</>
+                ) : (
+                  <>Una vez aceptado el inicio del curso por parte del Liderazgo de tu célula, el botón cambiará automáticamente a <strong>"Ingresar"</strong> y podrás acceder a tus clases.</>
+                )}
+              </p>
+            </div>
           </div>
           <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row gap-3 justify-center">
             <button
@@ -273,6 +322,18 @@ export default function CursoDetalle() {
 
   // Verification if class is locked (Dependencies)
   const isClassLocked = (clase: ClassItem, index: number) => {
+    // If user is Admin or Instructor or Leader, bypass locks for preview
+    const isElevated = roles.includes('admin') || roles.includes('profesor') || roles.includes('superadmin');
+    if (isElevated) return false;
+
+    // 0. Leader approval lock for cell supervised classes
+    if (clase.requiresLeaderApproval) {
+      const approvedList = enrollment?.approvedClassIds || [];
+      if (!approvedList.includes(clase.id)) {
+        return true;
+      }
+    }
+
     // 1. Unlimited timeframe dependents
     if (course.modality === 'self-paced' && course.durationMode === 'unlimited') {
       if (index === 0) return false;
@@ -337,6 +398,16 @@ export default function CursoDetalle() {
     const nextProgress = totalStepsCount > 0 
       ? Math.round((updatedCompleted.length / totalStepsCount) * 100) 
       : 100;
+
+    if (enrollment.id === 'admin-preview-enrollment') {
+      setEnrollment(prev => prev ? {
+        ...prev,
+        completedSteps: updatedCompleted,
+        progress: nextProgress
+      } : null);
+      navigateNextStep();
+      return;
+    }
 
     try {
       await updateDoc(doc(db, 'enrollments', enrollment.id), {
@@ -526,16 +597,26 @@ export default function CursoDetalle() {
                 const classSteps = steps[clase.id] || [];
                 const isLocked = isClassLocked(clase, idx);
                 const isSelectedClass = activeClassId === clase.id;
+                const isRequested = (enrollment.classUnlockRequests || []).includes(clase.id);
 
                 return (
                   <div key={clase.id} className="space-y-1">
                     {/* Class header bar trigger */}
                     <div 
-                      onClick={() => !isLocked && setActiveClassId(clase.id)}
+                      onClick={() => {
+                        setActiveClassId(clase.id);
+                        if (!isLocked && classSteps.length > 0) {
+                          setActiveStepId(classSteps[0].id);
+                        }
+                      }}
                       className={`p-3.5 rounded-2xl border transition-all ${
-                        isLocked ? 'bg-slate-50 text-slate-400 border-slate-100 cursor-not-allowed opacity-60' :
-                        isSelectedClass ? 'bg-primary text-white border-primary border shadow-sm cursor-pointer' :
-                        'bg-white border-slate-100/80 hover:bg-slate-50 cursor-pointer'
+                        isLocked 
+                          ? isSelectedClass 
+                            ? 'bg-amber-100/90 border-amber-300 text-primary shadow-xs cursor-pointer' 
+                            : 'bg-amber-50/40 text-slate-700 border-amber-200/60 hover:bg-amber-50 cursor-pointer'
+                          : isSelectedClass 
+                            ? 'bg-primary text-white border-primary border shadow-sm cursor-pointer' 
+                            : 'bg-white border-slate-100/80 hover:bg-slate-50 cursor-pointer'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -548,25 +629,24 @@ export default function CursoDetalle() {
 
                         {/* Locker badge indicators */}
                         {isLocked ? (
-                          <div className="p-1.5 bg-slate-100/60 text-slate-400 rounded-lg">
+                          <div className="p-1.5 bg-amber-100 text-amber-800 rounded-lg shrink-0">
                             <Lock className="w-3.5 h-3.5" />
                           </div>
                         ) : (
                           isSelectedClass && (
-                            <span className="w-2.5 h-2.5 bg-secondary rounded-full animate-pulse" />
+                            <span className="w-2.5 h-2.5 bg-secondary rounded-full animate-pulse shrink-0" />
                           )
                         )}
                       </div>
 
                       {/* Display locked warning inline */}
                       {isLocked && (
-                        <span className="block text-[8px] font-extrabold tracking-wider text-red-500 mt-2 bg-red-50 border border-red-100 p-1.5 rounded-md leading-relaxed text-center">
-                          {course.modality === 'self-paced' && course.durationMode === 'unlimited' ? (
-                            'Bloqueado: Completa clase previa'
-                          ) : (
-                            `Desbloquea en el Día ${clase.dayNumber} (Faltan ${getDaysRemainingForUnlock(clase)} días)`
-                          )}
-                        </span>
+                        <div className="mt-2 text-[8.5px] font-extrabold tracking-wider text-amber-900 bg-amber-100/80 border border-amber-200 p-1.5 rounded-md flex items-center justify-between gap-1">
+                          <span>🔒 Requiere Aprobación</span>
+                          <span className="text-amber-800 underline font-black">
+                            {isRequested ? 'Solicitado' : 'Solicitar'}
+                          </span>
+                        </div>
                       )}
                     </div>
 
@@ -621,22 +701,71 @@ export default function CursoDetalle() {
          ========================================================= */}
       <div className="flex-grow flex flex-col p-6 md:p-10 max-h-[calc(100vh-6rem)] overflow-y-auto">
         
-        {!activeStep ? (
-          /* Placeholder screens */
-          <div className="flex-grow flex flex-col items-center justify-center py-20 text-center max-w-xl mx-auto">
-            <div className="w-20 h-20 bg-primary/5 text-primary rounded-3xl flex items-center justify-center mb-6 shadow-xs">
-              <GraduationCap className="w-10 h-10" />
-            </div>
-            <h3 className="text-3xl font-kenao text-primary mb-3">Tu Aula Virtual de Aprendizaje</h3>
-            <p className="text-primary/60 text-sm leading-relaxed mb-6">
-              Haz clic en cualquiera de las clases y sus contenidos en el temario de la izquierda para comenzar a estudiar, responder cuestionarios académicos e incrementar tus calificaciones.
-            </p>
-          </div>
-        ) : (
-          /* Main active learning panel */
-          <div className="max-w-3xl mx-auto w-full space-y-8 pb-12 animate-fade-in">
-            
-            {/* Header indicators */}
+        {(() => {
+          const activeClassIndex = activeClass ? classes.findIndex(c => c.id === activeClass.id) : -1;
+          const isCurrentClassLocked = activeClass && activeClassIndex >= 0 ? isClassLocked(activeClass, activeClassIndex) : false;
+          const hasRequestedUnlock = activeClassId ? (enrollment.classUnlockRequests || []).includes(activeClassId) : false;
+
+          if (isCurrentClassLocked) {
+            return (
+              <div className="flex-grow flex flex-col items-center justify-center py-16 text-center max-w-xl mx-auto space-y-6 animate-fade-in">
+                <div className="w-20 h-20 bg-amber-100 text-amber-700 rounded-3xl border border-amber-200 flex items-center justify-center shadow-xs">
+                  <Lock className="w-10 h-10" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-amber-800 bg-amber-50 px-3.5 py-1.5 rounded-full border border-amber-200 inline-block mb-3">
+                    {activeClass?.title}
+                  </span>
+                  <h3 className="text-3xl font-kenao text-primary mb-3">Clase Bloqueada</h3>
+                  <p className="text-primary/60 text-sm leading-relaxed max-w-md mx-auto">
+                    {activeClass?.requiresLeaderApproval 
+                      ? `Esta clase requiere autorización del Liderazgo de tu Célula (${enrollment.cellName || 'tu célula'}) para acceder.`
+                      : course.modality === 'self-paced' && course.durationMode === 'unlimited'
+                      ? `Esta clase se encuentra bloqueada hasta que completes todas las teorías y cuestionarios de la clase previa.`
+                      : `Esta clase se desbloqueará en el Día ${activeClass?.dayNumber || 1}.`
+                    }
+                  </p>
+                </div>
+
+                <div className="pt-2">
+                  {hasRequestedUnlock ? (
+                    <div className="inline-flex items-center gap-2.5 px-6 py-3.5 bg-amber-50 text-amber-900 border border-amber-300 rounded-2xl font-bold text-xs shadow-xs">
+                      <Clock className="w-4.5 h-4.5 text-amber-600 animate-pulse" />
+                      <span>Solicitud de desbloqueo enviada a tu Líder de Célula</span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleRequestClassUnlock}
+                      disabled={isRequestingUnlock}
+                      className="inline-flex items-center gap-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs px-8 py-4 rounded-2xl transition-all shadow-md hover:shadow-lg cursor-pointer transform hover:-translate-y-0.5"
+                    >
+                      <Send className="w-4 h-4" />
+                      <span>{isRequestingUnlock ? 'Enviando solicitud...' : 'Solicitar al líder desbloquear clase'}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          }
+
+          if (!activeStep) {
+            return (
+              <div className="flex-grow flex flex-col items-center justify-center py-20 text-center max-w-xl mx-auto">
+                <div className="w-20 h-20 bg-primary/5 text-primary rounded-3xl flex items-center justify-center mb-6 shadow-xs">
+                  <GraduationCap className="w-10 h-10" />
+                </div>
+                <h3 className="text-3xl font-kenao text-primary mb-3">Tu Aula Virtual de Aprendizaje</h3>
+                <p className="text-primary/60 text-sm leading-relaxed mb-6">
+                  Haz clic en cualquiera de las clases y sus contenidos en el temario de la izquierda para comenzar a estudiar, responder cuestionarios académicos e incrementar tus calificaciones.
+                </p>
+              </div>
+            );
+          }
+
+          return (
+            <div className="max-w-3xl mx-auto w-full space-y-8 pb-12 animate-fade-in">
+              
+              {/* Header indicators */}
             <div className="border-b border-slate-150 pb-5">
               <span className="text-[10px] font-black uppercase tracking-widest text-secondary block mb-1">
                 {activeClass?.title} • Paso {activeStep.order + 1}
@@ -1039,7 +1168,8 @@ export default function CursoDetalle() {
             )}
 
           </div>
-        )}
+          );
+        })()}
 
       </div>
 
