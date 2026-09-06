@@ -603,7 +603,7 @@ Solo devuelve el contenido formateado en Markdown, sin ningún texto adicional n
       let response;
       try {
         response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: 'gemini-3.6-flash',
           contents: {
             parts: [
               {
@@ -617,10 +617,10 @@ Solo devuelve el contenido formateado en Markdown, sin ningún texto adicional n
           }
         });
       } catch (err: any) {
-        if (err.status === 503 || err.message?.includes('503')) {
-          console.warn("Retrying with gemini-2.5-flash-lite due to 503...");
+        console.warn("Primary model error, retrying with gemini-3.1-flash-lite...", err.message);
+        try {
           response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-lite',
+            model: 'gemini-3.1-flash-lite',
             contents: {
               parts: [
                 {
@@ -633,8 +633,22 @@ Solo devuelve el contenido formateado en Markdown, sin ningún texto adicional n
               ]
             }
           });
-        } else {
-          throw err;
+        } catch (retryErr: any) {
+          console.warn("Secondary model error, retrying with gemini-flash-latest...", retryErr.message);
+          response = await ai.models.generateContent({
+            model: 'gemini-flash-latest',
+            contents: {
+              parts: [
+                {
+                  inlineData: {
+                    data: pdfBase64,
+                    mimeType: mimeType || "application/pdf",
+                  }
+                },
+                { text: prompt }
+              ]
+            }
+          });
         }
       }
       

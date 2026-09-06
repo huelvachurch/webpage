@@ -107,6 +107,9 @@ export default function Legal() {
                     <p className="mb-4">
                       The collection and automated processing of personal data aim to maintain the connection with you and to perform information, training, counseling, and other activities proper to Huelva Church.
                     </p>
+                    <p className="mb-4">
+                      <strong>App Purpose & Google Data:</strong> The Huelva Church application is a private platform for managing church members, theological courses, volunteer sign-ups, and internal communications. When you authenticate using your Google Account (Google OAuth), we securely request and store only your basic profile information (such as your name, email address, and profile picture) solely for the purpose of identifying you within our platform and granting you access to member-only resources. We do not request sensitive scopes, nor do we share or sell your Google data to third parties.
+                    </p>
                     <p>
                       This data will only be transferred to those entities that are strictly necessary with the sole purpose of complying with the aforementioned objective.
                     </p>
@@ -210,6 +213,9 @@ export default function Legal() {
                     <p className="mb-4">
                       A recolha e o tratamento automatizado dos dados pessoais têm como finalidade a manutenção de contato e o desempenho de tarefas de informação, formação, aconselhamento e outras atividades da Huelva Church.
                     </p>
+                    <p className="mb-4">
+                      <strong>Propósito da Aplicação e Dados do Google:</strong> A aplicação Huelva Church é uma plataforma privada para a gestão de membros da igreja, cursos teológicos, inscrições de voluntários e comunicações internas. Ao autenticar-se usando a sua Conta do Google (Google OAuth), solicitamos e armazenamos de forma segura apenas as suas informações básicas de perfil (como o seu nome, endereço de e-mail e fotografia de perfil) com o único propósito de o identificar na nossa plataforma e conceder-lhe acesso a recursos exclusivos para membros. Não solicitamos permissões sensíveis, nem partilhamos ou vendemos os seus dados do Google a terceiros.
+                    </p>
                     <p>
                       Estes dados apenas serão cedidos às entidades necessárias com o único objetivo de dar cumprimento à finalidade anteriormente exposta.
                     </p>
@@ -312,6 +318,9 @@ export default function Legal() {
                     </p>
                     <p className="mb-4">
                       La recogida y tratamiento automatizado de los datos de carácter personal tiene como finalidad el mantenimiento de la relación y el desempeño de tareas de información, formación, asesoramiento y otras actividades propias de Huelva Church.
+                    </p>
+                    <p className="mb-4">
+                      <strong>Propósito de la Aplicación y Datos de Google:</strong> La aplicación Huelva Church es una plataforma privada para la gestión de miembros de la iglesia, cursos teológicos, inscripciones de voluntarios y comunicaciones internas. Al autenticarse utilizando su cuenta de Google (Google OAuth), solicitamos y almacenamos de forma segura únicamente su información básica de perfil (como su nombre, dirección de correo electrónico y foto de perfil) con el único fin de identificarle dentro de nuestra plataforma y concederle acceso a los recursos exclusivos para miembros. No solicitamos permisos sensibles, ni compartimos o vendemos sus datos de Google a terceros.
                     </p>
                     <p>
                       Estos datos únicamente serán cedidos a aquellas entidades que sean necesarias con el único objetivo de dar cumplimiento a la finalidad anteriormente exposta.

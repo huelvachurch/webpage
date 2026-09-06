@@ -39,6 +39,13 @@ interface Enrollment {
   status: 'pending' | 'active' | 'completed' | 'dropped';
 }
 
+const getDriveImageUrl = (url: string) => {
+  if (!url) return '';
+  const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m && m[1]) return `https://drive.google.com/thumbnail?id=${m[1]}&sz=w800`;
+  return url;
+};
+
 export default function Cursos() {
   const { user, roles, loading, isAuthReady } = useAuth();
   const navigate = useNavigate();
@@ -216,7 +223,7 @@ export default function Cursos() {
         studentName: user.displayName || 'Alumno',
         cellId: effectiveCellId,
         cellName: effectiveCellName,
-        status: 'pending',
+        status: 'active',
         leaderApproved: !selectedCourse?.requiresCellSupervision ? null : false, // null for no supervision required, false for pending
         approvedClassIds: [],
         progress: 0,
@@ -375,7 +382,7 @@ export default function Cursos() {
                     {canAccess ? (
                       <Link to={`/cursos/${course.id}`} className="aspect-[16/10] relative overflow-hidden block cursor-pointer">
                         <img 
-                          src={course.imageUrl || `https://picsum.photos/seed/${course.id}/800/500`} 
+                          src={getDriveImageUrl(course.imageUrl) || `https://picsum.photos/seed/${course.id}/800/500`} 
                           alt={getCourseTitle(course)}
                           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                           referrerPolicy="no-referrer"
@@ -400,7 +407,7 @@ export default function Cursos() {
                     ) : (
                       <div className="aspect-[16/10] relative overflow-hidden">
                         <img 
-                          src={course.imageUrl || `https://picsum.photos/seed/${course.id}/800/500`} 
+                          src={getDriveImageUrl(course.imageUrl) || `https://picsum.photos/seed/${course.id}/800/500`} 
                           alt={getCourseTitle(course)}
                           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                           referrerPolicy="no-referrer"

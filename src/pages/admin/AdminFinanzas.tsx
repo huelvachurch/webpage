@@ -11,7 +11,7 @@ import {
   HardDrive, Paperclip
 } from 'lucide-react';
 import { 
-  collection, addDoc, updateDoc, deleteDoc, doc, 
+  collection, addDoc, setDoc, updateDoc, deleteDoc, doc, 
   onSnapshot, query, orderBy, serverTimestamp, where 
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
@@ -299,13 +299,16 @@ export default function AdminFinanzas() {
   };
 
   const allowedTabs = useMemo(() => {
-    const allTabs: Array<'bancarios' | 'celebraciones' | 'cafeteria' | 'libreria' | 'reembolsos'> = [
-      'bancarios', 'celebraciones', 'cafeteria', 'libreria', 'reembolsos'
-    ];
     if (isAdmin) {
-      return [...allTabs, 'permisos'] as Array<'bancarios' | 'celebraciones' | 'caja_chica' | 'cafeteria' | 'libreria' | 'reembolsos' | 'permisos'>;
+      return ['bancarios', 'celebraciones', 'cafeteria', 'libreria', 'reembolsos'] as Array<'bancarios' | 'celebraciones' | 'caja_chica' | 'cafeteria' | 'libreria' | 'reembolsos' | 'permisos'>;
     }
-    return allTabs.filter(tab => hasPermission(tab) || hasPermission('caja_chica'));
+    const tabs: Array<'bancarios' | 'celebraciones' | 'caja_chica' | 'cafeteria' | 'libreria' | 'reembolsos'> = [];
+    if (hasPermission('bancarios')) tabs.push('bancarios');
+    if (hasPermission('celebraciones') || hasPermission('caja_chica')) tabs.push('celebraciones');
+    if (hasPermission('cafeteria') || hasPermission('caja_chica')) tabs.push('cafeteria');
+    if (hasPermission('libreria') || hasPermission('caja_chica')) tabs.push('libreria');
+    if (hasPermission('reembolsos')) tabs.push('reembolsos');
+    return tabs;
   }, [isAdmin, myFinanzasPermissions]);
 
   // Active top tab state
@@ -1371,7 +1374,6 @@ export default function AdminFinanzas() {
   // Arqueo Form State
   const [arqueoDate, setArqueoDate] = useState(new Date().toISOString().split('T')[0]);
   const [arqueoSobre, setArqueoSobre] = useState('');
-  const [arqueoBolsa, setArqueoBolsa] = useState('');
   const [arqueoCajaChica, setArqueoCajaChica] = useState('');
   const [arqueoNotes, setArqueoNotes] = useState('');
   const [savingArqueo, setSavingArqueo] = useState(false);
@@ -1382,6 +1384,23 @@ export default function AdminFinanzas() {
   const celebrationIncomesList = useMemo(() => {
     return (celebrationIncomes as any[]).filter(i => i.type !== 'egreso');
   }, [celebrationIncomes]);
+
+  const celebrationCajaChicaIncomes = useMemo(() => {
+    return arqueos
+      .filter(a => (!a.module || a.module === 'celebraciones') && (a.cajaChica || 0) > 0)
+      .map(a => ({
+        id: `arq_caja_${a.id}`,
+        date: a.date,
+        amount: a.cajaChica || 0,
+        paymentMethod: 'Efectivo',
+        category: 'Celebración / Arqueo',
+        concept: `Retención Arqueo Celebración (${a.date})`,
+        notes: a.notes || 'Ingreso a Caja Chica desde Arqueo',
+        registeredByName: a.registeredByName || 'Financiero',
+        createdAt: a.createdAt
+      }))
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [arqueos]);
 
   const celebrationEgresosList = useMemo(() => {
     const fromCeleb = (celebrationIncomes as any[]).filter(i => i.type === 'egreso');
@@ -1420,8 +1439,10 @@ export default function AdminFinanzas() {
   }, [celebrationEgresosList]);
 
   const saldoCajaChicaCelebraciones = useMemo(() => {
-    return totalCelebrationEfectivo - totalCelebrationEgresos;
-  }, [totalCelebrationEfectivo, totalCelebrationEgresos]);
+    const totalIn = celebrationCajaChicaIncomes.reduce((acc, curr) => acc + (curr.amount || 0), 0);
+    const totalOut = celebrationEgresosList.reduce((acc, curr) => acc + (curr.amount || 0), 0);
+    return totalIn - totalOut;
+  }, [celebrationCajaChicaIncomes, celebrationEgresosList]);
 
   // Daily cash income for selected Arqueo date (Celebraciones)
   const totalEfectivoFechaArqueo = useMemo(() => {
@@ -1460,7 +1481,8 @@ export default function AdminFinanzas() {
 
     setSavingCelebEgreso(true);
     try {
-      await addDoc(collection(db, 'finanzas_celebraciones'), {
+      const newRef = doc(collection(db, 'finanzas_celebraciones'));
+      const data = {
         date: celebEgresoForm.date,
         type: 'egreso',
         amount: parsedAmount,
@@ -1471,6 +1493,11 @@ export default function AdminFinanzas() {
         registeredByUid: user?.uid,
         registeredByName: user?.displayName || user?.email || 'Financiero',
         createdAt: serverTimestamp()
+      };
+      await setDoc(newRef, data);
+      await setDoc(doc(db, 'finanzas_caja_chica', newRef.id), {
+        ...data,
+        category: 'Celebraciones / Egreso'
       });
 
       setCelebEgresoForm({
@@ -1584,7 +1611,8 @@ export default function AdminFinanzas() {
 
     setSavingCafeteriaEgreso(true);
     try {
-      await addDoc(collection(db, 'finanzas_cafeteria'), {
+      const newRef = doc(collection(db, 'finanzas_cafeteria'));
+      const data = {
         date: cafeteriaEgresoForm.date,
         type: 'egreso',
         amount: parsedAmount,
@@ -1596,6 +1624,11 @@ export default function AdminFinanzas() {
         registeredByUid: user?.uid,
         registeredByName: user?.displayName || user?.email || 'Financiero',
         createdAt: serverTimestamp()
+      };
+      await setDoc(newRef, data);
+      await setDoc(doc(db, 'finanzas_caja_chica', newRef.id), {
+        ...data,
+        category: 'Cafetería / Egreso'
       });
 
       setCafeteriaEgresoForm({
@@ -1615,6 +1648,23 @@ export default function AdminFinanzas() {
   const cafeteriaIncomesList = useMemo(() => {
     return cafeteriaMovements.filter(m => m.type === 'ingreso');
   }, [cafeteriaMovements]);
+
+  const cafeteriaCajaChicaIncomes = useMemo(() => {
+    return arqueos
+      .filter(a => a.module === 'cafeteria' && (a.cajaChica || 0) > 0)
+      .map(a => ({
+        id: `arq_caf_${a.id}`,
+        date: a.date,
+        amount: a.cajaChica || 0,
+        paymentMethod: 'Efectivo',
+        category: 'Cafetería / Arqueo',
+        concept: `Retención Arqueo Cafetería (${a.date})`,
+        notes: a.notes || 'Ingreso a Caja Chica desde Arqueo',
+        registeredByName: a.registeredByName || 'Financiero',
+        createdAt: a.createdAt
+      }))
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [arqueos]);
 
   const cafeteriaEgresosList = useMemo(() => {
     return cafeteriaMovements.filter(m => m.type === 'egreso');
@@ -1651,8 +1701,10 @@ export default function AdminFinanzas() {
   }, [cafeteriaEgresosList]);
 
   const saldoCajaChicaCafeteria = useMemo(() => {
-    return totalCafeteriaEfectivo - totalCafeteriaEgresos;
-  }, [totalCafeteriaEfectivo, totalCafeteriaEgresos]);
+    const totalIn = cafeteriaCajaChicaIncomes.reduce((acc, curr) => acc + (curr.amount || 0), 0);
+    const totalOut = cafeteriaEgresosList.reduce((acc, curr) => acc + (curr.amount || 0), 0);
+    return totalIn - totalOut;
+  }, [cafeteriaCajaChicaIncomes, cafeteriaEgresosList]);
 
   const totalEfectivoCafeteriaFechaArqueo = useMemo(() => {
     const ingresosDia = cafeteriaIncomesList
@@ -1748,7 +1800,8 @@ export default function AdminFinanzas() {
 
     setSavingLibreriaEgreso(true);
     try {
-      await addDoc(collection(db, 'finanzas_libreria'), {
+      const newRef = doc(collection(db, 'finanzas_libreria'));
+      const data = {
         date: libreriaEgresoForm.date,
         type: 'egreso',
         amount: parsedAmount,
@@ -1760,6 +1813,11 @@ export default function AdminFinanzas() {
         registeredByUid: user?.uid,
         registeredByName: user?.displayName || user?.email || 'Financiero',
         createdAt: serverTimestamp()
+      };
+      await setDoc(newRef, data);
+      await setDoc(doc(db, 'finanzas_caja_chica', newRef.id), {
+        ...data,
+        category: 'Librería / Egreso'
       });
 
       setLibreriaEgresoForm({
@@ -1779,6 +1837,23 @@ export default function AdminFinanzas() {
   const libreriaIncomesList = useMemo(() => {
     return libreriaMovements.filter(m => m.type === 'ingreso');
   }, [libreriaMovements]);
+
+  const libreriaCajaChicaIncomes = useMemo(() => {
+    return arqueos
+      .filter(a => a.module === 'libreria' && (a.cajaChica || 0) > 0)
+      .map(a => ({
+        id: `arq_lib_${a.id}`,
+        date: a.date,
+        amount: a.cajaChica || 0,
+        paymentMethod: 'Efectivo',
+        category: 'Librería / Arqueo',
+        concept: `Retención Arqueo Librería (${a.date})`,
+        notes: a.notes || 'Ingreso a Caja Chica desde Arqueo',
+        registeredByName: a.registeredByName || 'Financiero',
+        createdAt: a.createdAt
+      }))
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [arqueos]);
 
   const libreriaEgresosList = useMemo(() => {
     return libreriaMovements.filter(m => m.type === 'egreso');
@@ -1815,8 +1890,10 @@ export default function AdminFinanzas() {
   }, [libreriaEgresosList]);
 
   const saldoCajaChicaLibreria = useMemo(() => {
-    return totalLibreriaEfectivo - totalLibreriaEgresos;
-  }, [totalLibreriaEfectivo, totalLibreriaEgresos]);
+    const totalIn = libreriaCajaChicaIncomes.reduce((acc, curr) => acc + (curr.amount || 0), 0);
+    const totalOut = libreriaEgresosList.reduce((acc, curr) => acc + (curr.amount || 0), 0);
+    return totalIn - totalOut;
+  }, [libreriaCajaChicaIncomes, libreriaEgresosList]);
 
   const totalEfectivoLibreriaFechaArqueo = useMemo(() => {
     const ingresosDia = libreriaIncomesList
@@ -1828,10 +1905,9 @@ export default function AdminFinanzas() {
   // Total distributed in Arqueo
   const totalArqueoDistribuido = useMemo(() => {
     const sobre = parseFloat(arqueoSobre) || 0;
-    const bolsa = parseFloat(arqueoBolsa) || 0;
     const caja = parseFloat(arqueoCajaChica) || 0;
-    return sobre + bolsa + caja;
-  }, [arqueoSobre, arqueoBolsa, arqueoCajaChica]);
+    return sobre + caja;
+  }, [arqueoSobre, arqueoCajaChica]);
 
   // Save Celebration Income
   const handleSaveCelebIncome = async (e: React.FormEvent) => {
@@ -1874,11 +1950,10 @@ export default function AdminFinanzas() {
   const handleConfirmArqueo = async (e: React.FormEvent) => {
     e.preventDefault();
     const sobre = parseFloat(arqueoSobre) || 0;
-    const bolsa = parseFloat(arqueoBolsa) || 0;
     const caja = parseFloat(arqueoCajaChica) || 0;
 
     if (totalArqueoDistribuido <= 0) {
-      alert("Por favor, distribuye el efectivo en al menos un rubro (Sobre, Bolsa o Caja Chica).");
+      alert("Por favor, distribuye el efectivo en al menos un rubro (A Depositar o Caja Chica).");
       return;
     }
 
@@ -1890,7 +1965,7 @@ export default function AdminFinanzas() {
         date: arqueoDate,
         totalEfectivo: totalEfectivoFechaArqueo,
         sobreBilletes: sobre,
-        bolsaMonedas: bolsa,
+        bolsaMonedas: 0,
         cajaChica: caja,
         notes: arqueoNotes.trim() || '',
         registeredByUid: user?.uid,
@@ -1915,7 +1990,6 @@ export default function AdminFinanzas() {
 
       alert("¡Arqueo de caja registrado correctamente!");
       setArqueoSobre('');
-      setArqueoBolsa('');
       setArqueoCajaChica('');
       setArqueoNotes('');
     } catch (error) {
@@ -1943,7 +2017,7 @@ export default function AdminFinanzas() {
     const totalEfectivo = billetes + monedas;
 
     if (totalEfectivo <= 0 && billetesStr === '' && monedasStr === '') {
-      alert("Introduce los montos de billetes o monedas contados.");
+      alert("Introduce los montos contados.");
       return;
     }
 
@@ -1958,12 +2032,28 @@ export default function AdminFinanzas() {
         expectedBalance,
         diferencia,
         sobreBilletes: billetes,
-        bolsaMonedas: monedas,
+        bolsaMonedas: 0,
+        cajaChica: monedas,
         notes: notes.trim() || '',
         registeredByUid: user?.uid,
         registeredByName: user?.displayName || user?.email || 'Financiero',
         createdAt: serverTimestamp()
       });
+
+      if (monedas > 0 && module !== 'caja_chica') {
+        let moduleName = module === 'cafeteria' ? 'Cafetería' : 'Librería';
+        await addDoc(collection(db, 'finanzas_caja_chica'), {
+          date: date,
+          type: 'ingreso',
+          category: `${moduleName} / Arqueo`,
+          concept: `Retención Arqueo ${moduleName} (${date})`,
+          amount: monedas,
+          notes: notes.trim() || `Ingreso automático desde Arqueo de ${moduleName}`,
+          registeredByUid: user?.uid,
+          registeredByName: user?.displayName || user?.email || 'Financiero',
+          createdAt: serverTimestamp()
+        });
+      }
 
       alert("¡Arqueo de caja registrado correctamente!");
       resetForm();
@@ -2629,7 +2719,7 @@ export default function AdminFinanzas() {
         {/* ========================================================================= */}
         {/* TAB 1: MOVIMIENTOS                                                       */}
         {/* ========================================================================= */}
-        {activeTab === 'bancarios' && (
+        {activeTab === 'bancarios' && hasPermission('bancarios') && (
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
@@ -2876,7 +2966,7 @@ export default function AdminFinanzas() {
         {/* ========================================================================= */}
         {/* TAB 2: CELEBRACIONES                                                     */}
         {/* ========================================================================= */}
-        {activeTab === 'celebraciones' && (
+        {activeTab === 'celebraciones' && (hasPermission('celebraciones') || hasPermission('caja_chica')) && (
           <div className="space-y-6">
             {/* Header with Subtabs & Responsive Filters */}
             <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
@@ -2907,15 +2997,6 @@ export default function AdminFinanzas() {
                 {/* Sub-tabs Selector with flex-wrap */}
                 <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl">
                   <button
-                    onClick={() => setCelebracionesSubTab('caja_chica')}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all text-center cursor-pointer flex items-center gap-1.5 ${
-                      celebracionesSubTab === 'caja_chica' ? 'bg-white text-amber-700 shadow-xs' : 'text-primary/60 hover:text-primary'
-                    }`}
-                  >
-                    <Wallet className="w-3.5 h-3.5 text-amber-600" />
-                    Caja Chica
-                  </button>
-                  <button
                     onClick={() => setCelebracionesSubTab('movimientos')}
                     className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all text-center cursor-pointer flex items-center gap-1.5 ${
                       celebracionesSubTab === 'movimientos' ? 'bg-white text-blue-700 shadow-xs' : 'text-primary/60 hover:text-primary'
@@ -2941,6 +3022,15 @@ export default function AdminFinanzas() {
                   >
                     <TrendingDown className="w-3.5 h-3.5 text-rose-600" />
                     Egresos
+                  </button>
+                  <button
+                    onClick={() => setCelebracionesSubTab('caja_chica')}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all text-center cursor-pointer flex items-center gap-1.5 ${
+                      celebracionesSubTab === 'caja_chica' ? 'bg-white text-amber-700 shadow-xs' : 'text-primary/60 hover:text-primary'
+                    }`}
+                  >
+                    <Wallet className="w-3.5 h-3.5 text-amber-600" />
+                    Caja Chica
                   </button>
                 </div>
 
@@ -2974,7 +3064,7 @@ export default function AdminFinanzas() {
                     >
                       <option value="all">Todos los años</option>
                       {Array.from(new Set([
-                        ...celebrationIncomesList.map(i => new Date(i.date).getFullYear()),
+                        ...celebrationCajaChicaIncomes.map(i => new Date(i.date).getFullYear()),
                         ...celebrationEgresosList.map(e => new Date(e.date).getFullYear()),
                         new Date().getFullYear()
                       ]))
@@ -3045,8 +3135,7 @@ export default function AdminFinanzas() {
             {celebracionesSubTab === 'caja_chica' && (
               <div className="space-y-6">
                 {(() => {
-                  const filteredIncomes = celebrationIncomesList.filter(i => {
-                    if (i.paymentMethod !== 'Efectivo') return false;
+                  const filteredIncomes = celebrationCajaChicaIncomes.filter(i => {
                     const d = new Date(i.date);
                     if (celebCajaYearFilter !== 'all' && d.getFullYear() !== parseInt(celebCajaYearFilter, 10)) return false;
                     if (celebCajaMonthFilter !== 'all' && (d.getMonth() + 1) !== parseInt(celebCajaMonthFilter, 10)) return false;
@@ -3602,7 +3691,7 @@ export default function AdminFinanzas() {
                         <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-2">
                           <div className="flex items-center gap-2 text-emerald-700 font-bold text-sm">
                             <Banknote className="w-4 h-4" />
-                            Sobre (Billetes)
+                            A Depositar (Billetes)
                           </div>
                           <p className="text-[11px] text-slate-500">Dinero en papel para depositar</p>
                           <div className="relative pt-1">
@@ -3614,27 +3703,6 @@ export default function AdminFinanzas() {
                               placeholder="0,00"
                               value={arqueoSobre}
                               onChange={(e) => setArqueoSobre(e.target.value)}
-                              className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-primary outline-none focus:ring-2 focus:ring-secondary"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Card 2: Bolsa Monedas */}
-                        <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-2">
-                          <div className="flex items-center gap-2 text-purple-700 font-bold text-sm">
-                            <Coins className="w-4 h-4" />
-                            Bolsa (Monedas)
-                          </div>
-                          <p className="text-[11px] text-slate-500">Monedas para cambiar/depositar</p>
-                          <div className="relative pt-1">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-xs">€</span>
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              placeholder="0,00"
-                              value={arqueoBolsa}
-                              onChange={(e) => setArqueoBolsa(e.target.value)}
                               className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-primary outline-none focus:ring-2 focus:ring-secondary"
                             />
                           </div>
@@ -3712,7 +3780,7 @@ export default function AdminFinanzas() {
                             <th className="py-4 px-6">FECHA</th>
                             <th className="py-4 px-6">TOTAL EFECTIVO</th>
                             <th className="py-4 px-6">SOBRE (BILLETES)</th>
-                            <th className="py-4 px-6">BOLSA (MONEDAS)</th>
+                            
                             <th className="py-4 px-6">CAJA CHICA</th>
                             <th className="py-4 px-6">RESPONSABLE</th>
                             <th className="py-4 px-6 text-center">ACCIONES</th>
@@ -3730,9 +3798,7 @@ export default function AdminFinanzas() {
                               <td className="py-4 px-6 font-semibold text-emerald-700 whitespace-nowrap">
                                 {arq.sobreBilletes.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
                               </td>
-                              <td className="py-4 px-6 font-semibold text-purple-700 whitespace-nowrap">
-                                {arq.bolsaMonedas.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
-                              </td>
+                              
                               <td className="py-4 px-6 font-semibold text-amber-700 whitespace-nowrap">
                                 {arq.cajaChica.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
                               </td>
@@ -3928,7 +3994,7 @@ export default function AdminFinanzas() {
         {/* ========================================================================= */}
         {/* TAB 3: CAJA CHICA                                                        */}
         {/* ========================================================================= */}
-        {activeTab === 'caja_chica' && (
+        {false && (
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
               <div>
@@ -4325,7 +4391,7 @@ export default function AdminFinanzas() {
         {/* ========================================================================= */}
         {/* TAB 3B: CAFETERÍA                                                         */}
         {/* ========================================================================= */}
-        {activeTab === 'cafeteria' && (
+        {activeTab === 'cafeteria' && (hasPermission('cafeteria') || hasPermission('caja_chica')) && (
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -4356,15 +4422,6 @@ export default function AdminFinanzas() {
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-3 border-t border-slate-100">
                 <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl">
                   <button
-                    onClick={() => setCafeteriaSubTab('caja_chica')}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all text-center cursor-pointer flex items-center gap-1.5 ${
-                      cafeteriaSubTab === 'caja_chica' ? 'bg-white text-amber-700 shadow-sm' : 'text-primary/60 hover:text-primary'
-                    }`}
-                  >
-                    <Wallet className="w-3.5 h-3.5 text-amber-600" />
-                    Caja Chica
-                  </button>
-                  <button
                     onClick={() => setCafeteriaSubTab('movimientos')}
                     className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all text-center cursor-pointer flex items-center gap-1.5 ${
                       cafeteriaSubTab === 'movimientos' ? 'bg-white text-blue-700 shadow-sm' : 'text-primary/60 hover:text-primary'
@@ -4376,10 +4433,10 @@ export default function AdminFinanzas() {
                   <button
                     onClick={() => setCafeteriaSubTab('ingresos')}
                     className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all text-center cursor-pointer flex items-center gap-1.5 ${
-                      cafeteriaSubTab === 'ingresos' || cafeteriaSubTab === 'arqueos' ? 'bg-white text-amber-700 shadow-sm' : 'text-primary/60 hover:text-primary'
+                      cafeteriaSubTab === 'ingresos' || cafeteriaSubTab === 'arqueos' ? 'bg-white text-emerald-700 shadow-sm' : 'text-primary/60 hover:text-primary'
                     }`}
                   >
-                    <TrendingUp className="w-3.5 h-3.5 text-amber-600" />
+                    <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
                     Ingresos
                   </button>
                   <button
@@ -4390,6 +4447,15 @@ export default function AdminFinanzas() {
                   >
                     <TrendingDown className="w-3.5 h-3.5 text-rose-600" />
                     Egresos
+                  </button>
+                  <button
+                    onClick={() => setCafeteriaSubTab('caja_chica')}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all text-center cursor-pointer flex items-center gap-1.5 ${
+                      cafeteriaSubTab === 'caja_chica' ? 'bg-white text-amber-700 shadow-sm' : 'text-primary/60 hover:text-primary'
+                    }`}
+                  >
+                    <Wallet className="w-3.5 h-3.5 text-amber-600" />
+                    Caja Chica
                   </button>
                 </div>
 
@@ -4422,7 +4488,7 @@ export default function AdminFinanzas() {
                     >
                       <option value="all">Todos los años</option>
                       {Array.from(new Set([
-                        ...cafeteriaIncomesList.map(i => new Date(i.date).getFullYear()),
+                        ...cafeteriaCajaChicaIncomes.map(i => new Date(i.date).getFullYear()),
                         ...cafeteriaEgresosList.map(e => new Date(e.date).getFullYear()),
                         new Date().getFullYear()
                       ]))
@@ -4493,8 +4559,7 @@ export default function AdminFinanzas() {
               <div className="space-y-6">
 
                 {(() => {
-                  const filteredIncomes = cafeteriaIncomesList.filter(i => {
-                    if ((i as any).paymentMethod && (i as any).paymentMethod !== 'Efectivo') return false;
+                  const filteredIncomes = cafeteriaCajaChicaIncomes.filter(i => {
                     const d = new Date(i.date);
                     if (cafeteriaCajaYearFilter !== 'all' && d.getFullYear() !== parseInt(cafeteriaCajaYearFilter, 10)) return false;
                     if (cafeteriaCajaMonthFilter !== 'all' && (d.getMonth() + 1) !== parseInt(cafeteriaCajaMonthFilter, 10)) return false;
@@ -5068,7 +5133,7 @@ export default function AdminFinanzas() {
                         <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-2">
                           <div className="flex items-center gap-2 text-amber-700 font-bold text-sm">
                             <Banknote className="w-4 h-4" />
-                            Total Billetes (€)
+                            A Depositar (Billetes) (€)
                           </div>
                           <p className="text-[11px] text-slate-500">Dinero en papel contado</p>
                           <div className="relative pt-1">
@@ -5088,9 +5153,9 @@ export default function AdminFinanzas() {
                         <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-2">
                           <div className="flex items-center gap-2 text-purple-700 font-bold text-sm">
                             <Coins className="w-4 h-4" />
-                            Total Monedas (€)
+                            Caja Chica (€)
                           </div>
-                          <p className="text-[11px] text-slate-500">Monedas contadas</p>
+                          <p className="text-[11px] text-slate-500">Efectivo retenido para gastos</p>
                           <div className="relative pt-1">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-xs">€</span>
                             <input
@@ -5153,7 +5218,7 @@ export default function AdminFinanzas() {
                             <th className="py-4 px-6">FECHA</th>
                             <th className="py-4 px-6">TOTAL CONTADO</th>
                             <th className="py-4 px-6">BILLETES</th>
-                            <th className="py-4 px-6">MONEDAS</th>
+                            
                             <th className="py-4 px-6">SALDO TEÓRICO</th>
                             <th className="py-4 px-6">RESPONSABLE</th>
                             <th className="py-4 px-6 text-center">ACCIONES</th>
@@ -5171,9 +5236,7 @@ export default function AdminFinanzas() {
                               <td className="py-4 px-6 font-semibold text-emerald-700 whitespace-nowrap">
                                 {arq.sobreBilletes.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
                               </td>
-                              <td className="py-4 px-6 font-semibold text-purple-700 whitespace-nowrap">
-                                {arq.bolsaMonedas.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
-                              </td>
+                              
                               <td className="py-4 px-6 font-semibold text-slate-700 whitespace-nowrap">
                                 {(arq.expectedBalance ?? 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
                               </td>
@@ -5362,7 +5425,7 @@ export default function AdminFinanzas() {
         {/* ========================================================================= */}
         {/* TAB 3C: LIBRERÍA                                                          */}
         {/* ========================================================================= */}
-        {activeTab === 'libreria' && (
+        {activeTab === 'libreria' && (hasPermission('libreria') || hasPermission('caja_chica')) && (
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -5378,11 +5441,11 @@ export default function AdminFinanzas() {
 
                 {/* Saldo Badge */}
                 <div className="flex flex-wrap items-center gap-3">
-                  <div className="bg-emerald-50 border border-emerald-200 px-5 py-3 rounded-2xl text-right">
-                    <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block mb-0.5">
+                  <div className="bg-amber-50 border border-amber-200 px-5 py-3 rounded-2xl text-right">
+                    <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block mb-0.5">
                       Saldo Efectivo
                     </span>
-                    <span className="text-2xl font-black text-emerald-700 tracking-tight block">
+                    <span className="text-2xl font-black text-amber-700 tracking-tight block">
                       {saldoCajaChicaLibreria.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
                     </span>
                   </div>
@@ -5392,15 +5455,6 @@ export default function AdminFinanzas() {
               {/* Responsive Sub-tabs Selector & Filters */}
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-3 border-t border-slate-100">
                 <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl">
-                  <button
-                    onClick={() => setLibreriaSubTab('caja_chica')}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all text-center cursor-pointer flex items-center gap-1.5 ${
-                      libreriaSubTab === 'caja_chica' ? 'bg-white text-emerald-700 shadow-sm' : 'text-primary/60 hover:text-primary'
-                    }`}
-                  >
-                    <Wallet className="w-3.5 h-3.5 text-emerald-600" />
-                    Caja Chica
-                  </button>
                   <button
                     onClick={() => setLibreriaSubTab('movimientos')}
                     className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all text-center cursor-pointer flex items-center gap-1.5 ${
@@ -5427,6 +5481,15 @@ export default function AdminFinanzas() {
                   >
                     <TrendingDown className="w-3.5 h-3.5 text-rose-600" />
                     Egresos
+                  </button>
+                  <button
+                    onClick={() => setLibreriaSubTab('caja_chica')}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all text-center cursor-pointer flex items-center gap-1.5 ${
+                      libreriaSubTab === 'caja_chica' ? 'bg-white text-amber-700 shadow-sm' : 'text-primary/60 hover:text-primary'
+                    }`}
+                  >
+                    <Wallet className="w-3.5 h-3.5 text-amber-600" />
+                    Caja Chica
                   </button>
                 </div>
 
@@ -5459,7 +5522,7 @@ export default function AdminFinanzas() {
                     >
                       <option value="all">Todos los años</option>
                       {Array.from(new Set([
-                        ...libreriaIncomesList.map(i => new Date(i.date).getFullYear()),
+                        ...libreriaCajaChicaIncomes.map(i => new Date(i.date).getFullYear()),
                         ...libreriaEgresosList.map(e => new Date(e.date).getFullYear()),
                         new Date().getFullYear()
                       ]))
@@ -5530,8 +5593,7 @@ export default function AdminFinanzas() {
               <div className="space-y-6">
 
                 {(() => {
-                  const filteredIncomes = libreriaIncomesList.filter(i => {
-                    if ((i as any).paymentMethod && (i as any).paymentMethod !== 'Efectivo') return false;
+                  const filteredIncomes = libreriaCajaChicaIncomes.filter(i => {
                     const d = new Date(i.date);
                     if (libreriaCajaYearFilter !== 'all' && d.getFullYear() !== parseInt(libreriaCajaYearFilter, 10)) return false;
                     if (libreriaCajaMonthFilter !== 'all' && (d.getMonth() + 1) !== parseInt(libreriaCajaMonthFilter, 10)) return false;
@@ -6102,7 +6164,7 @@ export default function AdminFinanzas() {
                         <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-2">
                           <div className="flex items-center gap-2 text-emerald-700 font-bold text-sm">
                             <Banknote className="w-4 h-4" />
-                            Total Billetes (€)
+                            A Depositar (Billetes) (€)
                           </div>
                           <p className="text-[11px] text-slate-500">Dinero en papel contado</p>
                           <div className="relative pt-1">
@@ -6122,9 +6184,9 @@ export default function AdminFinanzas() {
                         <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-2">
                           <div className="flex items-center gap-2 text-purple-700 font-bold text-sm">
                             <Coins className="w-4 h-4" />
-                            Total Monedas (€)
+                            Caja Chica (€)
                           </div>
-                          <p className="text-[11px] text-slate-500">Monedas contadas</p>
+                          <p className="text-[11px] text-slate-500">Efectivo retenido para gastos</p>
                           <div className="relative pt-1">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-xs">€</span>
                             <input
@@ -6187,7 +6249,7 @@ export default function AdminFinanzas() {
                             <th className="py-4 px-6">FECHA</th>
                             <th className="py-4 px-6">TOTAL CONTADO</th>
                             <th className="py-4 px-6">BILLETES</th>
-                            <th className="py-4 px-6">MONEDAS</th>
+                            
                             <th className="py-4 px-6">SALDO TEÓRICO</th>
                             <th className="py-4 px-6">RESPONSABLE</th>
                             <th className="py-4 px-6 text-center">ACCIONES</th>
@@ -6205,9 +6267,7 @@ export default function AdminFinanzas() {
                               <td className="py-4 px-6 font-semibold text-emerald-700 whitespace-nowrap">
                                 {arq.sobreBilletes.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
                               </td>
-                              <td className="py-4 px-6 font-semibold text-purple-700 whitespace-nowrap">
-                                {arq.bolsaMonedas.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
-                              </td>
+                              
                               <td className="py-4 px-6 font-semibold text-slate-700 whitespace-nowrap">
                                 {(arq.expectedBalance ?? 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
                               </td>
@@ -6398,7 +6458,7 @@ export default function AdminFinanzas() {
         {/* ========================================================================= */}
         {/* TAB 4: REEMBOLSOS                                                         */}
         {/* ========================================================================= */}
-        {activeTab === 'reembolsos' && (
+        {activeTab === 'reembolsos' && hasPermission('reembolsos') && (
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
@@ -6496,10 +6556,10 @@ export default function AdminFinanzas() {
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="bg-slate-50/80 border-b border-slate-100 text-[11px] font-black uppercase text-primary/50 tracking-wider">
-                        <th className="py-4 px-6">CÓDIGO / FECHA</th>
+                        <th className="py-4 px-6">FECHA & CÓDIGO</th>
                         <th className="py-4 px-6">SOLICITANTE</th>
-                        <th className="py-4 px-6">ÁREA & CONCEPTO</th>
-                        <th className="py-4 px-6">IMPORTE / FORMA PAGO</th>
+                        <th className="py-4 px-6">CONCEPTO & ÁREA</th>
+                        <th className="py-4 px-6">IMPORTE & FORMA PAGO</th>
                         <th className="py-4 px-6">ESTADO & FIRMAS</th>
                         <th className="py-4 px-6 text-center">ACCIONES</th>
                       </tr>
@@ -6513,53 +6573,29 @@ export default function AdminFinanzas() {
                         return (
                           <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
                             
-                            {/* Code & Date */}
-                            <td className="py-4 px-6 font-mono font-bold text-primary whitespace-nowrap">
-                              <span className="block text-xs font-black text-primary bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 inline-block mb-1">
-                                {r.code}
-                              </span>
-                              <span className="block text-[11px] text-primary/50 font-normal">
+                            {/* Date & Code */}
+                            <td className="py-4 px-6 whitespace-nowrap">
+                              <span className="block text-[11px] text-primary/70 font-semibold mb-1">
                                 {r.date}
+                              </span>
+                              <span className="block text-xs font-black text-primary bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 inline-block font-mono">
+                                {r.code}
                               </span>
                             </td>
 
                             {/* Solicitante */}
                             <td className="py-4 px-6">
                               <span className="font-bold text-primary block">{r.createdByName}</span>
-                              <span className="text-[11px] text-primary/60 block">{r.createdByEmail}</span>
-                              {r.createdByPhone && (
-                                <span className="text-[10px] text-primary/40 block font-mono">{r.createdByPhone}</span>
-                              )}
                             </td>
 
-                            {/* Area & Concept */}
+                            {/* Concept & Area */}
                             <td className="py-4 px-6 max-w-xs">
-                              <span className="inline-block px-2 py-0.5 bg-primary/10 text-primary border border-primary/20 rounded font-bold text-[10px] mb-1">
-                                [{r.areaInitials}] {r.areaName}
-                              </span>
-                              <p className="font-semibold text-primary/90 truncate" title={r.concept}>
+                              <p className="font-semibold text-primary/90 truncate mb-1" title={r.concept}>
                                 {r.concept}
                               </p>
-                              {r.attachments && r.attachments.length > 0 ? (
-                                <button
-                                  onClick={() => setSelectedReembolsoDetail(r)}
-                                  className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-800 rounded border border-emerald-200 text-[10px] font-bold hover:bg-emerald-100 transition-colors cursor-pointer"
-                                  title="Ver adjuntos de esta solicitud en Drive"
-                                >
-                                  <HardDrive className="w-3 h-3 text-emerald-600" />
-                                  {r.attachments.length} adjunto(s) Drive
-                                </button>
-                              ) : r.receiptUrl ? (
-                                <a
-                                  href={r.receiptUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-700 rounded border border-slate-200 text-[10px] font-bold hover:bg-slate-200 transition-colors"
-                                >
-                                  <Paperclip className="w-3 h-3 text-slate-500" />
-                                  Ver Comprobante
-                                </a>
-                              ) : null}
+                              <span className="inline-block px-2 py-0.5 bg-primary/10 text-primary border border-primary/20 rounded font-bold text-[10px]">
+                                [{r.areaInitials}] {r.areaName}
+                              </span>
                             </td>
 
                             {/* Amount & Payment Method */}
@@ -6574,11 +6610,6 @@ export default function AdminFinanzas() {
                               }`}>
                                 {r.paymentMethod}
                               </span>
-                              {r.iban && (
-                                <span className="block text-[10px] font-mono text-primary/50 mt-0.5 truncate max-w-[150px]" title={r.iban}>
-                                  IBAN: {r.iban}
-                                </span>
-                              )}
                             </td>
 
                             {/* Status & Signatures */}
@@ -6676,14 +6707,14 @@ export default function AdminFinanzas() {
         {/* ========================================================================= */}
         <AnimatePresence>
           {selectedReembolsoDetail && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm overflow-y-auto">
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-white rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-100"
+                className="bg-white rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-100 my-auto max-h-[90vh] flex flex-col"
               >
-                <div className="p-6 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                <div className="p-6 bg-slate-50 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
                   <div className="flex items-center gap-2">
                     <Receipt className="w-5 h-5 text-purple-600" />
                     <div>
@@ -6699,7 +6730,7 @@ export default function AdminFinanzas() {
                   </button>
                 </div>
 
-                <div className="p-6 space-y-4 text-xs">
+                <div className="p-6 space-y-4 text-xs overflow-y-auto flex-1">
                   <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
                     <div>
                       <span className="text-[10px] font-bold uppercase text-primary/50 block">Solicitante</span>
@@ -6755,12 +6786,12 @@ export default function AdminFinanzas() {
                     </div>
                   </div>
 
-                  {/* Google Drive & Local Attachments Section */}
+                  {/* Attachments Section */}
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-[10px] font-bold uppercase text-primary/60 flex items-center gap-1">
                         <Paperclip className="w-3.5 h-3.5 text-emerald-600" />
-                        Comprobantes y Archivos Adjuntos
+                        ADJUNTOS
                       </span>
                       {selectedReembolsoDetail.attachments && selectedReembolsoDetail.attachments.length > 0 && (
                         <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
@@ -6775,7 +6806,18 @@ export default function AdminFinanzas() {
                           const fileUrl = att.url || att.webViewLink || '';
                           const isImage = (att.mimeType && att.mimeType.startsWith('image/')) ||
                                           fileUrl.startsWith('data:image/') ||
-                                          Boolean(fileUrl.match(/\.(jpg|jpeg|png|webp|gif|bmp)/i));
+                                          Boolean(fileUrl.match(/\.(jpg|jpeg|png|webp|gif|bmp)/i)) ||
+                                          Boolean(att.name && att.name.match(/\.(jpg|jpeg|png|webp|gif|bmp)$/i));
+
+                          let previewUrl = fileUrl;
+                          let fileId = att.fileId || att.id || '';
+                          if (!fileId && fileUrl) {
+                            const m = fileUrl.match(/\/d\/([a-zA-Z0-9_-]+)/) || fileUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+                            if (m) fileId = m[1];
+                          }
+                          if (fileId && fileId.length > 5 && !fileId.startsWith('att_')) {
+                            previewUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=w800`;
+                          }
 
                           return (
                             <div
@@ -6789,28 +6831,26 @@ export default function AdminFinanzas() {
                                   </div>
                                   <div className="truncate">
                                     <p className="font-bold text-primary truncate text-xs">{att.name}</p>
-                                    <span className="text-[10px] text-emerald-700 font-medium block truncate">
-                                      {att.webViewLink && att.webViewLink.startsWith('http') ? 'Guardado en Drive (Finanzas/Reembolsos/Adjuntos)' : 'Adjunto de solicitud'}
-                                    </span>
                                   </div>
                                 </div>
-                                {att.webViewLink && att.webViewLink.startsWith('http') && (
-                                  <span className="text-[9px] font-extrabold uppercase bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded border border-emerald-200">
-                                    Google Drive
-                                  </span>
-                                )}
                               </div>
 
                               {/* Live Image Preview Thumbnail */}
-                              {isImage && fileUrl && (
+                              {isImage && previewUrl && (
                                 <div
-                                  onClick={() => setPreviewModalImage({ url: fileUrl, name: att.name })}
+                                  onClick={() => setPreviewModalImage({ url: previewUrl, name: att.name })}
                                   className="relative group bg-slate-200/60 rounded-xl overflow-hidden border border-slate-200 flex items-center justify-center p-2 max-h-44 cursor-pointer"
                                 >
                                   <img
-                                    src={fileUrl}
+                                    src={previewUrl}
                                     alt={att.name}
                                     className="max-h-40 object-contain rounded-lg shadow-xs"
+                                    onError={(e) => {
+                                      // Fallback to raw fileUrl if thumbnail fails
+                                      if (e.currentTarget.src !== fileUrl && fileUrl) {
+                                        e.currentTarget.src = fileUrl;
+                                      }
+                                    }}
                                   />
                                   <div className="absolute inset-0 bg-primary/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-xs gap-1">
                                     <Eye className="w-4 h-4" />
@@ -6820,26 +6860,14 @@ export default function AdminFinanzas() {
                               )}
 
                               <div className="flex items-center gap-2 justify-end pt-1">
-                                {isImage && fileUrl && (
+                                {isImage && previewUrl && (
                                   <button
-                                    onClick={() => setPreviewModalImage({ url: fileUrl, name: att.name })}
+                                    onClick={() => setPreviewModalImage({ url: previewUrl, name: att.name })}
                                     className="px-3 py-1.5 bg-primary text-white rounded-lg text-[11px] font-bold hover:bg-secondary hover:text-primary transition-all flex items-center gap-1 shadow-xs cursor-pointer"
                                   >
                                     <Eye className="w-3.5 h-3.5" />
                                     Ver Ampliado
                                   </button>
-                                )}
-
-                                {att.webViewLink && att.webViewLink.startsWith('http') && (
-                                  <a
-                                    href={att.webViewLink}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-[11px] font-bold hover:bg-emerald-700 transition-all flex items-center gap-1 shadow-xs"
-                                  >
-                                    Ver en Drive
-                                    <ExternalLink className="w-3.5 h-3.5" />
-                                  </a>
                                 )}
 
                                 {fileUrl && (

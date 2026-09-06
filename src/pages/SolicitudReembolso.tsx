@@ -6,7 +6,7 @@ import {
   UploadCloud, X, File, Image as ImageIcon, HardDrive, ExternalLink
 } from 'lucide-react';
 import { collection, addDoc, getDocs, query, orderBy, serverTimestamp } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType, connectGoogleDrive } from '../firebase';
+import { db, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import { ChurchArea, DEFAULT_CHURCH_AREAS } from './admin/AdminAreas';
@@ -228,7 +228,7 @@ export default function SolicitudReembolso() {
       if (attachedFiles.length > 0) {
         for (let i = 0; i < attachedFiles.length; i++) {
           const item = attachedFiles[i];
-          setUploadProgressMsg(`Subiendo a Google Drive (/Finanzas/Reembolsos/Adjuntos) ${i + 1} de ${attachedFiles.length}...`);
+          setUploadProgressMsg(`Subiendo ${i + 1} de ${attachedFiles.length} adjuntos...`);
           let uploadedToDrive = false;
           try {
             const reqHeaders: Record<string, string> = { 'Content-Type': 'application/json' };

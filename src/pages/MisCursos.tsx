@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { GraduationCap, BookOpen, Clock, CheckCircle, AlertCircle, ChevronRight, Play, Layout, User, Calendar } from 'lucide-react';
+import { GraduationCap, BookOpen, Clock, CheckCircle, AlertCircle, ChevronRight, Play, Layout, User, Calendar, Download } from 'lucide-react';
 import { collection, onSnapshot, query, where, orderBy, doc, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../AuthContext';
@@ -14,6 +14,7 @@ interface Course {
   imageUrl: string;
   modality: string;
   requiresCellSupervision?: boolean;
+  diplomaPdfUrl?: string;
 }
 
 interface Enrollment {
@@ -24,8 +25,17 @@ interface Enrollment {
   grade?: number;
   enrolledAt: any;
   leaderApproved?: boolean;
+  isPaused?: boolean;
+  guideName?: string;
   course?: Course;
 }
+
+const getDriveImageUrl = (url: string) => {
+  if (!url) return '';
+  const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m && m[1]) return `https://drive.google.com/thumbnail?id=${m[1]}&sz=w800`;
+  return url;
+};
 
 export default function MisCursos() {
   const { user, roles, loading, isAuthReady } = useAuth();
@@ -174,14 +184,14 @@ function CourseCard({ enrollment }: { enrollment: Enrollment }) {
     enrollment.leaderApproved !== true
   );
 
-  const canAccess = (enrollment.status === 'active' && !isPendingLeaderApproval) || enrollment.status === 'completed';
+  const canAccess = (enrollment.status === 'active' && !isPendingLeaderApproval && !enrollment.isPaused) || enrollment.status === 'completed';
 
   return (
     <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden group hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
       {canAccess ? (
         <Link to={`/cursos/${enrollment.courseId}`} className="aspect-video relative overflow-hidden block cursor-pointer">
           <img 
-            src={enrollment.course.imageUrl || `https://picsum.photos/seed/${enrollment.courseId}/800/500`} 
+            src={getDriveImageUrl(enrollment.course.imageUrl) || `https://picsum.photos/seed/${enrollment.courseId}/800/500`} 
             alt={enrollment.course.title}
             className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
             referrerPolicy="no-referrer"
@@ -197,7 +207,7 @@ function CourseCard({ enrollment }: { enrollment: Enrollment }) {
       ) : (
         <div className="aspect-video relative overflow-hidden">
           <img 
-            src={enrollment.course.imageUrl || `https://picsum.photos/seed/${enrollment.courseId}/800/500`} 
+            src={getDriveImageUrl(enrollment.course.imageUrl) || `https://picsum.photos/seed/${enrollment.courseId}/800/500`} 
             alt={enrollment.course.title}
             className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
             referrerPolicy="no-referrer"
@@ -244,7 +254,12 @@ function CourseCard({ enrollment }: { enrollment: Enrollment }) {
               {isPendingLeaderApproval ? (
                 <div className="w-full mt-3 flex items-center justify-center gap-2 bg-amber-50 text-amber-800 py-3.5 px-4 rounded-2xl font-bold text-xs border border-amber-200">
                   <Clock className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Pendiente aceptación de supervisión</span>
+                  <span>Pendiente asignación de acompañante</span>
+                </div>
+              ) : enrollment.isPaused ? (
+                <div className="w-full mt-3 flex items-center justify-center gap-2 bg-rose-50 text-rose-800 py-3.5 px-4 rounded-2xl font-bold text-xs border border-rose-200">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>Curso Pausado</span>
                 </div>
               ) : (
                 <Link
@@ -280,6 +295,17 @@ function CourseCard({ enrollment }: { enrollment: Enrollment }) {
                   </div>
                 )}
               </div>
+              {enrollment.course?.diplomaPdfUrl && (
+                <a
+                  href={enrollment.course.diplomaPdfUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white py-3 px-4 rounded-2xl font-bold text-xs hover:bg-emerald-700 transition-all shadow-md"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Descargar Diploma</span>
+                </a>
+              )}
               <Link
                 to={`/cursos/${enrollment.courseId}`}
                 className="w-full flex items-center justify-center gap-2 bg-slate-100 text-slate-700 py-3 px-4 rounded-2xl font-bold text-xs hover:bg-slate-200 transition-all"

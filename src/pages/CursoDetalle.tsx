@@ -1,10 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  ArrowLeft, BookOpen, Clock, Calendar, CheckCircle, ChevronRight, Lock, 
-  Menu, Download, Award, AlertCircle, HelpCircle, GraduationCap, ArrowRight,
-  RefreshCw, Check, FileText, Send, ShieldCheck
-} from 'lucide-react';
+import { ArrowLeft, BookOpen, Clock, Calendar, CheckCircle, ChevronRight, Lock, Menu, Download, Award, AlertCircle, HelpCircle, GraduationCap, ArrowRight, RefreshCw, Check, FileText, Send, ShieldCheck, MessageSquare } from 'lucide-react';
 import { 
   doc, onSnapshot, collection, query, orderBy, where, updateDoc, 
   serverTimestamp, addDoc, getDocs, arrayUnion 
@@ -23,6 +19,7 @@ interface Course {
   modality: 'self-paced' | 'scheduled';
   durationMode: 'unlimited' | 'limited' | 'flexible' | 'fixed';
   requiresCellSupervision?: boolean;
+  diplomaPdfUrl?: string;
   timeLimitDays?: number;
   startDate?: any;
   endDate?: any;
@@ -37,6 +34,10 @@ interface Enrollment {
   progress: number;
   grade?: number;
   completedSteps?: string[];
+  isPaused?: boolean;
+  guideName?: string;
+  quizAnswersMap?: Record<string, any>;
+  classComments?: Record<string, string>;
   leaderApproved?: boolean;
   approvedClassIds?: string[];
   classUnlockRequests?: string[];
@@ -70,6 +71,8 @@ interface StepItem {
     correctAnswers?: number[];
     guidelineAnswer?: string;
     pairs?: { left: string; right: string }[];
+    explanation?: string;
+    isLocked?: boolean;
   }[];
 }
 
@@ -88,7 +91,7 @@ export default function CursoDetalle() {
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
   
   // Mobile sidebar toggle
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 1024);
   const [isLoading, setIsLoading] = useState(true);
 
   // Take test state
@@ -96,6 +99,9 @@ export default function CursoDetalle() {
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [quizPassed, setQuizPassed] = useState(false);
   const [quizScore, setQuizScore] = useState(0);
+  const [showClassCompletion, setShowClassCompletion] = useState(false);
+  const [classComment, setClassComment] = useState("");
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [isRequestingUnlock, setIsRequestingUnlock] = useState(false);
 
   const handleRequestClassUnlock = async () => {
@@ -247,11 +253,19 @@ export default function CursoDetalle() {
 
   // Reset Quiz State on step changes
   useEffect(() => {
-    setQuizAnswers({});
-    setQuizSubmitted(false);
-    setQuizPassed(false);
-    setQuizScore(0);
-  }, [activeStepId]);
+    if (activeStepId && enrollment?.quizAnswersMap?.[activeStepId]) {
+      const savedData = enrollment.quizAnswersMap[activeStepId];
+      setQuizAnswers(savedData.answers || {});
+      setQuizSubmitted(true);
+      setQuizScore(savedData.score || 0);
+      setQuizPassed((savedData.score || 0) >= 100);
+    } else {
+      setQuizAnswers({});
+      setQuizSubmitted(false);
+      setQuizPassed(false);
+      setQuizScore(0);
+    }
+  }, [activeStepId, enrollment?.quizAnswersMap]);
 
   if (loading || isLoading || !course || !enrollment) {
     return (
@@ -270,7 +284,7 @@ export default function CursoDetalle() {
     enrollment.leaderApproved !== true
   );
 
-  const isAccessBlocked = (isPendingEnrollment || isPendingLeaderApproval) && !(roles?.includes('admin') || roles?.includes('profesor') || roles?.includes('superadmin'));
+  const isAccessBlocked = (isPendingEnrollment || isPendingLeaderApproval || enrollment.isPaused) && !(roles?.includes('admin') || roles?.includes('profesor') || roles?.includes('superadmin'));
 
   if (isAccessBlocked) {
     return (
@@ -281,25 +295,29 @@ export default function CursoDetalle() {
           </div>
           <div>
             <h2 className="text-2xl font-bold text-primary mb-2">
-              {isPendingEnrollment ? 'Solicitud de Inscripción Pendiente' : 'Solicitud de Inicio Pendiente'}
+              {isPendingEnrollment ? 'Solicitud de Inscripción Pendiente' : enrollment.isPaused ? 'Curso Pausado' : 'Asignación de Acompañante Pendiente'}
             </h2>
             <p className="text-slate-600 text-sm leading-relaxed mb-4">
               {isPendingEnrollment ? (
                 <>Tu solicitud de inscripción para acceder a <strong className="text-primary">{course.title}</strong> ha sido enviada y está a la espera de ser aceptada por un administrador.</>
+              ) : enrollment.isPaused ? (
+                <>Tu curso <strong className="text-primary">{course.title}</strong> ha sido pausado temporalmente por tu acompañante o líder de célula.</>
               ) : (
-                <>Tu solicitud de inicio para acceder a <strong className="text-primary">{course.title}</strong> ha sido enviada al Liderazgo de tu Célula{enrollment.cellName ? ` (${enrollment.cellName})` : ''}.</>
+                <>Tu solicitud para acceder a <strong className="text-primary">{course.title}</strong> está en espera de que el Liderazgo de tu Célula{enrollment.cellName ? ` (${enrollment.cellName})` : ''} te asigne un acompañante.</>
               )}
             </p>
-            <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200/80 text-amber-900 text-xs leading-relaxed text-left">
-              <strong>💡 ¿Qué sucede ahora?</strong>
-              <p className="mt-1 text-amber-800">
-                {isPendingEnrollment ? (
-                  <>Una vez que un administrador acepte tu inscripción, {course?.requiresCellSupervision ? 'se enviará una solicitud de inicio al Liderazgo de tu célula.' : 'podrás ingresar al curso y comenzar a aprender.'}</>
-                ) : (
-                  <>Una vez aceptado el inicio del curso por parte del Liderazgo de tu célula, el botón cambiará automáticamente a <strong>"Ingresar"</strong> y podrás acceder a tus clases.</>
-                )}
-              </p>
-            </div>
+            {!enrollment.isPaused && (
+              <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200/80 text-amber-900 text-xs leading-relaxed text-left">
+                <strong>💡 ¿Qué sucede ahora?</strong>
+                <p className="mt-1 text-amber-800">
+                  {isPendingEnrollment ? (
+                    <>Una vez que un administrador acepte tu inscripción, {course?.requiresCellSupervision ? 'se notificará a tu célula para la asignación de un acompañante.' : 'podrás ingresar al curso y comenzar a aprender.'}</>
+                  ) : (
+                    <>Una vez que se te asigne un acompañante por parte de tu célula, el botón cambiará automáticamente a <strong>"Ingresar"</strong> y podrás acceder a tus clases.</>
+                  )}
+                </p>
+              </div>
+            )}
           </div>
           <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row gap-3 justify-center">
             <button
@@ -322,10 +340,6 @@ export default function CursoDetalle() {
 
   // Verification if class is locked (Dependencies)
   const isClassLocked = (clase: ClassItem, index: number) => {
-    // If user is Admin or Instructor or Leader, bypass locks for preview
-    const isElevated = roles.includes('admin') || roles.includes('profesor') || roles.includes('superadmin');
-    if (isElevated) return false;
-
     // 0. Leader approval lock for cell supervised classes
     if (clase.requiresLeaderApproval) {
       const approvedList = enrollment?.approvedClassIds || [];
@@ -386,24 +400,44 @@ export default function CursoDetalle() {
     if (!enrollment || !activeStepId) return;
 
     const completed = enrollment.completedSteps || [];
-    if (completed.includes(activeStepId)) {
+    const isAlreadyCompleted = completed.includes(activeStepId);
+    let shouldUpdateDB = !isAlreadyCompleted;
+    if (activeStep?.type === 'quiz') {
+      shouldUpdateDB = true;
+    }
+    
+    if (isAlreadyCompleted && !shouldUpdateDB) {
       // Step already completed: just move to next step automatically
       navigateNextStep();
       return;
     }
 
-    const updatedCompleted = [...completed, activeStepId];
+    const updatedCompleted = isAlreadyCompleted ? completed : [...completed, activeStepId];
     
     // Recalculate progress percentage
     const nextProgress = totalStepsCount > 0 
       ? Math.round((updatedCompleted.length / totalStepsCount) * 100) 
       : 100;
 
+    let quizAnswersUpdates = enrollment.quizAnswersMap || {};
+    if (activeStep?.type === 'quiz' && activeClassId) {
+      quizAnswersUpdates = {
+        ...quizAnswersUpdates,
+        [activeStepId]: {
+          answers: quizAnswers,
+          score: quizScore,
+          questions: activeStep.questions, // save context of questions in case they change
+          classId: activeClassId
+        }
+      };
+    }
+
     if (enrollment.id === 'admin-preview-enrollment') {
       setEnrollment(prev => prev ? {
         ...prev,
         completedSteps: updatedCompleted,
-        progress: nextProgress
+        progress: nextProgress,
+        quizAnswersMap: quizAnswersUpdates
       } : null);
       navigateNextStep();
       return;
@@ -413,6 +447,7 @@ export default function CursoDetalle() {
       await updateDoc(doc(db, 'enrollments', enrollment.id), {
         completedSteps: updatedCompleted,
         progress: nextProgress,
+        quizAnswersMap: quizAnswersUpdates,
         updatedAt: serverTimestamp()
       });
 
@@ -435,23 +470,47 @@ export default function CursoDetalle() {
       return;
     }
 
-    // Otherwise, find next unlocked class
+    // Class is finished.
+    setShowClassCompletion(true);
+  };
+
+  const handleContinueAfterCompletion = async () => {
+    if (classComment.trim()) {
+      setIsSubmittingComment(true);
+      try {
+        const commentsMap = enrollment.classComments || {};
+        await updateDoc(doc(db, 'enrollments', enrollment.id), {
+          classComments: {
+            ...commentsMap,
+            [activeClassId || '']: classComment.trim()
+          },
+          updatedAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setIsSubmittingComment(false);
+      }
+    }
+
+    setClassComment("");
+    setShowClassCompletion(false);
+
+    // Find next class regardless of lock status so they can see the locked screen
     const classIdx = classes.findIndex(c => c.id === activeClassId);
     if (classIdx < classes.length - 1) {
       const nextClass = classes[classIdx + 1];
-      const nextClassIndex = classIdx + 1;
-      
-      if (!isClassLocked(nextClass, nextClassIndex)) {
-        setActiveClassId(nextClass.id);
-        const nextClassSteps = steps[nextClass.id] || [];
-        if (nextClassSteps.length > 0) {
-          setActiveStepId(nextClassSteps[0].id);
-        } else {
-          setActiveStepId(null);
-        }
+      setActiveClassId(nextClass.id);
+      const nextClassSteps = steps[nextClass.id] || [];
+      if (nextClassSteps.length > 0) {
+        setActiveStepId(nextClassSteps[0].id);
       } else {
-        alert("¡Has terminado este módulo! El siguiente módulo se encuentra bloqueado hasta que completes los requisitos de tiempo o de materias previas.");
+        setActiveStepId(null);
       }
+    } else {
+      // Course fully completed!
+      setActiveClassId(null);
+      setActiveStepId(null);
     }
   };
 
@@ -641,11 +700,9 @@ export default function CursoDetalle() {
 
                       {/* Display locked warning inline */}
                       {isLocked && (
-                        <div className="mt-2 text-[8.5px] font-extrabold tracking-wider text-amber-900 bg-amber-100/80 border border-amber-200 p-1.5 rounded-md flex items-center justify-between gap-1">
+                        <div className="mt-2 text-[8.5px] font-extrabold tracking-wider text-amber-900 bg-amber-100/80 border border-amber-200 p-1.5 rounded-md flex items-center gap-1">
                           <span>🔒 Requiere Aprobación</span>
-                          <span className="text-amber-800 underline font-black">
-                            {isRequested ? 'Solicitado' : 'Solicitar'}
-                          </span>
+                          {isRequested && <span className="ml-auto text-amber-800 underline font-black">Solicitado</span>}
                         </div>
                       )}
                     </div>
@@ -719,7 +776,7 @@ export default function CursoDetalle() {
                   <h3 className="text-3xl font-kenao text-primary mb-3">Clase Bloqueada</h3>
                   <p className="text-primary/60 text-sm leading-relaxed max-w-md mx-auto">
                     {activeClass?.requiresLeaderApproval 
-                      ? `Esta clase requiere autorización del Liderazgo de tu Célula (${enrollment.cellName || 'tu célula'}) para acceder.`
+                      ? `Esta clase requiere autorización del Liderazgo (${enrollment.cellName || 'tu célula'}) para acceder.`
                       : course.modality === 'self-paced' && course.durationMode === 'unlimited'
                       ? `Esta clase se encuentra bloqueada hasta que completes todas las teorías y cuestionarios de la clase previa.`
                       : `Esta clase se desbloqueará en el Día ${activeClass?.dayNumber || 1}.`
@@ -748,7 +805,93 @@ export default function CursoDetalle() {
             );
           }
 
+          if (showClassCompletion) {
+            return (
+              <div className="flex-grow flex flex-col items-center justify-center py-12 text-center max-w-2xl mx-auto animate-fade-in">
+                <div className="w-24 h-24 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mb-8 shadow-sm border border-emerald-100">
+                  <CheckCircle className="w-12 h-12" />
+                </div>
+                <h3 className="text-4xl font-kenao text-primary mb-4">¡{activeClass?.title} Completada!</h3>
+                <p className="text-primary/60 text-sm leading-relaxed mb-10 max-w-lg">
+                  Has finalizado con éxito todos los pasos y evaluaciones de esta clase. Antes de continuar, ¿te gustaría dejar un comentario o reflexión sobre lo aprendido?
+                </p>
+
+                <div className="w-full text-left bg-white p-6 rounded-3xl border border-slate-200 shadow-sm mb-8">
+                  <label className="block text-[10px] font-black text-primary/40 uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4" /> Comentarios (Opcional)
+                  </label>
+                  <textarea
+                    value={classComment}
+                    onChange={(e) => setClassComment(e.target.value)}
+                    placeholder="Escribe aquí tu comentario, dudas o reflexiones sobre esta clase..."
+                    rows={4}
+                    className="w-full bg-slate-50 p-4 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-secondary text-xs text-slate-700 font-medium"
+                  />
+                </div>
+
+                <button
+                  onClick={handleContinueAfterCompletion}
+                  disabled={isSubmittingComment}
+                  className="bg-primary hover:bg-secondary hover:text-primary text-white font-black text-xs uppercase tracking-widest px-10 py-4 rounded-2xl transition-all shadow-md hover:shadow-lg flex items-center gap-2 cursor-pointer"
+                >
+                  {isSubmittingComment ? 'Guardando...' : (
+                    <>
+                      Continuar a la siguiente clase <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </div>
+            );
+          }
+
           if (!activeStep) {
+            if (enrollment.progress >= 100 || (!activeClassId && classes.length > 0)) {
+              return (
+                <div className="flex-grow flex flex-col items-center justify-center py-20 text-center max-w-2xl mx-auto animate-fade-in px-6">
+                  <div className="w-28 h-28 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mb-8 shadow-sm border border-emerald-100">
+                    <Award className="w-14 h-14" />
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 px-3.5 py-1.5 rounded-full border border-emerald-200 inline-block mb-4">
+                    ¡Felicidades!
+                  </span>
+                  <h3 className="text-4xl font-kenao text-primary mb-4">Has Finalizado este Curso</h3>
+                  <p className="text-primary/60 text-sm leading-relaxed mb-8 max-w-lg mx-auto">
+                    Has completado exitosamente todas las clases y cuestionarios de este curso de formación. Nos enorgullece mucho tu constancia y crecimiento.
+                  </p>
+                  
+                  {course.diplomaPdfUrl && (
+                    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm w-full mb-8">
+                      <div className="flex items-center gap-4 text-left">
+                        <div className="w-12 h-12 bg-secondary/20 text-secondary rounded-xl flex items-center justify-center shrink-0">
+                          <FileText className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-primary">Diploma de Finalización</h4>
+                          <p className="text-xs text-slate-500 mt-1">Descarga tu certificado oficial en formato PDF.</p>
+                        </div>
+                        <a 
+                          href={course.diplomaPdfUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="ml-auto inline-flex items-center gap-2 bg-primary hover:bg-secondary hover:text-primary text-white font-bold text-[10px] uppercase tracking-widest px-5 py-3 rounded-xl transition-all shadow-sm"
+                        >
+                          <Download className="w-4 h-4" />
+                          Descargar PDF
+                        </a>
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => navigate('/mis-cursos')}
+                    className="inline-flex items-center gap-2 text-primary hover:text-secondary font-bold text-xs transition-colors"
+                  >
+                    <ArrowLeft className="w-4 h-4" /> Volver a Mis Cursos
+                  </button>
+                </div>
+              );
+            }
+
             return (
               <div className="flex-grow flex flex-col items-center justify-center py-20 text-center max-w-xl mx-auto">
                 <div className="w-20 h-20 bg-primary/5 text-primary rounded-3xl flex items-center justify-center mb-6 shadow-xs">
@@ -930,9 +1073,9 @@ export default function CursoDetalle() {
                                   <input
                                     type="radio"
                                     name={`options-${qIdx}-${activeStepId}`}
-                                    disabled={quizSubmitted}
+                                    disabled={quizSubmitted && (qItem.isLocked ?? false)}
                                     checked={isSelected}
-                                    onChange={() => setQuizAnswers(prev => ({ ...prev, [qIdx]: oIdx }))}
+                                    onChange={() => { setQuizAnswers(prev => ({ ...prev, [qIdx]: oIdx })); setQuizSubmitted(false); setQuizPassed(false); }}
                                     className="w-4.5 h-4.5 text-secondary border-slate-300 focus:ring-secondary mt-0.5 shrink-0"
                                   />
                                   <span className="leading-relaxed">{opt}</span>
@@ -963,13 +1106,13 @@ export default function CursoDetalle() {
                                 >
                                   <input
                                     type="checkbox"
-                                    disabled={quizSubmitted}
+                                    disabled={quizSubmitted && (qItem.isLocked ?? false)}
                                     checked={isSelected}
                                     onChange={() => {
                                       const nextList = isSelected 
                                         ? selectedList.filter((x: number) => x !== oIdx) 
                                         : [...selectedList, oIdx];
-                                      setQuizAnswers(prev => ({ ...prev, [qIdx]: nextList }));
+                                      setQuizAnswers(prev => ({ ...prev, [qIdx]: nextList })); setQuizSubmitted(false); setQuizPassed(false);
                                     }}
                                     className="w-4.5 h-4.5 rounded text-secondary border-slate-300 focus:ring-secondary mt-0.5 shrink-0"
                                   />
@@ -983,10 +1126,10 @@ export default function CursoDetalle() {
                         {/* FREE RESPONSE WRITING */}
                         {qType === 'text' && (
                           <div className="space-y-4">
-                            {!quizSubmitted ? (
+                            {!quizSubmitted || !(qItem.isLocked ?? false) ? (
                               <textarea
                                 value={quizAnswers[qIdx] || ''}
-                                onChange={(e) => setQuizAnswers(prev => ({ ...prev, [qIdx]: e.target.value }))}
+                                onChange={(e) => { setQuizAnswers(prev => ({ ...prev, [qIdx]: e.target.value })); setQuizSubmitted(false); setQuizPassed(false); }}
                                 rows={5}
                                 placeholder="Escribe aquí tu ensayo, respuesta o reflexión teológica detallada..."
                                 className="w-full bg-slate-50/50 p-4.5 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-[#008080] text-xs leading-relaxed font-semibold text-slate-700 shadow-inner"
@@ -1057,7 +1200,7 @@ export default function CursoDetalle() {
                                     {/* Right definition select list */}
                                     <div className="flex-1">
                                       <select
-                                        disabled={quizSubmitted}
+                                        disabled={quizSubmitted && (qItem.isLocked ?? false)}
                                         value={studentMatch}
                                         onChange={(e) => {
                                           const prevMatches = quizAnswers[qIdx] || {};
@@ -1065,6 +1208,8 @@ export default function CursoDetalle() {
                                             ...prev,
                                             [qIdx]: { ...prevMatches, [leftVal]: e.target.value }
                                           }));
+                                          setQuizSubmitted(false);
+                                          setQuizPassed(false);
                                         }}
                                         className="w-full bg-white px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold outline-none focus:ring-1 focus:ring-secondary"
                                       >
@@ -1089,7 +1234,18 @@ export default function CursoDetalle() {
                             </div>
                           </div>
                         )}
-
+                        
+                        {/* Explanation Display */}
+                        {qItem.explanation && (
+                          <div className="mt-6 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-blue-800/60 block mb-1">
+                              Explicación Adicional
+                            </span>
+                            <p className="text-xs font-medium text-blue-900/80 leading-relaxed whitespace-pre-line">
+                              {qItem.explanation}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

@@ -30,6 +30,7 @@ interface Course {
   endDate?: any;
   timeLimitDays?: number;
   imageUrl: string;
+  diplomaPdfUrl?: string;
   status: 'draft' | 'published' | 'archived';
   createdAt: any;
 }
@@ -74,8 +75,17 @@ interface StepItem {
     correctAnswers?: number[];
     pairs?: { left: string; right: string }[];
     guidelineAnswer?: string;
+    explanation?: string;
+    isLocked?: boolean;
   }[];
 }
+
+const getDriveImageUrl = (url: string) => {
+  if (!url) return '';
+  const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m && m[1]) return `https://drive.google.com/thumbnail?id=${m[1]}&sz=w800`;
+  return url;
+};
 
 export default function AdminCursos() {
   const { user, roles, loading, isAuthReady } = useAuth();
@@ -200,7 +210,16 @@ export default function AdminCursos() {
             let errorMsg = 'Error analizando PDF';
             try {
               const data = await res.json();
-              errorMsg = data.error || errorMsg;
+              if (typeof data.error === 'string') {
+                try {
+                  const parsedErr = JSON.parse(data.error);
+                  errorMsg = parsedErr.error?.message || parsedErr.message || data.error;
+                } catch {
+                  errorMsg = data.error;
+                }
+              } else if (data.error && typeof data.error === 'object') {
+                errorMsg = data.error.message || JSON.stringify(data.error);
+              }
             } catch (e) {}
             throw new Error(errorMsg);
           }
@@ -277,6 +296,7 @@ export default function AdminCursos() {
 
   // Workspace - Ajustes Tab forms
   const [ajustesFormData, setAjustesFormData] = useState({
+    diplomaPdfUrl: "",
     title: '',
     description: '',
     modality: 'self-paced' as 'self-paced' | 'scheduled',
@@ -421,6 +441,7 @@ export default function AdminCursos() {
         endDate: formatDateForInput(activeWorkspaceCourse.endDate),
         timeLimitDays: activeWorkspaceCourse.timeLimitDays || 0,
         imageUrl: activeWorkspaceCourse.imageUrl || '',
+        diplomaPdfUrl: activeWorkspaceCourse.diplomaPdfUrl || '',
         status: activeWorkspaceCourse.status || 'draft',
       });
     }
@@ -499,6 +520,7 @@ export default function AdminCursos() {
         requiresCellSupervision: ajustesFormData.requiresCellSupervision || false,
         timeLimitDays: ajustesFormData.timeLimitDays,
         imageUrl: ajustesFormData.imageUrl,
+        diplomaPdfUrl: ajustesFormData.diplomaPdfUrl,
         status: ajustesFormData.status,
         startDate: startDateVal && !isNaN(startDateVal.getTime()) ? Timestamp.fromDate(startDateVal) : null,
         endDate: endDateVal && !isNaN(endDateVal.getTime()) ? Timestamp.fromDate(endDateVal) : null,
@@ -776,8 +798,8 @@ export default function AdminCursos() {
   if (loading || !isAuthReady) return <div className="pt-36 text-center text-primary/40 font-semibold">Validando credenciales académicas...</div>;
 
   return (
-    <div className="pt-32 pb-24 bg-slate-50 min-h-screen">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div>
+      <div>
         
         <AnimatePresence mode="wait">
           {!activeWorkspaceCourse ? (
@@ -790,33 +812,26 @@ export default function AdminCursos() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
             >
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6">
-                <div>
-                  <h1 className="text-4xl font-kenao text-primary mb-2">Docencia</h1>
-                  <p className="text-primary/60 text-sm">Gestiona tus cursos, clases, secciones de aprendizaje y solicitudes de alumnos</p>
-                </div>
-                
-                <button
-                  onClick={() => setIsNewCourseModalOpen(true)}
-                  className="flex items-center gap-2 bg-primary text-white px-6 py-3 rounded-2xl font-bold hover:bg-secondary hover:text-primary transition-all shadow-lg text-sm"
-                >
-                  <Plus className="w-5 h-5" />
-                  Nuevo Curso
-                </button>
-              </div>
-
-              {/* Research Bar */}
-              <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-xs mb-8 flex items-center">
-                <div className="relative flex-grow">
+              {/* Top Action & Search Bar */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 mb-6">
+                <div className="relative flex-grow max-w-md">
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-primary/30 w-5 h-5" />
                   <input
                     type="text"
                     placeholder="Buscar entre tus cursos activos..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-100 outline-none focus:ring-2 focus:ring-secondary text-sm"
+                    className="w-full pl-12 pr-4 py-3 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-secondary text-sm bg-slate-50/50"
                   />
                 </div>
+
+                <button
+                  onClick={() => setIsNewCourseModalOpen(true)}
+                  className="flex items-center justify-center gap-2 bg-primary text-white px-6 py-3 rounded-2xl font-bold hover:bg-secondary hover:text-primary transition-all shadow-md text-sm shrink-0 cursor-pointer"
+                >
+                  <Plus className="w-5 h-5" />
+                  <span>Nuevo Curso</span>
+                </button>
               </div>
 
               {/* Course items grid */}
@@ -832,7 +847,7 @@ export default function AdminCursos() {
                     >
                       <div className="aspect-[16/10] relative overflow-hidden bg-slate-100">
                         <img 
-                          src={course.imageUrl || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=1200'} 
+                          src={getDriveImageUrl(course.imageUrl) || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=1200'} 
                           alt={course.title}
                           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                           referrerPolicy="no-referrer"
@@ -924,7 +939,7 @@ export default function AdminCursos() {
               <div className="bg-primary px-8 py-8 md:px-12 text-white relative">
                 <div className="absolute inset-0 opacity-10 mix-blend-overlay overflow-hidden">
                   <img 
-                    src={activeWorkspaceCourse.imageUrl || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3'} 
+                    src={getDriveImageUrl(activeWorkspaceCourse.imageUrl) || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3'} 
                     alt="" 
                     className="w-full h-full object-cover"
                   />
@@ -1464,43 +1479,31 @@ export default function AdminCursos() {
                                 </div>
 
                                 {/* CONTENT CONTAINER DEPENDING ON THEORY VIEW MODE */}
-                                {theoryViewMode === 'editor' && (
-                                  <div className="bg-slate-50/50 p-6 border border-slate-200/60 rounded-2xl shadow-xs min-h-[450px]">
-                                    <VisualBlockEditor
-                                      content={activeStep.content || ''}
-                                      onChange={(newContent) => handleUpdateStepFields({ content: newContent })}
-                                    />
-                                  </div>
-                                )}
-
-                                {theoryViewMode === 'preview' && (
-                                  <div className="bg-white p-8 md:p-10 rounded-2xl border border-slate-200/80 shadow-xs min-h-[450px] prose prose-slate max-w-none text-slate-800 leading-relaxed font-sans">
-                                    <TheoryMarkdown content={activeStep.content || ''} />
-                                  </div>
-                                )}
-
-                                {theoryViewMode === 'both' && (
-                                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-stretch">
-                                    {/* LEFT COLUMN: VISUAL BLOCK EDITOR */}
-                                    <div className="space-y-3">
+                                <div className={theoryViewMode === 'both' ? 'grid grid-cols-1 lg:grid-cols-2 gap-8 items-stretch' : ''}>
+                                  {/* EDITOR COLUMN */}
+                                  <div className={theoryViewMode === 'preview' ? 'hidden' : theoryViewMode === 'both' ? 'space-y-3' : ''}>
+                                    {theoryViewMode === 'both' && (
                                       <span className="text-[10px] font-black uppercase tracking-widest text-primary/40 block">Constructor Visual</span>
-                                      <div className="bg-slate-50/50 p-6 border border-slate-200/60 rounded-2xl shadow-xs min-h-[400px]">
-                                        <VisualBlockEditor
-                                          content={activeStep.content || ''}
-                                          onChange={(newContent) => handleUpdateStepFields({ content: newContent })}
-                                        />
-                                      </div>
-                                    </div>
-                                    
-                                    {/* RIGHT COLUMN: PREVIEW */}
-                                    <div className="space-y-3">
-                                      <span className="text-[10px] font-black uppercase tracking-widest text-primary/40 block">Vista Previa</span>
-                                      <div className="bg-white p-8 rounded-2xl border border-slate-200/60 shadow-xs min-h-[400px] prose prose-slate max-w-none text-slate-800 leading-relaxed font-sans">
-                                        <TheoryMarkdown content={activeStep.content || ''} />
-                                      </div>
+                                    )}
+                                    <div className="bg-slate-50/50 p-6 border border-slate-200/60 rounded-2xl shadow-xs min-h-[450px]">
+                                      <VisualBlockEditor
+                                        key={activeStep.id}
+                                        content={activeStep.content || ''}
+                                        onChange={(newContent) => handleUpdateStepFields({ content: newContent })}
+                                      />
                                     </div>
                                   </div>
-                                )}
+
+                                  {/* PREVIEW COLUMN */}
+                                  <div className={theoryViewMode === 'editor' ? 'hidden' : theoryViewMode === 'both' ? 'space-y-3' : ''}>
+                                    {theoryViewMode === 'both' && (
+                                      <span className="text-[10px] font-black uppercase tracking-widest text-primary/40 block">Vista Previa</span>
+                                    )}
+                                    <div className="bg-white p-8 md:p-10 rounded-2xl border border-slate-200/80 shadow-xs min-h-[450px] prose prose-slate max-w-none text-slate-800 leading-relaxed font-sans">
+                                      <TheoryMarkdown content={activeStep.content || ''} />
+                                    </div>
+                                  </div>
+                                </div>
 
                                 {/* Attachments block */}
                                 <div className="pt-6 border-t border-slate-100">
@@ -1786,7 +1789,7 @@ export default function AdminCursos() {
                                               <div className="bg-white p-6 rounded-2xl border border-slate-200 space-y-3">
                                                 <div className="flex items-center gap-1.5">
                                                   <span className="text-sm">💡</span>
-                                                  <span className="text-[10px] font-black uppercase tracking-widest text-primary/45">Explicación o Criterio de Respuestas (Modelo)</span>
+                                                  <span className="text-[10px] font-black uppercase tracking-widest text-primary/45">Reflexión</span>
                                                 </div>
                                                 <p className="text-[10px] text-slate-500 font-medium">Esta explicación se le mostrará al alumno una vez que termine de redactar su texto libre para que pueda realizar una autoevaluación.</p>
                                                 
@@ -1869,6 +1872,38 @@ export default function AdminCursos() {
                                                 </div>
                                               </div>
                                             )}
+
+                                            {/* EXTRA SETTINGS (COMMON TO ALL TYPES) */}
+                                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-4">
+                                              <div className="flex items-center justify-between">
+                                                <div>
+                                                  <h5 className="text-[10px] font-black uppercase tracking-widest text-primary/60">No Modificable</h5>
+                                                  <p className="text-[9px] text-slate-500 font-medium mt-0.5">Bloquear respuestas después de enviar el formulario para que el alumno no pueda alterarlas.</p>
+                                                </div>
+                                                <label className="relative inline-flex items-center cursor-pointer">
+                                                  <input 
+                                                    type="checkbox" 
+                                                    className="sr-only peer"
+                                                    checked={qItem.isLocked || false}
+                                                    onChange={(e) => handleUpdateQuizQuestion(qIdx, { isLocked: e.target.checked })}
+                                                  />
+                                                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-secondary"></div>
+                                                </label>
+                                              </div>
+                                              
+                                              <div className="pt-2 border-t border-slate-200">
+                                                <label className="block text-[9px] font-black uppercase tracking-widest text-primary/60 mb-2">
+                                                  Explicación Adicional (Opcional)
+                                                </label>
+                                                <textarea
+                                                  value={qItem.explanation || ''}
+                                                  onChange={(e) => handleUpdateQuizQuestion(qIdx, { explanation: e.target.value })}
+                                                  rows={2}
+                                                  placeholder="Explicación que aparecerá debajo de la pregunta (opcional)..."
+                                                  className="w-full bg-white px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-secondary text-xs text-slate-600"
+                                                />
+                                              </div>
+                                            </div>
 
                                           </div>
                                         );
@@ -2402,16 +2437,7 @@ export default function AdminCursos() {
                               <option value="yes">Sí</option>
                             </select>
                           </div>
-                          {ajustesFormData.requiresCellSupervision && (
-                            <div className="text-xs text-amber-950 bg-amber-100/90 p-3 rounded-xl leading-relaxed font-medium">
-                              🧩 <strong>Configuración activa para este curso:</strong>
-                              <ul className="list-disc pl-4 mt-1 space-y-0.5 text-[11px]">
-                                <li>El alumno debe pertenecer a una Célula activa de la iglesia para solicitar acceso.</li>
-                                <li>Su Líder de Célula recibirá la notificación para aprobar el inicio de la formación.</li>
-                                <li>Las clases marcadas con <em>"¿Bloquear hasta que el líder acepte?"</em> se desbloquearán desde el Portal de Líderes.</li>
-                              </ul>
-                            </div>
-                          )}
+
                         </div>
 
                         {ajustesFormData.durationMode === 'limited' && (
@@ -2453,7 +2479,7 @@ export default function AdminCursos() {
                           <label className="block text-xs font-black uppercase tracking-widest text-primary/40 mb-2">URL de Imagen de Portada</label>
                           <div className="flex gap-4 items-center">
                             <div className="w-16 h-16 rounded-xl overflow-hidden border border-slate-100 bg-slate-100 shrink-0">
-                              <img src={ajustesFormData.imageUrl || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3'} alt="" className="w-full h-full object-cover" />
+                              <img src={getDriveImageUrl(ajustesFormData.imageUrl) || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3'} alt="" className="w-full h-full object-cover" />
                             </div>
                             <input 
                               type="text" 
@@ -2461,6 +2487,21 @@ export default function AdminCursos() {
                               className="w-full px-4 py-3 rounded-xl border border-slate-100 outline-none focus:ring-2 focus:ring-secondary text-sm flex-grow"
                               value={ajustesFormData.imageUrl}
                               onChange={(e) => setAjustesFormData({...ajustesFormData, imageUrl: e.target.value})}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Diploma PDF Config */}
+                        <div className="bg-slate-50 p-6 rounded-2xl border border-slate-150">
+                          <label className="block text-xs font-black text-primary/40 uppercase tracking-widest mb-3">Enlace al Diploma (PDF)</label>
+                          <p className="text-xs text-slate-500 mb-4">Si este curso entrega un diploma de finalización, puedes pegar aquí el enlace público del archivo PDF. Se mostrará a los alumnos al terminar el curso.</p>
+                          <div className="relative">
+                            <input 
+                              type="url"
+                              placeholder="Ej. https://drive.google.com/..."
+                              value={ajustesFormData.diplomaPdfUrl}
+                              onChange={(e) => setAjustesFormData({...ajustesFormData, diplomaPdfUrl: e.target.value})}
+                              className="w-full bg-white pl-4 pr-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-secondary text-sm font-medium text-primary shadow-sm"
                             />
                           </div>
                         </div>

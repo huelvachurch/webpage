@@ -47,7 +47,7 @@ interface Post {
 
 export default function Home() {
   const { t, i18n } = useTranslation();
-  const { meetingTime } = useGlobalSettings();
+  const { meetingTime, hideRadio, hideNewsletter } = useGlobalSettings();
   const currentLang = i18n.language.substring(0, 2);
 
   const [featuredPosts, setFeaturedPosts] = useState<Post[]>([]);
@@ -668,75 +668,78 @@ export default function Home() {
       </section>
 
       {/* Newsletter Subscription Section */}
-      <section className="py-20 bg-primary relative overflow-hidden">
-        {/* Decorative elements */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-secondary/10 rounded-full blur-3xl transform translate-x-1/2 -translate-y-1/2 animate-pulse"></div>
-        <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-950/20 rounded-full blur-3xl transform -translate-x-1/2 translate-y-1/2"></div>
-        
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
-            className="space-y-8"
-          >
-            <div className="inline-flex items-center gap-2.5 bg-secondary/20 border border-secondary/30 px-4 py-1.5 rounded-full text-secondary text-xs font-bold uppercase tracking-wider">
-              <Mail className="w-4 h-4" />
-              <span>{t('home.newsletterTag')}</span>
-            </div>
-            
-            <div className="space-y-4">
-              <h2 className="text-3xl sm:text-4xl font-kenao text-white">{t('home.newsletterTitle')}</h2>
-              <p className="text-white/70 max-w-xl mx-auto text-sm sm:text-base leading-relaxed">
-                {t('home.newsletterDesc')}
-              </p>
-            </div>
-
-            {subSuccess ? (
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-secondary/10 border border-secondary/20 p-6 rounded-2xl max-w-md mx-auto"
-              >
-                <span className="text-2xl">🎉</span>
-                <h4 className="text-white font-bold text-lg mt-2 font-kenao">{t('home.newsletterSuccessTitle')}</h4>
-                <p className="text-white/60 text-xs mt-1">{t('home.newsletterSuccessDesc')}</p>
-              </motion.div>
-            ) : (
-              <form onSubmit={handleNewsletterSubscribe} className="max-w-md mx-auto">
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <input 
-                    type="email" 
-                    required
-                    value={subEmail}
-                    onChange={(e) => setSubEmail(e.target.value)}
-                    placeholder={t('home.newsletterPh')} 
-                    className="flex-grow px-5 py-4 rounded-xl bg-white/10 text-white placeholder-white/40 border border-white/20 outline-none focus:ring-2 focus:ring-secondary focus:border-transparent text-sm transition-all"
-                  />
-                  <button 
-                    type="submit"
-                    disabled={subscribing}
-                    className="bg-secondary text-primary font-bold px-6 py-4 rounded-xl hover:bg-[#c2a30b] transition-all text-xs uppercase tracking-wider shrink-0 duration-300 flex items-center justify-center gap-2"
-                  >
-                    {subscribing ? (
-                      <span className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></span>
-                    ) : (
-                      <span>{t('home.newsletterBtn')}</span>
-                    )}
-                  </button>
-                </div>
-                {subError && <p className="text-red-400 text-xs mt-3 text-left">{subError}</p>}
-                <p className="text-[10px] text-white/40 mt-3 leading-tight">
-                  {t('home.newsletterTerms')}
+      {!hideNewsletter && (
+        <section className="py-20 bg-primary relative overflow-hidden">
+          {/* Decorative elements */}
+          <div className="absolute top-0 right-0 w-96 h-96 bg-secondary/10 rounded-full blur-3xl transform translate-x-1/2 -translate-y-1/2 animate-pulse"></div>
+          <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-950/20 rounded-full blur-3xl transform -translate-x-1/2 translate-y-1/2"></div>
+          
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5 }}
+              className="space-y-8"
+            >
+              <div className="inline-flex items-center gap-2.5 bg-secondary/20 border border-secondary/30 px-4 py-1.5 rounded-full text-secondary text-xs font-bold uppercase tracking-wider">
+                <Mail className="w-4 h-4" />
+                <span>{t('home.newsletterTag')}</span>
+              </div>
+              
+              <div className="space-y-4">
+                <h2 className="text-3xl sm:text-4xl font-kenao text-white">{t('home.newsletterTitle')}</h2>
+                <p className="text-white/70 max-w-xl mx-auto text-sm sm:text-base leading-relaxed">
+                  {t('home.newsletterDesc')}
                 </p>
-              </form>
-            )}
-          </motion.div>
-        </div>
-      </section>
+              </div>
+
+              {subSuccess ? (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-secondary/10 border border-secondary/20 p-6 rounded-2xl max-w-md mx-auto"
+                >
+                  <span className="text-2xl">🎉</span>
+                  <h4 className="text-white font-bold text-lg mt-2 font-kenao">{t('home.newsletterSuccessTitle')}</h4>
+                  <p className="text-white/60 text-xs mt-1">{t('home.newsletterSuccessDesc')}</p>
+                </motion.div>
+              ) : (
+                <form onSubmit={handleNewsletterSubscribe} className="max-w-md mx-auto">
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <input 
+                      type="email" 
+                      required
+                      value={subEmail}
+                      onChange={(e) => setSubEmail(e.target.value)}
+                      placeholder={t('home.newsletterPh')} 
+                      className="flex-grow px-5 py-4 rounded-xl bg-white/10 text-white placeholder-white/40 border border-white/20 outline-none focus:ring-2 focus:ring-secondary focus:border-transparent text-sm transition-all"
+                    />
+                    <button 
+                      type="submit"
+                      disabled={subscribing}
+                      className="bg-secondary text-primary font-bold px-6 py-4 rounded-xl hover:bg-[#c2a30b] transition-all text-xs uppercase tracking-wider shrink-0 duration-300 flex items-center justify-center gap-2"
+                    >
+                      {subscribing ? (
+                        <span className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></span>
+                      ) : (
+                        <span>{t('home.newsletterBtn')}</span>
+                      )}
+                    </button>
+                  </div>
+                  {subError && <p className="text-red-400 text-xs mt-3 text-left">{subError}</p>}
+                  <p className="text-[10px] text-white/40 mt-3 leading-tight">
+                    {t('home.newsletterTerms')}
+                  </p>
+                </form>
+              )}
+            </motion.div>
+          </div>
+        </section>
+      )}
 
       {/* Radio & App Section */}
+      {!hideRadio && (
       <section id="radio" className="py-24 bg-slate-50 font-gordita">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
@@ -900,6 +903,7 @@ export default function Home() {
           </div>
         </div>
       </section>
+      )}
 
       {/* Instagram Section */}
       <section id="instagram" className="py-24 bg-white">

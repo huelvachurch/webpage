@@ -1,0 +1,51 @@
+<<<<
+  // Generic Save Arqueo for Caja Chica, Cafetería & Librería
+  const handleSaveModuleArqueo = async (
+    e: React.FormEvent,
+    module: 'caja_chica' | 'cafeteria' | 'libreria',
+    date: string,
+    billetesStr: string,
+    monedasStr: string,
+    expectedBalance: number,
+    notes: string,
+    setSaving: (v: boolean) => void,
+    resetForm: () => void
+  ) => {
+    e.preventDefault();
+    const billetes = parseFloat(billetesStr) || 0;
+    const monedas = parseFloat(monedasStr) || 0;
+    const totalEfectivo = billetes + monedas;
+
+    if (totalEfectivo <= 0 && billetesStr === '' && monedasStr === '') {
+      alert("Introduce los montos contados.");
+      return;
+    }
+
+    const diferencia = totalEfectivo - expectedBalance;
+
+    setSaving(true);
+    try {
+      await addDoc(collection(db, 'finanzas_arqueos'), {
+        module,
+        date,
+        totalEfectivo,
+        expectedBalance,
+        diferencia,
+        sobreBilletes: billetes,
+        bolsaMonedas: monedas,
+        cajaChica: monedas, // reusing for caja
+        notes: notes.trim() || '',
+        registeredByUid: user?.uid,
+        registeredByName: user?.displayName || user?.email || 'Financiero',
+        createdAt: serverTimestamp()
+      });
+
+      alert("¡Arqueo de caja registrado correctamente!");
+      resetForm();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'finanzas_arqueos');
+    } finally {
+      setSaving(false);
+    }
+  };
+====

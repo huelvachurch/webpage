@@ -12,6 +12,7 @@ import {
 import { deleteUser } from 'firebase/auth';
 import { db, auth, handleFirestoreError, OperationType, requestAndSaveFCMToken } from '../firebase';
 import { useAuth } from '../AuthContext';
+import { useGlobalSettings } from '../utils/useSettings';
 import { useNavigate } from 'react-router-dom';
 import { 
   isNative, 
@@ -46,6 +47,7 @@ interface Enrollment {
 
 export default function MisDatos() {
   const { user, roles, status, isAuthReady, loading } = useAuth();
+  const { hideNewsletter } = useGlobalSettings();
   const navigate = useNavigate();
 
   // State
@@ -842,6 +844,7 @@ export default function MisDatos() {
             </div>
 
             {/* Tarjeta Independiente de Suscripción a Boletines Informativos */}
+            {!hideNewsletter && (
             <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm relative overflow-hidden">
               <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none">
                 <Mail className="w-32 h-32 text-secondary" />
@@ -922,6 +925,7 @@ export default function MisDatos() {
                 </div>
               </form>
             </div>
+            )}
 
             {/* Tarjeta de Administración de Notificaciones (Push/Email) */}
             <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm relative overflow-hidden">

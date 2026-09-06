@@ -6,6 +6,8 @@ import { useAuth } from '../AuthContext';
 import { loginWithGoogle, logout } from '../firebase';
 import { useTranslation } from 'react-i18next';
 
+import { useGlobalSettings } from '../utils/useSettings';
+
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
@@ -14,6 +16,7 @@ export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const location = useLocation();
   const { user, roles, loading, customPhotoURL } = useAuth();
+  const { hideRadio, hideNewsletter } = useGlobalSettings();
   const displayPhotoURL = customPhotoURL || user?.photoURL;
   const { t, i18n } = useTranslation();
 
@@ -62,7 +65,7 @@ export default function Navbar() {
 
   const baseNavLinks = [
     { name: t('nav.about'), path: '/nosotros', icon: Users },
-    { name: t('nav.radio'), path: '/radio', icon: Radio },
+    ...(!hideRadio ? [{ name: t('nav.radio'), path: '/radio', icon: Radio }] : []),
     { name: t('nav.kids'), path: '/ninos', icon: Smile },
     { name: t('nav.activities'), path: '/avisos', icon: Bell },
     { name: t('nav.courses'), path: '/cursos', icon: GraduationCap },
@@ -353,7 +356,7 @@ export default function Navbar() {
                           )}
 
                           {/* 9. Boletines */}
-                          {isComunicador && (
+                          {(isComunicador && !hideNewsletter) && (
                             <Link 
                               onClick={() => setIsUserMenuOpen(false)}
                               to="/admin/boletines" 
@@ -597,7 +600,7 @@ export default function Navbar() {
                   )}
 
                   {/* 9. Boletines */}
-                  {isComunicador && (
+                  {(isComunicador && !hideNewsletter) && (
                     <Link to="/admin/boletines" onClick={() => setIsOpen(false)} className="flex items-center gap-3 text-primary/60 hover:text-primary font-bold uppercase text-sm tracking-widest transition-colors">
                       <Mail className="w-5 h-5 shrink-0" />
                       Boletines

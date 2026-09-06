@@ -1,11 +1,15 @@
 const fs = require('fs');
-let code = fs.readFileSync('src/pages/admin/AdminCursos.tsx', 'utf8');
+let content = fs.readFileSync('src/pages/MiCelula.tsx', 'utf-8');
 
-// Fix 1: Extra div around 1260
-code = code.replace(
-  /<\/div>\n\s*<\/div>\n\s*<\/div>\n\s*<\/div>\n\s*\) : \(\n\s*\/\* ====================================/g,
-  `</div>\n                                </div>\n                              </div>\n                            ) : (\n                              /* ====================================`
+content = content.replace(
+  /                  <\/motion\.div>\n                \{activeTab === 'academia' && \(/,
+  "                  </motion.div>\n                )}\n                {activeTab === 'academia' && ("
 );
 
-fs.writeFileSync('src/pages/admin/AdminCursos.tsx', code);
-console.log("Applied fix 1");
+// We should also clean up the extra `)}` at the bottom:
+content = content.replace(
+  /                  <\/motion\.div>\n                \)\}\n                \)\}\n              <\/AnimatePresence>/,
+  "                  </motion.div>\n                )}\n              </AnimatePresence>"
+);
+
+fs.writeFileSync('src/pages/MiCelula.tsx', content);

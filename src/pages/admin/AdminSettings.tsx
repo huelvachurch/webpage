@@ -13,6 +13,8 @@ export default function AdminSettings() {
   
   const [meetingTime, setMeetingTime] = useState('Domingos a las 18:30h');
   const [hideHuelvaChurchCell, setHideHuelvaChurchCell] = useState(false);
+  const [hideRadio, setHideRadio] = useState(false);
+  const [hideNewsletter, setHideNewsletter] = useState(false);
   const [driveFolderUrl, setDriveFolderUrl] = useState('');
   const [gasWebAppUrl, setGasWebAppUrl] = useState('');
   const [testingDrive, setTestingDrive] = useState(false);
@@ -114,6 +116,8 @@ export default function AdminSettings() {
           const data = snap.data();
           if (data.meetingTime) setMeetingTime(data.meetingTime);
           if (data.hideHuelvaChurchCell !== undefined) setHideHuelvaChurchCell(data.hideHuelvaChurchCell);
+          if (data.hideRadio !== undefined) setHideRadio(data.hideRadio);
+          if (data.hideNewsletter !== undefined) setHideNewsletter(data.hideNewsletter);
           if (data.driveFolderUrl) setDriveFolderUrl(data.driveFolderUrl);
           if (data.gasWebAppUrl) setGasWebAppUrl(data.gasWebAppUrl);
         }
@@ -161,6 +165,8 @@ export default function AdminSettings() {
       await setDoc(doc(db, 'settings', 'general'), {
         meetingTime: meetingTime,
         hideHuelvaChurchCell: hideHuelvaChurchCell,
+        hideRadio: hideRadio,
+        hideNewsletter: hideNewsletter,
         driveFolderUrl: driveFolderUrl.trim(),
         gasWebAppUrl: gasWebAppUrl.trim()
       }, { merge: true });
@@ -373,20 +379,52 @@ export default function AdminSettings() {
               <h2 className="text-xl font-kenao text-primary mb-4 flex items-center gap-2">
                 Opciones Adicionales
               </h2>
-              <label className="flex items-start gap-3 cursor-pointer p-4 bg-slate-50 border border-slate-100 rounded-xl hover:bg-slate-100 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={hideHuelvaChurchCell}
-                  onChange={e => setHideHuelvaChurchCell(e.target.checked)}
-                  className="mt-1 w-4 h-4 text-secondary rounded border-slate-300 focus:ring-secondary"
-                />
-                <div>
-                  <span className="block text-sm font-bold text-primary">Ocultar Célula Pastoral</span>
-                  <span className="block text-xs text-primary/60 mt-1 leading-relaxed">
-                    Si se activa, la célula "Huelva Church" (o la célula pastoral predeterminada) no aparecerá en las listas de selección del formulario "Unirme a una Célula" ni en la configuración de "Mi Célula".
-                  </span>
-                </div>
-              </label>
+              <div className="space-y-3">
+                <label className="flex items-start gap-3 cursor-pointer p-4 bg-slate-50 border border-slate-100 rounded-xl hover:bg-slate-100 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={hideHuelvaChurchCell}
+                    onChange={e => setHideHuelvaChurchCell(e.target.checked)}
+                    className="mt-1 w-4 h-4 text-secondary rounded border-slate-300 focus:ring-secondary"
+                  />
+                  <div>
+                    <span className="block text-sm font-bold text-primary">Ocultar Célula Pastoral</span>
+                    <span className="block text-xs text-primary/60 mt-1 leading-relaxed">
+                      Si se activa, la célula "Huelva Church" (o la célula pastoral predeterminada) no aparecerá en las listas de selección del formulario "Unirme a una Célula" ni en la configuración de "Mi Célula".
+                    </span>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 cursor-pointer p-4 bg-slate-50 border border-slate-100 rounded-xl hover:bg-slate-100 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={hideRadio}
+                    onChange={e => setHideRadio(e.target.checked)}
+                    className="mt-1 w-4 h-4 text-secondary rounded border-slate-300 focus:ring-secondary"
+                  />
+                  <div>
+                    <span className="block text-sm font-bold text-primary">Ocultar Radio</span>
+                    <span className="block text-xs text-primary/60 mt-1 leading-relaxed">
+                      Si se activa, se ocultará el enlace a la página de Radio en el menú de navegación y la franja de la radio en la página principal.
+                    </span>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 cursor-pointer p-4 bg-slate-50 border border-slate-100 rounded-xl hover:bg-slate-100 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={hideNewsletter}
+                    onChange={e => setHideNewsletter(e.target.checked)}
+                    className="mt-1 w-4 h-4 text-secondary rounded border-slate-300 focus:ring-secondary"
+                  />
+                  <div>
+                    <span className="block text-sm font-bold text-primary">Ocultar Boletines Informativos</span>
+                    <span className="block text-xs text-primary/60 mt-1 leading-relaxed">
+                      Si se activa, se ocultará la sección de suscripción a boletines en la página principal.
+                    </span>
+                  </div>
+                </label>
+              </div>
             </div>
             
             <div className="pt-4 border-t border-slate-100 flex justify-end">

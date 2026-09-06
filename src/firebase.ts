@@ -13,23 +13,6 @@ export const db = getFirestore(app, databaseId);
 export const studiesDatabaseId = "ai-studio-a2eeb6ca-be40-4061-b380-b75b9d9fb2ef";
 export const studiesDb = getFirestore(app, studiesDatabaseId);
 export const googleProvider = new GoogleAuthProvider();
-googleProvider.addScope('https://www.googleapis.com/auth/drive');
-googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
-
-export const connectGoogleDrive = async () => {
-  try {
-    const result = await signInWithPopup(auth, googleProvider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (credential?.accessToken) {
-      sessionStorage.setItem('google_access_token', credential.accessToken);
-      return credential.accessToken;
-    }
-    return null;
-  } catch (err) {
-    console.error('Error connecting Google Drive:', err);
-    throw err;
-  }
-};
 
 // Initialize Messaging (ensuring compatibility with server-side and unsupported situations)
 export let messaging: any = null;

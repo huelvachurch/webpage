@@ -325,13 +325,20 @@ service cloud.firestore {
     }
 
     match /enrollments/{enrollmentId} {
-      allow read: if isAuthenticated() && (request.auth.uid == resource.data.studentId || isProfesor());
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.studentId ||
+        (resource.data.guideId != null && request.auth.uid == resource.data.guideId) ||
+        isLider() ||
+        isProfesor()
+      );
       allow create: if isAuthenticated() && isValidEnrollment(request.resource.data) && request.resource.data.studentId == request.auth.uid;
       allow update: if isAuthenticated() && (
         (request.auth.uid == resource.data.studentId && (
           request.resource.data.status == 'dropped' ||
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['progress', 'completedSteps', 'updatedAt'])
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['progress', 'completedSteps', 'updatedAt', 'quizAnswersMap', 'classComments', 'classUnlockRequests'])
         )) ||
+        (resource.data.guideId != null && request.auth.uid == resource.data.guideId) ||
+        isLider() ||
         isProfesor()
       );
       allow delete: if isAdmin();

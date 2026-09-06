@@ -107,7 +107,7 @@ export default function Lideres() {
   const navigate = useNavigate();
 
   // Access check
-  const isLider = roles.includes('lider');
+  const isLider = roles.includes('lider') || roles.includes('admin') || roles.includes('superadmin') || roles.includes('supervisor') || (roles as string[]).includes('colider');
 
   // Tabs state
   const [activeTab, setActiveTab] = useState<'form' | 'stats' | 'announcements' | 'supervision' | 'cell' | 'attendees'>('form');
@@ -276,6 +276,19 @@ export default function Lideres() {
   const [supervisedEnrollments, setSupervisedEnrollments] = useState<any[]>([]);
   const [supervisedCoursesMap, setSupervisedCoursesMap] = useState<Record<string, any>>({});
   const [supervisedClassesMap, setSupervisedClassesMap] = useState<Record<string, any[]>>({});
+  const [selectedGuides, setSelectedGuides] = useState<Record<string, string>>({});
+  const [savingGuideId, setSavingGuideId] = useState<string | null>(null);
+
+  const [expandedEnrollments, setExpandedEnrollments] = useState<string[]>([]);
+  const [expandedClasses, setExpandedClasses] = useState<string[]>([]);
+
+  const toggleEnrollment = (id: string) => {
+    setExpandedEnrollments(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const toggleClass = (id: string) => {
+    setExpandedClasses(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
 
   // Library filters
   const [libraryMonth, setLibraryMonth] = useState(new Date().getMonth());
@@ -1656,7 +1669,7 @@ export default function Lideres() {
             >
               <option value="form">Formularios</option>
               <option value="attendees">Asistentes</option>
-              <option value="supervision">Supervisión Cursos</option>
+              <option value="supervision">Acompañamientos</option>
               <option value="stats">Estadísticas</option>
               <option value="announcements">Notificaciones</option>
               <option value="cell">Mi Célula</option>
@@ -1702,7 +1715,7 @@ export default function Lideres() {
             }`}
           >
             <BookOpen className="w-4 h-4 shrink-0" />
-            Supervisión
+            Acompañamientos
             {supervisedEnrollments.some(e => !e.leaderApproved) && (
               <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></span>
             )}
@@ -2374,151 +2387,163 @@ export default function Lideres() {
                 exit={{ opacity: 0, y: -15 }}
                 className="space-y-8"
               >
-                {/* Header Banner */}
-                <div className="bg-gradient-to-r from-amber-50 to-amber-100/80 border border-amber-200/80 rounded-3xl p-8 text-left">
-                  <div className="flex items-center gap-3 text-amber-900 font-bold text-xs uppercase tracking-widest mb-2">
-                    <BookOpen className="w-5 h-5 text-amber-600 shrink-0" />
-                    Supervisión de Formación por Célula
-                  </div>
-                  <h2 className="text-3xl font-kenao text-primary font-bold mb-3">
-                    Aprobación y Desbloqueo de Cursos
-                  </h2>
-                  <p className="text-sm text-slate-600 max-w-3xl leading-relaxed">
-                    Como Líder de Célula, puedes supervisar el avance de los miembros de tu célula en los cursos de formación con requisito de supervisión. Autoriza su inicio y desbloquea clases conforme completan su proceso.
-                  </p>
-                </div>
-
                 {supervisedEnrollments.length === 0 ? (
                   <div className="bg-white rounded-3xl p-12 text-center border border-slate-150 shadow-sm space-y-3">
                     <Shield className="w-12 h-12 text-slate-300 mx-auto" />
                     <h3 className="text-lg font-bold text-primary">No hay alumnos de tu célula en cursos supervisados</h3>
                     <p className="text-xs text-slate-500 max-w-md mx-auto">
-                      Cuando los integrantes vinculados a tu célula sean admitidos a cursos supervisados, aparecerán aquí para que autorices su inicio y clases.
+                      Cuando los integrantes vinculados a tu célula sean admitidos a cursos supervisados, aparecerán aquí para que asocies un acompañante.
                     </p>
                   </div>
                 ) : (
                   <div className="space-y-6">
                     {supervisedEnrollments.map((enrollment) => {
                       const course = supervisedCoursesMap[enrollment.courseId];
-                      const classes = supervisedClassesMap[enrollment.courseId] || [];
-                      const lockableClasses = classes.filter(c => c.requiresLeaderApproval);
-
+                      
+                      const potentialGuides = [
+                        { userId: user?.uid, name: `${user?.displayName || 'Yo'} (Líder)` },
+                        ...cellMembers.filter(m => m.userId && m.userId !== user?.uid).map(m => ({ userId: m.userId, name: m.name })),
+                        ...systemUsers.filter(u => u.id && u.id !== user?.uid && u.celulaId === cellProfile?.id && !cellMembers.some(m => m.userId === u.id)).map(u => ({ userId: u.id, name: u.displayName || u.email || 'Miembro' }))
+                      ];
+                      
+                      const isPaused = enrollment.isPaused === true;
+                      const currentSelected = selectedGuides[enrollment.id] !== undefined ? selectedGuides[enrollment.id] : (enrollment.guideId || '');
+                      const hasPendingChange = currentSelected !== (enrollment.guideId || '');
+                      const isSavingThis = savingGuideId === enrollment.id;
+                      
                       return (
-                        <div key={enrollment.id} className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-6 text-left">
-                          {/* Student & Course Header */}
-                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-100">
-                            <div>
-                              <span className="text-[10px] font-black uppercase tracking-widest text-amber-800 bg-amber-50 px-3 py-1 rounded-full border border-amber-200 inline-block mb-2">
+                        <div key={enrollment.id} className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden text-left p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                          <div className="flex-grow">
+                            <div className="flex flex-wrap items-center gap-2 mb-2">
+                              <span className="text-[10px] font-black uppercase tracking-widest text-amber-800 bg-amber-50 px-3 py-1 rounded-full border border-amber-200 inline-block">
                                 🧩 {course?.title || 'Curso Supervisado'}
                               </span>
-                              <h3 className="text-xl font-bold text-primary flex items-center gap-2">
-                                <User className="w-5 h-5 text-secondary shrink-0" />
-                                {enrollment.studentName || 'Alumno de Célula'}
-                              </h3>
-                              <p className="text-xs text-slate-500 mt-1">
-                                Inscrito el {enrollment.enrolledAt ? new Date(enrollment.enrolledAt.seconds * 1000).toLocaleDateString() : 'Recientemente'}
-                              </p>
+                              {isPaused && (
+                                <span className="text-rose-600 font-black tracking-widest uppercase text-[10px] bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200">
+                                  PAUSADO
+                                </span>
+                              )}
                             </div>
-
-                            {/* Course Start Approval */}
-                            <div className="flex items-center gap-3">
-                              {enrollment.leaderApproved ? (
-                                <span className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-2xl text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                                  Inicio Autorizado por Líder
+                            <h3 className="text-xl font-bold text-primary flex items-center gap-2">
+                              <User className="w-5 h-5 text-secondary shrink-0" />
+                              {enrollment.studentName || 'Alumno de Célula'}
+                            </h3>
+                            <p className="text-xs text-slate-500 mt-1">
+                              Inscrito el {enrollment.enrolledAt ? new Date(enrollment.enrolledAt.seconds * 1000).toLocaleDateString() : 'Recientemente'}
+                            </p>
+                            
+                            <div className="mt-3 flex items-center gap-2">
+                              <span className="text-xs text-slate-400 font-medium">Estado acompañamiento:</span>
+                              {enrollment.guideId ? (
+                                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-xl">
+                                  <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                  Acompañante: {enrollment.guideName || 'Asignado'}
                                 </span>
                               ) : (
-                                <button
-                                  onClick={async () => {
-                                    try {
-                                      await updateDoc(doc(db, 'enrollments', enrollment.id), {
-                                        leaderApproved: true,
-                                        updatedAt: serverTimestamp()
-                                      });
-                                      alert(`¡Curso autorizado con éxito para ${enrollment.studentName}!`);
-                                    } catch (err) {
-                                      handleFirestoreError(err, OperationType.UPDATE, `enrollments/${enrollment.id}`);
-                                    }
-                                  }}
-                                  className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl font-bold text-xs bg-amber-500 hover:bg-amber-600 text-white transition-all shadow-md cursor-pointer"
-                                >
-                                  <CheckCircle className="w-4 h-4" />
-                                  Aprobar Inicio de Curso
-                                </button>
+                                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1 rounded-xl">
+                                  ⚠️ Sin acompañante asignado
+                                </span>
                               )}
                             </div>
                           </div>
-
-                          {/* Classes Unlocking Section */}
-                          <div className="space-y-3">
-                            <h4 className="text-xs font-black uppercase tracking-wider text-primary/60">
-                              Clases con Desbloqueo por Líder
-                            </h4>
-
-                            {lockableClasses.length === 0 ? (
-                              <p className="text-xs text-slate-400 italic bg-slate-50 p-4 rounded-2xl">
-                                Este curso no requiere desbloqueo individual por clase. Con autorizar el inicio, el alumno puede avanzar.
-                              </p>
-                            ) : (
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {lockableClasses.map((clase) => {
-                                  const isUnlocked = enrollment.approvedClassIds?.includes(clase.id);
-                                  const isRequested = (enrollment.classUnlockRequests || []).includes(clase.id);
-
-                                  return (
-                                    <div key={clase.id} className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                                      isUnlocked ? 'bg-emerald-50/50 border-emerald-200' : 
-                                      isRequested ? 'bg-amber-50 border-amber-300 shadow-xs' : 'bg-slate-50 border-slate-200'
-                                    }`}>
-                                      <div>
-                                        <div className="flex items-center gap-2">
-                                          <h5 className="text-sm font-bold text-primary">{clase.title}</h5>
-                                          {isRequested && !isUnlocked && (
-                                            <span className="text-[10px] font-black text-amber-900 bg-amber-200/80 px-2 py-0.5 rounded-md animate-pulse inline-flex items-center gap-1 shrink-0">
-                                              📩 Solicitud del alumno
-                                            </span>
-                                          )}
-                                        </div>
-                                        <p className="text-[11px] text-slate-500">Orden / Día: {clase.order + 1}</p>
-                                      </div>
-
-                                      {isUnlocked ? (
-                                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full flex items-center gap-1 shrink-0 self-start sm:self-auto">
-                                          <Check className="w-3 h-3 text-emerald-700" /> Desbloqueada
-                                        </span>
-                                      ) : (
-                                        <button
-                                          onClick={async () => {
-                                            try {
-                                              await updateDoc(doc(db, 'enrollments', enrollment.id), {
-                                                approvedClassIds: arrayUnion(clase.id),
-                                                classUnlockRequests: arrayRemove(clase.id),
-                                                updatedAt: serverTimestamp()
-                                              });
-                                              alert(`Clase "${clase.title}" desbloqueada para ${enrollment.studentName}`);
-                                            } catch (err) {
-                                              handleFirestoreError(err, OperationType.UPDATE, `enrollments/${enrollment.id}`);
-                                            }
-                                          }}
-                                          className={`text-xs font-bold px-3.5 py-2 rounded-xl transition-all cursor-pointer shrink-0 self-start sm:self-auto ${
-                                            isRequested 
-                                              ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-md ring-2 ring-amber-300' 
-                                              : 'bg-primary hover:bg-primary/90 text-white'
-                                          }`}
-                                        >
-                                          Desbloquear Clase
-                                        </button>
-                                      )}
-                                    </div>
-                                  );
-                                })}
+                          
+                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 bg-slate-50/80 p-4 rounded-2xl border border-slate-100">
+                            {/* Dropdown for Guide Selection + Confirm Button */}
+                            <div className="flex flex-col gap-1.5">
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                Seleccionar Acompañante:
+                              </label>
+                              <div className="flex flex-col sm:flex-row items-center gap-2">
+                                <select 
+                                  value={currentSelected}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setSelectedGuides(prev => ({ ...prev, [enrollment.id]: val }));
+                                  }}
+                                  className="bg-white border border-slate-200 text-primary text-xs font-bold rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-secondary/50 w-full sm:w-60 cursor-pointer shadow-sm"
+                                >
+                                  <option value="">-- Sin asignar (Pendiente) --</option>
+                                  {potentialGuides.map(g => (
+                                    <option key={g.userId} value={g.userId}>{g.name}</option>
+                                  ))}
+                                </select>
+                                
+                                <button
+                                  type="button"
+                                  disabled={isSavingThis || !hasPendingChange}
+                                  onClick={async () => {
+                                    const guideId = currentSelected;
+                                    const guideObj = potentialGuides.find(g => g.userId === guideId);
+                                    const guideName = guideObj?.name || '';
+                                    setSavingGuideId(enrollment.id);
+                                    try {
+                                      await updateDoc(doc(db, 'enrollments', enrollment.id), {
+                                        leaderApproved: !!guideId,
+                                        guideId: guideId || null,
+                                        guideName: guideName || null,
+                                        updatedAt: serverTimestamp()
+                                      });
+                                      alert(guideId ? `¡Acompañante "${guideName}" asignado y confirmado con éxito!` : '¡Acompañante desasignado con éxito!');
+                                    } catch (err) {
+                                      console.error(err);
+                                      alert('Error al guardar el acompañante en la base de datos.');
+                                    } finally {
+                                      setSavingGuideId(null);
+                                    }
+                                  }}
+                                  className={`px-4 py-2.5 rounded-xl font-bold text-xs transition-all shadow-sm flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                                    hasPendingChange
+                                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200 shadow-md ring-2 ring-emerald-400/50'
+                                      : 'bg-slate-200/80 text-slate-400 cursor-not-allowed'
+                                  }`}
+                                >
+                                  <Check className="w-3.5 h-3.5 shrink-0" />
+                                  {isSavingThis ? 'Guardando...' : hasPendingChange ? 'Confirmar' : 'Confirmado'}
+                                </button>
                               </div>
-                            )}
+                            </div>
+                            
+                            <div className="h-px sm:h-12 w-full sm:w-px bg-slate-200"></div>
+                            
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await updateDoc(doc(db, 'enrollments', enrollment.id), {
+                                      isPaused: !isPaused,
+                                      updatedAt: serverTimestamp()
+                                    });
+                                  } catch (err) {
+                                    console.error(err);
+                                  }
+                                }}
+                                className={`px-4 py-2.5 rounded-xl font-bold text-xs transition-colors shadow-sm cursor-pointer whitespace-nowrap ${isPaused ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'}`}
+                              >
+                                {isPaused ? 'Reanudar' : 'Pausar'}
+                              </button>
+                              
+                              <button
+                                onClick={async () => {
+                                  if(confirm('¿Estás seguro de detener (cancelar) definitivamente este curso para el alumno?')) {
+                                    try {
+                                      await updateDoc(doc(db, 'enrollments', enrollment.id), {
+                                        status: 'dropped',
+                                        updatedAt: serverTimestamp()
+                                      });
+                                    } catch (err) {
+                                      console.error(err);
+                                    }
+                                  }
+                                }}
+                                className="px-4 py-2.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-xl font-bold text-xs transition-colors shadow-sm cursor-pointer border border-rose-100 whitespace-nowrap"
+                              >
+                                Detener
+                              </button>
+                            </div>
                           </div>
                         </div>
                       );
-                    })}
-                  </div>
+                    })}                  </div>
                 )}
               </motion.div>
             )}

@@ -14,7 +14,9 @@ import {
   Bell,
   Search,
   Check,
-  ChevronRight
+  ChevronRight,
+  UserCheck,
+  Home
 } from 'lucide-react';
 import { collection, query, where, getDocs, doc, deleteDoc, updateDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -32,12 +34,13 @@ import {
 
 export default function Supervision() {
   const { user, roles, isAuthReady } = useAuth();
-  const [activeTab, setActiveTab] = useState<'lideres' | 'estadisticas' | 'notificaciones'>('lideres');
+  const [activeTab, setActiveTab] = useState<'lideres' | 'asistentes' | 'estadisticas' | 'notificaciones'>('lideres');
   const [loading, setLoading] = useState(true);
 
   // States
   const [lideres, setLideres] = useState<any[]>([]);
   const [cellMembers, setCellMembers] = useState<any[]>([]); // To store cell members birthdays & information
+  const [supervisedAttendees, setSupervisedAttendees] = useState<any[]>([]); // All attendees belonging to supervised cells
   const [reports, setReports] = useState<any[]>([]); // To store reports for statistics
   const [notificaciones, setNotificaciones] = useState<any[]>([]);
   const [newNotice, setNewNotice] = useState({ title: '', message: '', expiry: '' });
@@ -51,7 +54,13 @@ export default function Supervision() {
   const [superNoticeToDelete, setSuperNoticeToDelete] = useState<any>(null);
   const [superNoticeDeleteInput, setSuperNoticeDeleteInput] = useState('');
 
-  const isSupervisor = roles.includes('supervisor');
+  // Attendees tab filters
+  const [attendeesSearch, setAttendeesSearch] = useState('');
+  const [attendeesCategoryFilter, setAttendeesCategoryFilter] = useState<string>('all');
+  const [attendeesCellFilter, setAttendeesCellFilter] = useState<string>('all');
+  const [attendeesLinkFilter, setAttendeesLinkFilter] = useState<'all' | 'linked' | 'unlinked'>('all');
+
+  const isSupervisor = roles.includes('supervisor') || roles.includes('admin') || roles.includes('superadmin');
 
   useEffect(() => {
     if (!isAuthReady || !user || !isSupervisor) return;
@@ -132,6 +141,8 @@ export default function Supervision() {
           }
         }
 
+        const attendeesList: any[] = [];
+
         if (lList.length > 0) {
           const leaderIds = lList.map(l => l.id);
           const chunks = [];
@@ -147,6 +158,24 @@ export default function Supervision() {
             const membersSnap = await getDocs(membersQ);
             membersSnap.forEach(docSnap => {
               const mData = docSnap.data();
+              const matchedLeader = lList.find(l => l.id === mData.leaderId);
+              const cellName = matchedLeader?.cell?.name || (matchedLeader ? `Célula de ${matchedLeader.displayName || matchedLeader.email}` : 'Célula');
+
+              attendeesList.push({
+                id: docSnap.id,
+                ...mData,
+                name: mData.name || 'Sin nombre',
+                category: mData.category || mData.categories?.[0] || 'bautizado',
+                categories: mData.categories || (mData.category ? [mData.category] : ['bautizado']),
+                birthDate: mData.birthDate || '',
+                birthYearOptional: !!mData.birthYearOptional,
+                userId: mData.userId || null,
+                leaderId: mData.leaderId,
+                leaderName: matchedLeader?.displayName || matchedLeader?.email || 'Líder',
+                cellName: cellName,
+                cellId: matchedLeader?.cell?.id || null
+              });
+
               if (mData.birthDate) {
                 bDaysList.push({
                   id: docSnap.id,
@@ -158,8 +187,51 @@ export default function Supervision() {
               }
             });
           }
+
+          // Also check for app users whose celulaId matches any of the supervised cells
+          const cellIds = lList.map(l => l.cell?.id).filter(Boolean);
+          if (cellIds.length > 0) {
+            const cellChunks = [];
+            for (let i = 0; i < cellIds.length; i += 30) {
+              cellChunks.push(cellIds.slice(i, i + 30));
+            }
+            for (const cChunk of cellChunks) {
+              try {
+                const uQ = query(collection(db, 'users'), where('celulaId', 'in', cChunk));
+                const uSnap = await getDocs(uQ);
+                uSnap.forEach(uDoc => {
+                  const uData = uDoc.data();
+                  if (uData.celulaStatus === 'approved') {
+                    const alreadyPresent = attendeesList.some(m => m.userId === uDoc.id);
+                    if (!alreadyPresent) {
+                      const matchedLeader = lList.find(l => l.cell?.id === uData.celulaId);
+                      const cellName = matchedLeader?.cell?.name || (matchedLeader ? `Célula de ${matchedLeader.displayName || matchedLeader.email}` : 'Célula');
+                      attendeesList.push({
+                        id: `user-${uDoc.id}`,
+                        name: uData.displayName || (uData.email ? uData.email.split('@')[0] : 'Usuario'),
+                        category: 'bautizado',
+                        categories: ['bautizado'],
+                        birthDate: uData.birthDate || '',
+                        birthYearOptional: !!uData.birthYearOptional,
+                        userId: uDoc.id,
+                        leaderId: matchedLeader?.id,
+                        leaderName: matchedLeader?.displayName || matchedLeader?.email || 'Líder',
+                        cellName: cellName,
+                        cellId: uData.celulaId,
+                        email: uData.email
+                      });
+                    }
+                  }
+                });
+              } catch (e) {
+                console.warn("Could not query users by celulaId:", e);
+              }
+            }
+          }
         }
+        attendeesList.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
         setCellMembers(bDaysList);
+        setSupervisedAttendees(attendeesList);
 
         // Load meeting reports for statistics
         const rList: any[] = [];
@@ -379,6 +451,90 @@ export default function Supervision() {
     return new Date().getFullYear() - birthYear;
   };
 
+  const calculateAttendanceCount = (memberName: string, leaderId?: string) => {
+    if (!memberName) return 0;
+    const lowerName = memberName.toLowerCase().trim();
+    return reports.filter((r: any) => {
+      if (leaderId && r.leaderId && r.leaderId !== leaderId) return false;
+      const bNames = (r.believersNames || '').toLowerCase();
+      const nNames = (r.nonBelieversNames || '').toLowerCase();
+      
+      const bList = bNames.split(',').map((n: string) => n.trim());
+      const nList = nNames.split(',').map((n: string) => n.trim());
+      
+      return bList.includes(lowerName) || nList.includes(lowerName);
+    }).length;
+  };
+
+  const formatBirthDateDisplay = (birthDateStr: string, hideYear?: boolean) => {
+    if (!birthDateStr) return '';
+    const parts = birthDateStr.split('-');
+    if (parts.length < 2) return '';
+    const months = [
+      "Ene", "Feb", "Mar", "Abr", "May", "Jun",
+      "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"
+    ];
+    const year = parts.length === 3 ? parts[0] : '';
+    const month = parseInt(parts.length === 3 ? parts[1] : parts[0], 10) - 1;
+    const day = parseInt(parts.length === 3 ? parts[2] : parts[1], 10);
+    const monthName = months[month] || '';
+    if (hideYear || !year) {
+      return `${day} ${monthName}`;
+    }
+    return `${day} ${monthName}, ${year}`;
+  };
+
+  const getAge = (birthDateStr: string) => {
+    if (!birthDateStr) return 0;
+    const parts = birthDateStr.split('-');
+    if (parts.length < 3) return 0;
+    const birthYear = parseInt(parts[0], 10);
+    const today = new Date();
+    let age = today.getFullYear() - birthYear;
+    const birthMonth = parseInt(parts[1], 10) - 1;
+    const birthDay = parseInt(parts[2], 10);
+    const monthDiff = today.getMonth() - birthMonth;
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDay)) {
+      age--;
+    }
+    return age;
+  };
+
+  const filteredAttendees = supervisedAttendees.filter(member => {
+    const q = attendeesSearch.toLowerCase().trim();
+    if (q) {
+      const matchesName = (member.name || '').toLowerCase().includes(q);
+      const matchesEmail = (member.email || '').toLowerCase().includes(q);
+      const matchesCell = (member.cellName || '').toLowerCase().includes(q);
+      const matchesLeader = (member.leaderName || '').toLowerCase().includes(q);
+      if (!matchesName && !matchesEmail && !matchesCell && !matchesLeader) {
+        return false;
+      }
+    }
+
+    if (attendeesCategoryFilter !== 'all') {
+      const cats = member.categories || [member.category || 'bautizado'];
+      if (!cats.includes(attendeesCategoryFilter)) {
+        return false;
+      }
+    }
+
+    if (attendeesCellFilter !== 'all') {
+      if (member.leaderId !== attendeesCellFilter && member.cellId !== attendeesCellFilter) {
+        return false;
+      }
+    }
+
+    if (attendeesLinkFilter === 'linked' && !member.userId) {
+      return false;
+    }
+    if (attendeesLinkFilter === 'unlinked' && !!member.userId) {
+      return false;
+    }
+
+    return true;
+  });
+
   // Aggregated Statistical Metrics for Supervision
   const filteredReports = selectedLeaderFilter === 'all' 
     ? reports 
@@ -473,6 +629,7 @@ export default function Supervision() {
               className="w-full bg-white border border-slate-200 text-primary font-bold px-4 py-3.5 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-secondary/50 uppercase text-sm tracking-wide shadow-sm"
             >
               <option value="lideres">Líderes y Células</option>
+              <option value="asistentes">Asistentes</option>
               <option value="estadisticas">Estadísticas</option>
               <option value="notificaciones">Notificaciones</option>
             </select>
@@ -483,7 +640,7 @@ export default function Supervision() {
         </div>
 
         {/* Barra de navegación de Tabs (Desktop) */}
-        <div className="hidden lg:grid lg:grid-cols-3 bg-white p-2 rounded-2xl shadow-sm border border-slate-100 w-full mb-10 gap-1">
+        <div className="hidden lg:grid lg:grid-cols-4 bg-white p-2 rounded-2xl shadow-sm border border-slate-100 w-full mb-10 gap-1">
           <button
             onClick={() => { window.scrollTo(0, 0); setActiveTab('lideres'); }}
             className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase cursor-pointer ${
@@ -494,6 +651,18 @@ export default function Supervision() {
           >
             <Users className="w-4 h-4 shrink-0" />
             Líderes y Células
+          </button>
+
+          <button
+            onClick={() => { window.scrollTo(0, 0); setActiveTab('asistentes'); }}
+            className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase cursor-pointer ${
+              activeTab === 'asistentes' 
+                ? 'bg-amber-100 text-amber-950 border border-amber-200' 
+                : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+            }`}
+          >
+            <UserCheck className="w-4 h-4 shrink-0" />
+            Asistentes
           </button>
           
           <button
@@ -728,6 +897,229 @@ export default function Supervision() {
                       ))
                     )}
                   </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* TAB: ASISTENTES DE CÉLULAS */}
+          {activeTab === 'asistentes' && (
+            <motion.div
+              key="asistentes-view"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              className="space-y-6"
+            >
+              {/* Cabecera del Listado de Asistentes */}
+              <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="text-left w-full sm:max-w-xl">
+                  <div className="flex items-center gap-2.5">
+                    <span className="p-2 bg-secondary/15 text-primary rounded-xl">
+                      <UserCheck className="w-5 h-5" />
+                    </span>
+                    <div>
+                      <h2 className="text-xl font-kenao text-primary font-bold">Asistentes de Células Supervisadas</h2>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Listado de todos los asistentes y usuarios vinculados a las células bajo tu supervisión.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="px-3 py-1.5 bg-amber-50 text-amber-800 border border-amber-200/60 rounded-xl text-xs font-bold font-mono">
+                    {supervisedAttendees.length} Totales
+                  </span>
+                  <span className="px-3 py-1.5 bg-teal-50 text-teal-800 border border-teal-200/60 rounded-xl text-xs font-bold font-mono">
+                    {supervisedAttendees.filter(m => !!m.userId).length} Vinculados
+                  </span>
+                </div>
+              </div>
+
+              {/* Filtros y Búsqueda */}
+              <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden text-left">
+                <div className="flex flex-col md:flex-row border-b border-slate-100 p-4 justify-between items-stretch md:items-center gap-4 bg-white">
+                  {/* Buscador de texto */}
+                  <div className="relative flex-grow max-w-md">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Buscar por nombre, correo o célula..."
+                      value={attendeesSearch}
+                      onChange={(e) => setAttendeesSearch(e.target.value)}
+                      className="pl-9 pr-4 py-2 w-full bg-slate-50 rounded-xl border border-slate-200 focus:bg-white outline-none text-xs text-primary font-medium"
+                    />
+                  </div>
+
+                  {/* Selectores de Célula y Vinculación */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Filtro por Célula / Líder */}
+                    <select
+                      value={attendeesCellFilter}
+                      onChange={(e) => setAttendeesCellFilter(e.target.value)}
+                      className="px-3 py-2 bg-slate-50 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 focus:bg-white outline-none cursor-pointer"
+                    >
+                      <option value="all">Todas las Células ({lideres.length})</option>
+                      {lideres.map(l => (
+                        <option key={l.id} value={l.id}>
+                          {l.cell?.name || `Célula de ${l.displayName || l.email}`}
+                        </option>
+                      ))}
+                    </select>
+
+                    {/* Filtro por Estado de Vinculación */}
+                    <select
+                      value={attendeesLinkFilter}
+                      onChange={(e) => setAttendeesLinkFilter(e.target.value as any)}
+                      className="px-3 py-2 bg-slate-50 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 focus:bg-white outline-none cursor-pointer"
+                    >
+                      <option value="all">Todos los estados</option>
+                      <option value="linked">Solo Vinculados</option>
+                      <option value="unlinked">Sin Vincular</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Filtro rápido por Categoría */}
+                <div className="px-4 py-3 bg-slate-50/50 border-b border-slate-100 flex flex-wrap gap-1.5 items-center">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 mr-2 tracking-wider">Categoría:</span>
+                  {[
+                    { key: 'all', label: 'Todos' },
+                    { key: 'bautizado', label: 'Creyentes Bautizados' },
+                    { key: 'no_bautizado', label: 'Creyentes No Bautizados' },
+                    { key: 'no_creyente', label: 'No Creyentes' }
+                  ].map(cat => (
+                    <button
+                      key={cat.key}
+                      type="button"
+                      onClick={() => setAttendeesCategoryFilter(cat.key)}
+                      className={`px-3 py-1 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
+                        attendeesCategoryFilter === cat.key
+                          ? cat.key === 'bautizado'
+                            ? 'bg-amber-100 text-amber-900 border border-amber-300 shadow-xs'
+                            : cat.key === 'no_bautizado'
+                              ? 'bg-blue-100 text-primary border border-blue-300 shadow-xs'
+                              : cat.key === 'no_creyente'
+                                ? 'bg-slate-200 text-slate-700 border border-slate-300 shadow-xs'
+                                : 'bg-primary text-white shadow-xs'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Listado de Asistentes */}
+                <div className="divide-y divide-slate-100">
+                  {filteredAttendees.length === 0 ? (
+                    <div className="p-12 text-center text-slate-400 text-xs italic">
+                      No se encontraron asistentes para esta búsqueda o filtro.
+                    </div>
+                  ) : (
+                    filteredAttendees.map(member => {
+                      const totalAttendances = calculateAttendanceCount(member.name, member.leaderId);
+                      const memberCats = member.categories || [member.category || 'bautizado'];
+                      const isBaptized = memberCats.includes('bautizado');
+                      const isNotBaptized = memberCats.includes('no_bautizado');
+                      const isNonBeliever = memberCats.includes('no_creyente');
+
+                      return (
+                        <div 
+                          key={member.id} 
+                          className="p-4 md:p-5 transition-colors hover:bg-slate-50/60 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4"
+                        >
+                          {/* Izquierda: Indicadores de color, Nombre, Badges */}
+                          <div className="flex items-center gap-3 text-left">
+                            {/* Puntos de color por categoría (idéntico al de Asistentes de Liderazgo) */}
+                            <div className="flex gap-0.5 shrink-0">
+                              {isBaptized && (
+                                <span className="w-2.5 h-2.5 rounded-full bg-secondary" title="Creyente Bautizado" />
+                              )}
+                              {isNotBaptized && (
+                                <span className="w-2.5 h-2.5 rounded-full bg-primary" title="Creyente No Bautizado" />
+                              )}
+                              {isNonBeliever && (
+                                <span className="w-2.5 h-2.5 rounded-full bg-slate-400" title="No Creyente" />
+                              )}
+                            </div>
+
+                            <div>
+                              {/* Nombre y Badge si está Vinculado */}
+                              <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2 flex-wrap">
+                                {member.name}
+                                {member.userId ? (
+                                  <span className="px-1.5 py-0.5 text-[9px] font-bold text-teal-700 bg-teal-50 border border-teal-200 rounded-md uppercase tracking-wider scale-95 select-none shrink-0 inline-flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse" />
+                                    Vinculado
+                                  </span>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 text-[9px] font-bold text-slate-400 bg-slate-50 border border-slate-200 rounded-md uppercase tracking-wider scale-95 select-none shrink-0">
+                                    Sin Vincular
+                                  </span>
+                                )}
+                              </h4>
+
+                              {/* Badges de Creyente Bautizado, Creyente No Bautizado, No Creyente y Cumpleaños */}
+                              <div className="text-xs text-slate-400 flex flex-wrap items-center gap-2 mt-1">
+                                <div className="flex flex-wrap gap-1">
+                                  {memberCats.map((catCode: string) => (
+                                    <span 
+                                      key={catCode} 
+                                      className={`px-1.5 py-0.5 text-[9px] font-bold rounded ${
+                                        catCode === 'bautizado' 
+                                          ? 'bg-amber-50 text-amber-700 border border-amber-200' 
+                                          : catCode === 'no_bautizado' 
+                                            ? 'bg-blue-50 text-primary border border-blue-100' 
+                                            : 'bg-slate-50 text-slate-500 border border-slate-200/60'
+                                      }`}
+                                    >
+                                      {catCode === 'bautizado' && 'Creyente Bautizado'}
+                                      {catCode === 'no_bautizado' && 'Creyente No Bautizado'}
+                                      {catCode === 'no_creyente' && 'No Creyente'}
+                                    </span>
+                                  ))}
+                                </div>
+
+                                {member.birthDate && (
+                                  <>
+                                    <span className="text-slate-200">•</span>
+                                    <span>🎂 {formatBirthDateDisplay(member.birthDate, member.birthYearOptional)}</span>
+                                    {!member.birthYearOptional && (
+                                      <span className="text-slate-300">({getAge(member.birthDate)} años)</span>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Derecha: A qué célula pertenece y número de Asistencias */}
+                          <div className="flex items-center gap-3 sm:gap-4 justify-between sm:justify-end shrink-0">
+                            {/* Célula a la que pertenece */}
+                            <div className="text-left sm:text-right">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 border border-slate-200/70 text-xs font-bold text-slate-700">
+                                <Home className="w-3.5 h-3.5 text-primary shrink-0" />
+                                <span className="truncate max-w-[180px] sm:max-w-[220px]" title={member.cellName}>
+                                  {member.cellName}
+                                </span>
+                              </span>
+                              <div className="text-[10px] text-slate-400 mt-0.5">
+                                Líder: <strong className="text-slate-600">{member.leaderName}</strong>
+                              </div>
+                            </div>
+
+                            {/* Número de Asistencias */}
+                            <div className="text-right shrink-0">
+                              <span className="px-2.5 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 font-mono shadow-xs">
+                                {totalAttendances} asistencias
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             </motion.div>

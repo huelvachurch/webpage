@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
+import { useGlobalSettings } from '../utils/useSettings';
 import { 
   Radio, 
   Calendar, 
@@ -16,7 +18,15 @@ import {
 
 export default function RadioPage() {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
+  const { hideRadio } = useGlobalSettings();
   const currentLang = i18n.language || 'es';
+
+  useEffect(() => {
+    if (hideRadio) {
+      navigate('/', { replace: true });
+    }
+  }, [hideRadio, navigate]);
 
   // Translate titles dynamically based on current language
   const translations = {

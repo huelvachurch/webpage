@@ -142,141 +142,142 @@ const AddBlockBar = ({
     </div>
   );
 };
+export const parseBlocksFromContent = (rawContent: string): Block[] => {
+  if (!rawContent) {
+    return [];
+  }
+
+  // 1. Check if BLOCKS_JSON comment exists for exact block recovery
+  const jsonMatch = rawContent.match(/<!-- BLOCKS_JSON:([\s\S]*?)-->/);
+  if (jsonMatch) {
+    try {
+      const parsedBlocks = JSON.parse(jsonMatch[1]);
+      if (Array.isArray(parsedBlocks)) {
+        return parsedBlocks;
+      }
+    } catch (e) {
+      console.error("Error parsing BLOCKS_JSON payload:", e);
+    }
+  }
+
+  // 2. Fallback: Parse markdown lines into blocks for legacy or external content
+  const lines = rawContent.split("\n");
+  const newBlocks: Block[] = [];
+  let currentBlock: any = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    const match = line.match(
+      /^> \*\*(Versículo|Pregunta|Nota|Consejo|Dato curioso|Sugerencia|Frase)(?::\s*(.*?))?\*\*\s*(.*)/i,
+    );
+
+    if (match) {
+      if (currentBlock && currentBlock.type === "text") {
+        currentBlock.content = currentBlock.content.trim();
+        if (currentBlock.content) newBlocks.push(currentBlock);
+      }
+
+      let type = match[1].toLowerCase();
+      if (
+        type === "dato curioso" ||
+        type === "sugerencia" ||
+        type === "consejo"
+      ) {
+        type = "nota";
+      }
+      const meta = match[2] ? match[2].trim() : "";
+      let inlineContent = match[3] ? match[3].trim() : "";
+      if (inlineContent.startsWith("> "))
+        inlineContent = inlineContent.substring(2).trim();
+
+      currentBlock = {
+        id: Math.random().toString(36).substring(7),
+        type: type as BlockType,
+        meta: meta,
+        content: inlineContent ? inlineContent + "\n" : "",
+      };
+    } else if (
+      line.startsWith("> ") &&
+      currentBlock &&
+      currentBlock.type !== "text"
+    ) {
+      currentBlock.content += line.substring(2) + "\n";
+    } else if (
+      line.trim() === "" &&
+      currentBlock &&
+      currentBlock.type !== "text"
+    ) {
+      currentBlock.content = currentBlock.content.trim();
+      newBlocks.push(currentBlock);
+      currentBlock = null;
+    } else if (
+      line.trim() === "" &&
+      currentBlock &&
+      currentBlock.type === "text"
+    ) {
+      let isNextList = false;
+      for (let j = i + 1; j < lines.length; j++) {
+        const nextLine = lines[j].trim();
+        if (nextLine !== "") {
+          if (/^(?:[-*]|\d+\.)\s/.test(nextLine)) {
+            isNextList = true;
+          }
+          break;
+        }
+      }
+      if (isNextList) {
+        currentBlock.content += line + "\n";
+      } else {
+        currentBlock.content = currentBlock.content.trim();
+        if (currentBlock.content) newBlocks.push(currentBlock);
+        currentBlock = null;
+      }
+    } else {
+      if (
+        line.trim() === "" &&
+        (!currentBlock || currentBlock.type !== "text")
+      ) {
+        continue;
+      }
+      if (!currentBlock || currentBlock.type !== "text") {
+        if (currentBlock && currentBlock.type !== "text") {
+          currentBlock.content = currentBlock.content.trim();
+          newBlocks.push(currentBlock);
+        }
+        currentBlock = {
+          id: Math.random().toString(36).substring(7),
+          type: "text",
+          meta: "",
+          content: "",
+        };
+      }
+      currentBlock.content += line + "\n";
+    }
+  }
+
+  if (currentBlock) {
+    currentBlock.content = currentBlock.content.trim();
+    if (currentBlock.content || currentBlock.type !== "text") {
+      newBlocks.push(currentBlock);
+    }
+  }
+
+  return newBlocks;
+};
+
 export const VisualBlockEditor: React.FC<VisualBlockEditorProps> = ({
   content,
   onChange,
 }) => {
-  const [blocks, setBlocks] = useState<Block[]>([]);
-  const lastParsedContent = useRef(content);
+  const [blocks, setBlocks] = useState<Block[]>(() => parseBlocksFromContent(content));
+  const lastParsedContent = useRef<string>(content);
 
-  // Parse markdown or BLOCKS_JSON into blocks on mount
+  // Synchronize when content changes externally
   useEffect(() => {
     if (content === lastParsedContent.current) return;
     lastParsedContent.current = content;
-
-    if (!content) {
-      setBlocks([]);
-      return;
-    }
-
-    // 1. Check if BLOCKS_JSON comment exists for exact block recovery
-    const jsonMatch = content.match(/<!-- BLOCKS_JSON:([\s\S]*?)-->/);
-    if (jsonMatch) {
-      try {
-        const parsedBlocks = JSON.parse(jsonMatch[1]);
-        if (Array.isArray(parsedBlocks)) {
-          setBlocks(parsedBlocks);
-          return;
-        }
-      } catch (e) {
-        console.error("Error parsing BLOCKS_JSON payload:", e);
-      }
-    }
-
-    // 2. Fallback: Parse markdown lines into blocks for legacy or external content
-    const lines = (content || "").split("\n");
-    const newBlocks: Block[] = [];
-    let currentBlock: any = null;
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-
-      const match = line.match(
-        /^> \*\*(Versículo|Pregunta|Nota|Consejo|Dato curioso|Sugerencia|Frase)(?::\s*(.*?))?\*\*\s*(.*)/i,
-      );
-
-      if (match) {
-        if (currentBlock && currentBlock.type === "text") {
-          currentBlock.content = currentBlock.content.trim();
-          if (currentBlock.content) newBlocks.push(currentBlock);
-        }
-
-        let type = match[1].toLowerCase();
-        if (
-          type === "dato curioso" ||
-          type === "sugerencia" ||
-          type === "consejo"
-        ) {
-          type = "nota";
-        }
-        const meta = match[2] ? match[2].trim() : "";
-        let inlineContent = match[3] ? match[3].trim() : "";
-        if (inlineContent.startsWith("> "))
-          inlineContent = inlineContent.substring(2).trim();
-
-        currentBlock = {
-          id: Math.random().toString(36).substring(7),
-          type: type as BlockType,
-          meta: meta,
-          content: inlineContent ? inlineContent + "\n" : "",
-        };
-      } else if (
-        line.startsWith("> ") &&
-        currentBlock &&
-        currentBlock.type !== "text"
-      ) {
-        currentBlock.content += line.substring(2) + "\n";
-      } else if (
-        line.trim() === "" &&
-        currentBlock &&
-        currentBlock.type !== "text"
-      ) {
-        currentBlock.content = currentBlock.content.trim();
-        newBlocks.push(currentBlock);
-        currentBlock = null;
-      } else if (
-        line.trim() === "" &&
-        currentBlock &&
-        currentBlock.type === "text"
-      ) {
-        let isNextList = false;
-        for (let j = i + 1; j < lines.length; j++) {
-          const nextLine = lines[j].trim();
-          if (nextLine !== "") {
-            if (/^(?:[-*]|\d+\.)\s/.test(nextLine)) {
-              isNextList = true;
-            }
-            break;
-          }
-        }
-        if (isNextList) {
-          currentBlock.content += line + "\n";
-        } else {
-          currentBlock.content = currentBlock.content.trim();
-          if (currentBlock.content) newBlocks.push(currentBlock);
-          currentBlock = null;
-        }
-      } else {
-        if (
-          line.trim() === "" &&
-          (!currentBlock || currentBlock.type !== "text")
-        ) {
-          continue;
-        }
-        if (!currentBlock || currentBlock.type !== "text") {
-          if (currentBlock && currentBlock.type !== "text") {
-            currentBlock.content = currentBlock.content.trim();
-            newBlocks.push(currentBlock);
-          }
-          currentBlock = {
-            id: Math.random().toString(36).substring(7),
-            type: "text",
-            meta: "",
-            content: "",
-          };
-        }
-        currentBlock.content += line + "\n";
-      }
-    }
-
-    if (currentBlock) {
-      currentBlock.content = currentBlock.content.trim();
-      if (currentBlock.content || currentBlock.type !== "text") {
-        newBlocks.push(currentBlock);
-      }
-    }
-
-    setBlocks(newBlocks);
+    setBlocks(parseBlocksFromContent(content));
   }, [content]);
 
   const triggerChange = (updatedBlocks: Block[]) => {
@@ -306,8 +307,8 @@ export const VisualBlockEditor: React.FC<VisualBlockEditorProps> = ({
 
     const fullPayload = `${markdown}\n\n<!-- BLOCKS_JSON:${JSON.stringify(updatedBlocks)} -->`;
 
-    onChange(fullPayload);
     lastParsedContent.current = fullPayload;
+    onChange(fullPayload);
   };
 
   const updateBlock = (index: number, updates: Partial<Block>) => {
