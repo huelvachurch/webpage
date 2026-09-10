@@ -4,7 +4,7 @@ import {
   Plus, Edit2, Trash2, X, Save, Image as ImageIcon, Search, Filter, 
   Eye, GraduationCap, Calendar, Clock, Users, CheckCircle, AlertCircle, 
   ChevronRight, ArrowLeft, BookOpen, Settings, Check, ListTodo, Paperclip, 
-  Heading, Bold, Italic, Link, FileText, ChevronDown, ChevronUp, Award, Edit3, Layout
+  Heading, Bold, Italic, Link, FileText, ChevronDown, ChevronUp, Award, Edit3, Layout, MessageCircle
 } from 'lucide-react';
 import { 
   collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, 
@@ -38,6 +38,8 @@ interface Course {
 interface Enrollment {
   id: string;
   courseId: string;
+  courseTitle?: string;
+  courseName?: string;
   studentId: string;
   studentName: string;
   cellId?: string;
@@ -46,8 +48,13 @@ interface Enrollment {
   grade?: number;
   progress: number;
   enrolledAt: any;
+  completedAt?: any;
   leaderApproved?: boolean;
   approvedClassIds?: string[];
+  accompanyingTeacherId?: string;
+  accompanyingTeacherName?: string;
+  teacherComments?: string;
+  guideName?: string;
 }
 
 interface ClassItem {
@@ -75,6 +82,7 @@ interface StepItem {
     correctAnswers?: number[];
     pairs?: { left: string; right: string }[];
     guidelineAnswer?: string;
+    instructions?: string;
     explanation?: string;
     isLocked?: boolean;
   }[];
@@ -99,7 +107,7 @@ export default function AdminCursos() {
   
   // activeWorkspaceCourse determines if we are in the course manager or the Wix-like builder
   const [activeWorkspaceCourse, setActiveWorkspaceCourse] = useState<Course | null>(null);
-  const [workspaceTab, setWorkspaceTab] = useState<'contenido' | 'participantes' | 'ajustes'>('contenido');
+  const [workspaceTab, setWorkspaceTab] = useState<'contenido' | 'participantes' | 'academia' | 'ajustes'>('contenido');
   
   // Realtime Course builder items state
   const [workspaceClasses, setWorkspaceClasses] = useState<ClassItem[]>([]);
@@ -342,6 +350,9 @@ export default function AdminCursos() {
     }
   }, [isAuthReady, user, isProfesor, roles]);
 
+  const [potentialTeachers, setPotentialTeachers] = useState<{id: string, name: string}[]>([]);
+  const [selectedTeachers, setSelectedTeachers] = useState<Record<string, string>>({}); // local state for dropdowns
+  
   // Fetch enrollments database
   useEffect(() => {
     if (isAuthReady && user && isProfesor) {
@@ -360,6 +371,23 @@ export default function AdminCursos() {
         setEnrollments(enrollmentsData);
       }, (error) => {
         handleFirestoreError(error, OperationType.LIST, 'enrollments');
+      });
+      return () => unsubscribe();
+    }
+  }, [isAuthReady, user, isProfesor]);
+
+  // Fetch potential teachers for accompaniment
+  useEffect(() => {
+    if (isAuthReady && user && isProfesor) {
+      const q = query(collection(db, 'users'), where('roles', 'array-contains-any', ['profesor', 'admin', 'superadmin']));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const teachersList = snapshot.docs.map(doc => ({
+          id: doc.id,
+          name: doc.data().name || doc.data().displayName || 'Sin nombre',
+        }));
+        setPotentialTeachers(teachersList);
+      }, (error) => {
+        console.error("Error fetching teachers:", error);
       });
       return () => unsubscribe();
     }
@@ -482,19 +510,9 @@ export default function AdminCursos() {
       } as unknown as Course;
       
       setIsNewCourseModalOpen(false);
-      // Immediately dive into the rich workspace editor!
+      // Immediately dive into the rich workspace editor with an empty course (no pre-established modules)
       setActiveWorkspaceCourse(createdCourse);
       setWorkspaceTab('contenido');
-
-      // Add a first default syllabus class automatically for wix-like helper starts
-      await addDoc(collection(db, 'courses', docRef.id, 'classes'), {
-        title: 'Clase 1: Introducción',
-        description: 'Primera toma de contacto con la materia.',
-        order: 0,
-        requiresPrevious: false,
-        dayNumber: 1,
-        createdAt: serverTimestamp(),
-      });
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'courses');
     } finally {
@@ -623,9 +641,7 @@ export default function AdminCursos() {
         title: stepType === 'theory' ? `Teoría ${currentSteps.length + 1}` : `Cuestionario ${currentSteps.length + 1}`,
         type: stepType,
         order: nextOrder,
-        content: stepType === 'theory' 
-          ? '### Título del Tema\n\nDesarrolla aquí el material de estudio. Puedes usar encabezados, listas numeradas, textos en negrita o bloques de código informativos.' 
-          : '',
+        content: '',
         attachments: [],
         questions: stepType === 'quiz' ? [
           {
@@ -750,6 +766,20 @@ export default function AdminCursos() {
   };
 
   // Participantes / Inscripciones handlers
+  const handleAssignTeacher = async (enrollmentId: string, teacherId: string) => {
+    try {
+      const teacher = potentialTeachers.find(t => t.id === teacherId);
+      await updateDoc(doc(db, 'enrollments', enrollmentId), {
+        accompanyingTeacherId: teacherId || null,
+        accompanyingTeacherName: teacher ? teacher.name : null,
+        updatedAt: serverTimestamp(),
+      });
+      alert('Acompañante asignado exitosamente.');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `enrollments/${enrollmentId}`);
+    }
+  };
+
   const handleEnrollmentStatusChange = async (enrollmentId: string, nextStatus: Enrollment['status']) => {
     try {
       await updateDoc(doc(db, 'enrollments', enrollmentId), {
@@ -992,10 +1022,21 @@ export default function AdminCursos() {
                     >
                       <Users className="w-4 h-4" />
                       Participantes
-                      {enrollments.filter(e => activeWorkspaceCourse && isParticipantOfCourse(e, activeWorkspaceCourse) && e.status === 'pending').length > 0 && (
-                        <span className="flex-shrink-0 w-2.5 h-2.5 bg-red-500 rounded-full animate-bounce" />
-                      )}
                     </button>
+                    {activeWorkspaceCourse && !activeWorkspaceCourse.requiresCellSupervision && (
+                      <button
+                        onClick={() => setWorkspaceTab('academia')}
+                        className={`px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center sm:justify-start gap-1.5 cursor-pointer w-full sm:w-auto ${
+                          workspaceTab === 'academia' ? 'bg-secondary text-primary shadow-md' : 'bg-white/10 text-white/80 hover:bg-white/25'
+                        }`}
+                      >
+                        <GraduationCap className="w-4 h-4" />
+                        Academia
+                        {enrollments.filter(e => activeWorkspaceCourse && isParticipantOfCourse(e, activeWorkspaceCourse) && e.status === 'pending').length > 0 && (
+                          <span className="flex-shrink-0 w-2.5 h-2.5 bg-red-500 rounded-full animate-bounce" />
+                        )}
+                      </button>
+                    )}
                     <button
                       onClick={() => setWorkspaceTab('ajustes')}
                       className={`px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center sm:justify-start gap-1.5 cursor-pointer w-full sm:w-auto ${
@@ -1664,7 +1705,8 @@ export default function AdminCursos() {
                                                         updatedFields.options = qItem.options || ['Opción A', 'Opción B', 'Opción C', 'Opción D'];
                                                         updatedFields.correctAnswers = qItem.correctAnswers || [0];
                                                       } else if (newType === 'text') {
-                                                        updatedFields.guidelineAnswer = qItem.guidelineAnswer || 'Escribe aquí la respuesta ideal para orientar al alumno.';
+                                                        updatedFields.instructions = qItem.instructions || '';
+                                                        updatedFields.guidelineAnswer = qItem.guidelineAnswer || '';
                                                       } else if (newType === 'pairs') {
                                                         updatedFields.pairs = qItem.pairs || [
                                                           { left: 'Primer Concepto', right: 'Su Significado' },
@@ -1788,16 +1830,16 @@ export default function AdminCursos() {
                                             {qType === 'text' && (
                                               <div className="bg-white p-6 rounded-2xl border border-slate-200 space-y-3">
                                                 <div className="flex items-center gap-1.5">
-                                                  <span className="text-sm">💡</span>
-                                                  <span className="text-[10px] font-black uppercase tracking-widest text-primary/45">Reflexión</span>
+                                                  <span className="text-sm">📝</span>
+                                                  <span className="text-[10px] font-black uppercase tracking-widest text-primary/60">Instrucciones de la Pregunta (Texto de Fondo)</span>
                                                 </div>
-                                                <p className="text-[10px] text-slate-500 font-medium">Esta explicación se le mostrará al alumno una vez que termine de redactar su texto libre para que pueda realizar una autoevaluación.</p>
+                                                <p className="text-[10px] text-slate-500 font-medium">Estas instrucciones aparecerán como texto de fondo (placeholder) en el área de redacción del alumno. Si se deja en blanco, saldrá el texto por defecto.</p>
                                                 
                                                 <textarea
-                                                  value={qItem.guidelineAnswer || ''}
-                                                  onChange={(e) => handleUpdateQuizQuestion(qIdx, { guidelineAnswer: e.target.value })}
-                                                  rows={4}
-                                                  placeholder="Ej: Las tres virtudes teologales de acuerdo a 1 Corintios 13 son la Fe, la Esperanza y el Amor (Caridad). El amor posee un carácter permanente..."
+                                                  value={qItem.instructions || ''}
+                                                  onChange={(e) => handleUpdateQuizQuestion(qIdx, { instructions: e.target.value })}
+                                                  rows={3}
+                                                  placeholder="Escribe aquí las instrucciones de redacción o preguntas guía para el alumno..."
                                                   className="w-full bg-slate-50/40 p-4 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-secondary text-xs leading-relaxed font-semibold text-slate-700"
                                                 />
                                               </div>
@@ -1891,17 +1933,46 @@ export default function AdminCursos() {
                                                 </label>
                                               </div>
                                               
-                                              <div className="pt-2 border-t border-slate-200">
-                                                <label className="block text-[9px] font-black uppercase tracking-widest text-primary/60 mb-2">
-                                                  Explicación Adicional (Opcional)
-                                                </label>
-                                                <textarea
-                                                  value={qItem.explanation || ''}
-                                                  onChange={(e) => handleUpdateQuizQuestion(qIdx, { explanation: e.target.value })}
-                                                  rows={2}
-                                                  placeholder="Explicación que aparecerá debajo de la pregunta (opcional)..."
-                                                  className="w-full bg-white px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-secondary text-xs text-slate-600"
-                                                />
+                                              <div className="pt-3 border-t border-slate-200 space-y-4">
+                                                {/* Reflexión (Opcional) */}
+                                                <div>
+                                                  <div className="flex items-center justify-between mb-1">
+                                                    <label className="block text-[9px] font-black uppercase tracking-widest text-primary/60">
+                                                      Reflexión / Pauta de Autoevaluación (Opcional)
+                                                    </label>
+                                                    <span className="text-[9px] text-slate-400 font-medium italic">Se muestra al alumno tras responder</span>
+                                                  </div>
+                                                  <p className="text-[9px] text-slate-500 font-medium mb-2">
+                                                    Modelo de reflexión o respuesta ideal para que el alumno compare su respuesta.
+                                                  </p>
+                                                  <textarea
+                                                    value={qItem.guidelineAnswer || ''}
+                                                    onChange={(e) => handleUpdateQuizQuestion(qIdx, { guidelineAnswer: e.target.value })}
+                                                    rows={3}
+                                                    placeholder="Ej: Las tres virtudes teologales de acuerdo a 1 Corintios 13 son la Fe, la Esperanza y el Amor..."
+                                                    className="w-full bg-white px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-secondary text-xs text-slate-600 leading-relaxed font-medium"
+                                                  />
+                                                </div>
+
+                                                {/* Explicación Adicional (Opcional) */}
+                                                <div>
+                                                  <div className="flex items-center justify-between mb-1">
+                                                    <label className="block text-[9px] font-black uppercase tracking-widest text-primary/60">
+                                                      Explicación Adicional (Opcional)
+                                                    </label>
+                                                    <span className="text-[9px] text-slate-400 font-medium italic">Debajo de la pregunta</span>
+                                                  </div>
+                                                  <p className="text-[9px] text-slate-500 font-medium mb-2">
+                                                    Aclaración o nota contextual complementaria.
+                                                  </p>
+                                                  <textarea
+                                                    value={qItem.explanation || ''}
+                                                    onChange={(e) => handleUpdateQuizQuestion(qIdx, { explanation: e.target.value })}
+                                                    rows={2}
+                                                    placeholder="Explicación que aparecerá debajo de la pregunta (opcional)..."
+                                                    className="w-full bg-white px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-secondary text-xs text-slate-600 leading-relaxed font-medium"
+                                                  />
+                                                </div>
                                               </div>
                                             </div>
 
@@ -2214,7 +2285,7 @@ export default function AdminCursos() {
 
                   {workspaceTab === 'participantes' && (
                     /* ==================================================
-                       TAB 2B. PARTICIPANT WORKSPACE (Listings & CTAs)
+                       TAB 2B. PARTICIPANT WORKSPACE (Simple List)
                        ================================================== */
                     <motion.div
                       key="tab-participantes"
@@ -2225,9 +2296,80 @@ export default function AdminCursos() {
                     >
                       <div className="border-b border-slate-100 pb-5">
                         <span className="text-[10px] font-black uppercase tracking-widest text-secondary block mb-1">
-                          Alumnos registrados
+                          Listado general
                         </span>
-                        <h2 className="text-3xl font-kenao text-primary font-normal leading-tight">Expedientes Académicos</h2>
+                        <h2 className="text-3xl font-kenao text-primary font-normal leading-tight">Participantes del Curso</h2>
+                      </div>
+
+                      <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm max-w-4xl">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase tracking-widest text-slate-500">
+                                <th className="p-4 font-black">Participante</th>
+                                <th className="p-4 font-black">Curso</th>
+                                <th className="p-4 font-black">Estado</th>
+                                <th className="p-4 font-black">Fecha de Inicio</th>
+                                <th className="p-4 font-black">Fecha de Finalización</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {enrollments.filter(e => activeWorkspaceCourse && isParticipantOfCourse(e, activeWorkspaceCourse)).length === 0 ? (
+                                <tr>
+                                  <td colSpan={5} className="p-8 text-center text-slate-500 text-sm">No hay alumnos inscritos.</td>
+                                </tr>
+                              ) : (
+                                enrollments.filter(e => activeWorkspaceCourse && isParticipantOfCourse(e, activeWorkspaceCourse)).map((enrollment) => (
+                                  <tr key={enrollment.id} className="hover:bg-slate-50/50 transition-colors">
+                                    <td className="p-4 text-sm font-bold text-primary flex items-center gap-2">
+                                      <Users className="w-4 h-4 text-slate-400" />
+                                      {enrollment.studentName}
+                                    </td>
+                                    <td className="p-4 text-sm text-slate-600 font-medium">
+                                      {enrollment.courseTitle || activeWorkspaceCourse?.title}
+                                    </td>
+                                    <td className="p-4">
+                                      <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-md inline-block ${
+                                        enrollment.status === 'active' ? 'bg-emerald-50 text-emerald-700' :
+                                        enrollment.status === 'pending' ? 'bg-amber-50 text-amber-700' :
+                                        enrollment.status === 'completed' ? 'bg-blue-50 text-blue-700' :
+                                        'bg-slate-100 text-slate-600'
+                                      }`}>
+                                        {enrollment.status === 'pending' ? 'Pendiente Aprobación' : enrollment.status === 'active' ? 'Cursando' : enrollment.status === 'completed' ? 'Completado' : 'Baja'}
+                                      </span>
+                                    </td>
+                                    <td className="p-4 text-sm text-slate-600 font-medium">
+                                      {enrollment.enrolledAt ? new Date(enrollment.enrolledAt.seconds * 1000).toLocaleDateString() : '-'}
+                                    </td>
+                                    <td className="p-4 text-sm text-slate-600 font-medium">
+                                      {enrollment.completedAt ? new Date(enrollment.completedAt.seconds * 1000).toLocaleDateString() : '-'}
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {workspaceTab === 'academia' && (
+                    /* ==================================================
+                       TAB 2C. ACADEMIA WORKSPACE (Cards & Mentors)
+                       ================================================== */
+                    <motion.div
+                      key="tab-academia"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="p-8 space-y-6"
+                    >
+                      <div className="border-b border-slate-100 pb-5">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-secondary block mb-1">
+                          Acompañamiento y Mentoría
+                        </span>
+                        <h2 className="text-3xl font-kenao text-primary font-normal leading-tight">Academia</h2>
                       </div>
 
                       <div className="space-y-4 max-w-4xl">
@@ -2244,88 +2386,102 @@ export default function AdminCursos() {
                             const isCompleted = enrollment.status === 'completed';
 
                             return (
-                              <div key={enrollment.id} className="bg-white border border-slate-150 p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xs">
-                                <div>
-                                  <p className="font-bold text-primary text-base flex items-center gap-2">
-                                    {enrollment.studentName}
-                                    <span className={`text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
-                                      isActive ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                                      isPending ? 'bg-amber-50 text-amber-700 border border-amber-100' :
-                                      isCompleted ? 'bg-blue-50 text-blue-700 border border-blue-100' :
-                                      'bg-slate-100 text-slate-600'
-                                    }`}>
-                                      {isPending ? 'Pendiente' : isActive ? 'Activo' : isCompleted ? 'Completado' : 'Dado de baja'}
-                                    </span>
-                                  </p>
-                                    
-                                  {/* Enrollment info timeline */}
-                                  <div className="mt-2 text-xs text-primary/40 flex flex-wrap gap-4 font-semibold">
-                                    <span>Inscrito el: {enrollment.enrolledAt ? new Date(enrollment.enrolledAt.seconds * 1000).toLocaleDateString() : 'Desconocido'}</span>
-                                    <span>Progreso actual: {enrollment.progress || 0}%</span>
-                                    {isCompleted && enrollment.grade !== undefined && (
-                                      <span className="text-emerald-600 flex items-center gap-1 font-bold">
-                                        <Award className="w-3.5 h-3.5" /> Nota Final: {enrollment.grade}/10
+                              <div key={enrollment.id} className="bg-white border border-slate-150 rounded-3xl flex flex-col shadow-xs overflow-hidden text-left">
+                                <div className="p-6 flex flex-col lg:flex-row justify-between gap-6">
+                                  <div className="flex-grow">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border inline-flex items-center gap-1.5 ${
+                                        isActive ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                        isPending ? 'bg-amber-50 text-amber-800 border-amber-200' :
+                                        isCompleted ? 'bg-blue-50 text-blue-800 border-blue-200' :
+                                        'bg-slate-100 text-slate-600 border-slate-200'
+                                      }`}>
+                                        {isPending ? 'Pendiente' : isActive ? 'Activo' : isCompleted ? 'Completado' : 'Dado de baja'}
                                       </span>
+                                    </div>
+                                    <h3 className="font-bold text-primary text-xl flex items-center gap-2">
+                                      <Users className="w-5 h-5 text-secondary shrink-0" />
+                                      {enrollment.studentName}
+                                    </h3>
+                                      
+                                    {/* Enrollment info timeline */}
+                                    <div className="mt-1 text-xs text-slate-500 font-medium flex flex-wrap gap-4">
+                                      <span>Inscrito el: {enrollment.enrolledAt ? new Date(enrollment.enrolledAt.seconds * 1000).toLocaleDateString() : 'Desconocido'}</span>
+                                      <span className="font-bold text-primary/70">Progreso: {enrollment.progress || 0}%</span>
+                                      {isCompleted && enrollment.grade !== undefined && (
+                                        <span className="text-emerald-600 flex items-center gap-1 font-bold">
+                                          <Award className="w-3.5 h-3.5" /> Nota Final: {enrollment.grade}/10
+                                        </span>
+                                      )}
+                                    </div>
+                                    
+                                    {enrollment.teacherComments && (
+                                      <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-1.5 mb-1.5"><MessageCircle className="w-3.5 h-3.5" /> Comentarios del Acompañante</p>
+                                        <p className="text-sm text-slate-700 whitespace-pre-wrap">{enrollment.teacherComments}</p>
+                                      </div>
                                     )}
                                   </div>
-                                </div>
 
-                                <div className="flex flex-wrap items-center gap-2 shrink-0">
-                                  {isPending && (
-                                    <button
-                                      onClick={() => handleEnrollmentStatusChange(enrollment.id, 'active')}
-                                      className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 text-xs font-black uppercase tracking-wider px-4 py-2 rounded-xl transition-all flex items-center gap-1 cursor-pointer"
-                                    >
-                                      <CheckCircle className="w-3.5 h-3.5" /> Aprobar alumno
-                                    </button>
-                                  )}
-
-                                  {isActive && (
-                                    <>
+                                  <div className="flex flex-col gap-3 shrink-0">
+                                    {isPending && (
                                       <button
-                                        onClick={() => {
-                                          const nota = prompt('Asigna una calificación numérica de aprobación (0 al 10):', '10');
-                                          if (nota !== null) {
-                                            const numericGrade = parseFloat(nota);
-                                            if (isNaN(numericGrade) || numericGrade < 0 || numericGrade > 10) {
-                                              alert('Inserta una nota válida entre 0 y 10.');
-                                            } else {
-                                              handleAssignGrade(enrollment.id, numericGrade);
-                                              handleEnrollmentStatusChange(enrollment.id, 'completed');
-                                            }
-                                          }
-                                        }}
-                                        className="bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 text-xs font-black uppercase tracking-wider px-4 py-2 rounded-xl transition-all flex items-center gap-1 cursor-pointer"
+                                        onClick={() => handleEnrollmentStatusChange(enrollment.id, 'active')}
+                                        className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 text-xs font-black uppercase tracking-wider px-4 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
                                       >
-                                        <Award className="w-3.5 h-3.5" /> Graduar alumno
+                                        <CheckCircle className="w-4 h-4" /> Aprobar alumno
                                       </button>
-                                        
+                                    )}
+
+                                    {!isPending && !isActive && (
                                       <button
-                                        onClick={() => handleEnrollmentStatusChange(enrollment.id, 'dropped')}
-                                        className="bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200 text-xs font-black uppercase tracking-wider px-4 py-2 rounded-xl transition-all flex items-center gap-1 cursor-pointer"
+                                        onClick={() => handleEnrollmentStatusChange(enrollment.id, 'active')}
+                                        className="bg-slate-50 text-slate-500 hover:bg-slate-100 border border-slate-200 text-xs font-black uppercase tracking-wider px-4 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                                       >
-                                        Dar de baja
+                                        Re-activar alumno
                                       </button>
-                                    </>
-                                  )}
-
-                                  {!isPending && !isActive && (
+                                    )}
+                                    
                                     <button
-                                      onClick={() => handleEnrollmentStatusChange(enrollment.id, 'active')}
-                                      className="bg-slate-50 text-slate-500 hover:bg-slate-100 border border-slate-200 text-xs font-black uppercase tracking-wider px-4 py-2 rounded-xl transition-all cursor-pointer"
+                                      onClick={() => handleDeleteEnrollment(enrollment.id)}
+                                      className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer w-fit self-end"
+                                      title="Eliminar Expediente"
                                     >
-                                      Re-activar alumno
+                                      <Trash2 className="w-4 h-4" />
                                     </button>
-                                  )}
-
-                                  <button
-                                    onClick={() => handleDeleteEnrollment(enrollment.id)}
-                                    className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
-                                    title="Eliminar Expediente"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
+                                  </div>
                                 </div>
+                                
+                                {/* Acompañante (if not cell course) */}
+                                {!activeWorkspaceCourse?.requiresCellSupervision && (
+                                  <div className="bg-slate-50/80 p-4 border-t border-slate-150 flex flex-col sm:flex-row sm:items-center gap-4">
+                                    <div className="flex flex-col gap-1.5 flex-grow">
+                                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                        Seleccionar Acompañante Docente:
+                                      </label>
+                                      <div className="flex flex-col sm:flex-row items-center gap-2">
+                                        <select
+                                          value={selectedTeachers[enrollment.id] !== undefined ? selectedTeachers[enrollment.id] : (enrollment.accompanyingTeacherId || '')}
+                                          onChange={(e) => setSelectedTeachers(prev => ({ ...prev, [enrollment.id]: e.target.value }))}
+                                          className="bg-white border border-slate-200 text-primary text-xs font-bold rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-secondary/50 w-full sm:w-72 cursor-pointer shadow-sm"
+                                        >
+                                          <option value="">-- Sin asignar (Pendiente) --</option>
+                                          {potentialTeachers.map(t => (
+                                            <option key={t.id} value={t.id}>{t.name}</option>
+                                          ))}
+                                        </select>
+                                        {(selectedTeachers[enrollment.id] !== undefined && selectedTeachers[enrollment.id] !== (enrollment.accompanyingTeacherId || '')) && (
+                                          <button
+                                            onClick={() => handleAssignTeacher(enrollment.id, selectedTeachers[enrollment.id])}
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-bold text-xs transition-all shadow-md flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer"
+                                          >
+                                            <Check className="w-3.5 h-3.5 shrink-0" /> Guardar asignación
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             );
                           })

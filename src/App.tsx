@@ -19,6 +19,7 @@ import AdminCursos from './pages/admin/AdminCursos';
 import AdminDocencia from './pages/admin/AdminDocencia';
 import AdminInscripciones from './pages/admin/AdminInscripciones';
 import AdminNotificaciones from './pages/admin/AdminNotificaciones';
+import AdminAcompanamiento from './pages/admin/AdminAcompanamiento';
 import AdminNewsletter from './pages/admin/AdminNewsletter';
 import AdminSettings from './pages/admin/AdminSettings';
 import AdminFinanzas from './pages/admin/AdminFinanzas';
@@ -333,6 +334,7 @@ function AppContent() {
             <Route path="cursos" element={<AdminCursos />} />
             <Route path="inscripciones" element={<AdminInscripciones />} />
             <Route path="notificaciones" element={<AdminNotificaciones />} />
+            <Route path="acompanamiento" element={<AdminAcompanamiento />} />
             <Route index element={<Navigate to="cursos" replace />} />
           </Route>
           <Route path="/admin/newsletter" element={<Navigate to="/admin/boletines" replace />} />

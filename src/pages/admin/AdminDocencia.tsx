@@ -66,6 +66,17 @@ export default function AdminDocencia() {
             <Bell className="w-4 h-4" />
             Notificaciones
           </Link>
+          <Link
+            to="/admin/docencia/acompanamiento"
+            className={`px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all whitespace-nowrap ${
+              location.pathname.includes('/acompanamiento') 
+                ? 'bg-primary text-white shadow-md' 
+                : 'text-primary/60 hover:bg-slate-50 hover:text-primary'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            Acompañamiento
+          </Link>
         </div>
 
         {/* Sub-pages container */}

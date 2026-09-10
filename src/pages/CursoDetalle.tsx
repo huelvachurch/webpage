@@ -1,15 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, BookOpen, Clock, Calendar, CheckCircle, ChevronRight, Lock, Menu, Download, Award, AlertCircle, HelpCircle, GraduationCap, ArrowRight, RefreshCw, Check, FileText, Send, ShieldCheck, MessageSquare } from 'lucide-react';
+import { ArrowLeft, BookOpen, Clock, Calendar, CheckCircle, ChevronRight, Lock, Menu, Download, Award, AlertCircle, HelpCircle, GraduationCap, ArrowRight, RefreshCw, Check, FileText, Send, ShieldCheck, MessageSquare, Share2, Users, LogIn } from 'lucide-react';
 import { 
   doc, onSnapshot, collection, query, orderBy, where, updateDoc, 
-  serverTimestamp, addDoc, getDocs, arrayUnion 
+  serverTimestamp, addDoc, getDocs, arrayUnion, getDoc
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { TheoryMarkdown } from '../components/TheoryMarkdown';
+import { StudyAssistantWidget } from '../components/StudyAssistantWidget';
+import { AnnotationsSection } from '../components/AnnotationsSection';
+import { shareCourse } from '../utils/shareCourse';
+import { checkUserCellLinkage, CellLinkageResult } from '../utils/cellLinkage';
+
+const getDriveImageUrl = (url?: string) => {
+  if (!url) return '';
+  const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m && m[1]) return `https://drive.google.com/thumbnail?id=${m[1]}&sz=w800`;
+  return url;
+};
 
 interface Course {
   id: string;
@@ -36,6 +47,8 @@ interface Enrollment {
   completedSteps?: string[];
   isPaused?: boolean;
   guideName?: string;
+  accompanyingTeacherId?: string;
+  accompanyingTeacherName?: string;
   quizAnswersMap?: Record<string, any>;
   classComments?: Record<string, string>;
   leaderApproved?: boolean;
@@ -44,6 +57,7 @@ interface Enrollment {
   cellId?: string;
   cellName?: string;
   enrolledAt: any;
+  annotations?: any[];
 }
 
 interface ClassItem {
@@ -70,6 +84,7 @@ interface StepItem {
     type?: 'single' | 'multiple' | 'text' | 'pairs';
     correctAnswers?: number[];
     guidelineAnswer?: string;
+    instructions?: string;
     pairs?: { left: string; right: string }[];
     explanation?: string;
     isLocked?: boolean;
@@ -85,6 +100,7 @@ export default function CursoDetalle() {
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [steps, setSteps] = useState<Record<string, StepItem[]>>({});
+  const [leaderName, setLeaderName] = useState<string | null>(null);
   
   // Player navigation state
   const [activeClassId, setActiveClassId] = useState<string | null>(null);
@@ -93,6 +109,11 @@ export default function CursoDetalle() {
   // Mobile sidebar toggle
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 1024);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Sharing & Cell linkage state
+  const [shareToast, setShareToast] = useState<string | null>(null);
+  const [userCellInfo, setUserCellInfo] = useState<CellLinkageResult | null>(null);
+  const [isEnrollingDirectly, setIsEnrollingDirectly] = useState(false);
 
   // Take test state
   const [quizAnswers, setQuizAnswers] = useState<Record<number, any>>({});
@@ -103,6 +124,108 @@ export default function CursoDetalle() {
   const [classComment, setClassComment] = useState("");
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [isRequestingUnlock, setIsRequestingUnlock] = useState(false);
+  
+  // Study Highlighting UX state
+  const [isHighlightMode, setIsHighlightMode] = useState(false);
+  const [highlightToast, setHighlightToast] = useState<string | null>(null);
+  const theoryContainerRef = React.useRef<HTMLDivElement>(null);
+
+  const handleSaveHighlight = async (selectedText: string) => {
+    if (!enrollment || !activeStepId || !activeClassId || !selectedText.trim()) return;
+
+    const text = selectedText.trim();
+    if (text.length < 2) return;
+
+    const newAnnotation = {
+      id: Date.now().toString(),
+      stepId: activeStepId,
+      classId: activeClassId,
+      type: 'highlight' as const,
+      content: text,
+      createdAt: Date.now(),
+    };
+
+    // Optimistic local update
+    setEnrollment(prev => {
+      if (!prev) return prev;
+      const current = prev.annotations || [];
+      if (current.some(a => a.stepId === activeStepId && a.type === 'highlight' && a.content === text)) {
+        return prev;
+      }
+      return {
+        ...prev,
+        annotations: [...current, newAnnotation]
+      };
+    });
+
+    setHighlightToast("¡Texto subrayado guardado!");
+    setTimeout(() => setHighlightToast(null), 2200);
+
+    try {
+      await updateDoc(doc(db, 'enrollments', enrollment.id), {
+        annotations: arrayUnion(newAnnotation)
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `enrollments/${enrollment.id}`);
+    }
+  };
+
+  const handleRemoveHighlight = async (annotationId: string) => {
+    if (!enrollment) return;
+
+    let updatedList: any[] = [];
+    // Optimistic local update
+    setEnrollment(prev => {
+      if (!prev) return prev;
+      updatedList = (prev.annotations || []).filter(a => String(a.id) !== String(annotationId));
+      return {
+        ...prev,
+        annotations: updatedList
+      };
+    });
+
+    setHighlightToast("Subrayado eliminado");
+    setTimeout(() => setHighlightToast(null), 1800);
+
+    try {
+      await updateDoc(doc(db, 'enrollments', enrollment.id), {
+        annotations: updatedList
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `enrollments/${enrollment.id}`);
+    }
+  };
+
+  // Text selection listener when in highlight mode
+  useEffect(() => {
+    if (!isHighlightMode) return;
+
+    const handleTextSelectionEnd = () => {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed) return;
+
+      const text = selection.toString().trim();
+      if (!text || text.length < 2) return;
+
+      // Ensure selection occurred inside our theory container
+      if (
+        theoryContainerRef.current &&
+        selection.anchorNode &&
+        theoryContainerRef.current.contains(selection.anchorNode)
+      ) {
+        handleSaveHighlight(text);
+        selection.removeAllRanges();
+      }
+    };
+
+    document.addEventListener('mouseup', handleTextSelectionEnd);
+    document.addEventListener('touchend', handleTextSelectionEnd);
+
+    return () => {
+      document.removeEventListener('mouseup', handleTextSelectionEnd);
+      document.removeEventListener('touchend', handleTextSelectionEnd);
+    };
+  }, [isHighlightMode, activeStepId, activeClassId, enrollment?.id]);
 
   const handleRequestClassUnlock = async () => {
     if (!enrollment || !activeClassId) return;
@@ -112,7 +235,8 @@ export default function CursoDetalle() {
         classUnlockRequests: arrayUnion(activeClassId),
         updatedAt: serverTimestamp()
       });
-      alert(`¡Solicitud enviada a tu Líder!\n\nSe ha notificado al Liderazgo de tu Célula para desbloquear la clase.`);
+      const mentorName = enrollment.accompanyingTeacherName || enrollment.guideName || (course?.requiresCellSupervision ? leaderName || 'tu líder' : 'tu mentor');
+      alert(`¡Solicitud enviada a ${mentorName}!\n\nSe ha notificado a ${mentorName} para que revise y desbloquee tu clase.`);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `enrollments/${enrollment.id}`);
     } finally {
@@ -120,12 +244,74 @@ export default function CursoDetalle() {
     }
   };
 
-  // Redirect if not authenticated
+  // Check whether user is linked to a cell
   useEffect(() => {
-    if (isAuthReady && !loading && !user) {
-      navigate('/login');
+    if (user) {
+      checkUserCellLinkage(user.uid).then((res) => {
+        setUserCellInfo(res);
+      }).catch((err) => {
+        console.error("Error checking user cell linkage:", err);
+        setUserCellInfo({ isLinked: false });
+      });
+    } else {
+      setUserCellInfo(null);
     }
-  }, [user, loading, isAuthReady, navigate]);
+  }, [user]);
+
+  const handleShareCourse = async (targetCourse?: Course | null) => {
+    const c = targetCourse || course;
+    if (!c) return;
+    const res = await shareCourse({
+      id: c.id,
+      title: c.title,
+      requiresCellSupervision: c.requiresCellSupervision
+    });
+    if (res.success) {
+      setShareToast(res.message);
+      setTimeout(() => setShareToast(null), 4000);
+    }
+  };
+
+  const handleEnrollDirectly = async () => {
+    if (!user || !course) return;
+    setIsEnrollingDirectly(true);
+    try {
+      const cellId = userCellInfo?.cellId || null;
+      const cellName = userCellInfo?.cellName || null;
+
+      if (course.requiresCellSupervision && !userCellInfo?.isLinked) {
+        alert("Este curso requiere estar vinculado a una Célula.\n\nPor favor, ingresa a la sección \"Mi Célula\" para unirte.");
+        navigate('/micelula');
+        return;
+      }
+
+      await addDoc(collection(db, 'enrollments'), {
+        courseId: course.id,
+        courseName: course.title,
+        courseTitle: course.title,
+        studentId: user.uid,
+        studentName: user.displayName || 'Alumno',
+        cellId: cellId,
+        cellName: cellName,
+        status: 'pending',
+        leaderApproved: !course.requiresCellSupervision ? null : false,
+        approvedClassIds: [],
+        progress: 0,
+        enrolledAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      if (course.requiresCellSupervision) {
+        alert("¡Inscripción solicitada!\n\nUn administrador deberá aceptar tu inscripción, y posteriormente se enviará la solicitud al Líder de tu Célula.");
+      } else {
+        alert("¡Inscripción solicitada!\n\nUn administrador del Ministerio de Formación Cristiana revisará tu solicitud.");
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, 'enrollments');
+    } finally {
+      setIsEnrollingDirectly(false);
+    }
+  };
 
   // Read Course details
   useEffect(() => {
@@ -136,14 +322,16 @@ export default function CursoDetalle() {
           setCourse({ id: snapshot.id, ...snapshot.data() } as Course);
         } else {
           console.error("Course not found");
-          navigate('/mis-cursos');
+          setCourse(null);
         }
+        setIsLoading(false);
       }, (error) => {
         console.error("Error fetching course", error);
+        setIsLoading(false);
       });
       return () => unsubscribe();
     }
-  }, [id, navigate]);
+  }, [id]);
 
   // Read Enrollment details
   useEffect(() => {
@@ -177,8 +365,8 @@ export default function CursoDetalle() {
               enrolledAt: { seconds: Math.floor(Date.now() / 1000) }
             } as Enrollment);
           } else {
-            // If normal user without enrollment, redirect back to course landing catalog
-            navigate('/cursos');
+            // Normal user without enrollment: keep enrollment null so they can see course presentation and enroll!
+            setEnrollment(null);
           }
         }
         setIsLoading(false);
@@ -187,8 +375,28 @@ export default function CursoDetalle() {
         setIsLoading(false);
       });
       return () => unsubscribe();
+    } else if (isAuthReady && !user) {
+      setEnrollment(null);
+      setIsLoading(false);
     }
-  }, [id, user, roles, navigate]);
+  }, [id, user, roles, isAuthReady]);
+
+  // Fetch Leader Name if cellId exists
+  useEffect(() => {
+    if (enrollment?.cellId) {
+      const fetchLeader = async () => {
+        try {
+          const cellSnap = await getDoc(doc(db, 'celulas', enrollment.cellId!));
+          if (cellSnap.exists()) {
+            setLeaderName(cellSnap.data().leader || cellSnap.data().leaderName || null);
+          }
+        } catch (err) {
+          console.error("Error fetching cell leader:", err);
+        }
+      };
+      fetchLeader();
+    }
+  }, [enrollment?.cellId]);
 
   // Read Syllabus structure (classes & steps)
   useEffect(() => {
@@ -267,11 +475,348 @@ export default function CursoDetalle() {
     }
   }, [activeStepId, enrollment?.quizAnswersMap]);
 
-  if (loading || isLoading || !course || !enrollment) {
+  if (loading || !isAuthReady || (isLoading && !course)) {
     return (
       <div className="pt-36 text-center text-primary/40 font-semibold flex flex-col items-center justify-center min-h-[60vh]">
         <RefreshCw className="w-8 h-8 animate-spin mb-4 text-secondary" />
         Preparando aula virtual...
+      </div>
+    );
+  }
+
+  // Course not found
+  if (!course) {
+    return (
+      <div className="pt-36 pb-24 text-center text-primary/60 font-semibold flex flex-col items-center justify-center min-h-[60vh] px-4">
+        <AlertCircle className="w-12 h-12 text-amber-500 mb-4" />
+        <h2 className="text-xl font-bold text-primary mb-2">Curso no encontrado</h2>
+        <p className="text-xs text-slate-500 mb-6">El curso solicitado no existe o no se encuentra disponible.</p>
+        <button
+          onClick={() => navigate('/cursos')}
+          className="px-6 py-3 bg-primary text-white rounded-2xl text-xs font-bold hover:bg-secondary hover:text-primary transition-all cursor-pointer shadow-md"
+        >
+          Volver al Catálogo de Cursos
+        </button>
+      </div>
+    );
+  }
+
+  // 1. GUEST USER GATE (Received shared link or visited without logging in)
+  if (!user) {
+    const isCell = Boolean(course.requiresCellSupervision);
+    return (
+      <div className="pt-28 pb-20 bg-slate-50 min-h-screen flex items-center justify-center px-4">
+        <div className="bg-white p-6 md:p-10 rounded-[2.5rem] border border-slate-200 shadow-xl max-w-xl w-full text-center space-y-6 relative overflow-hidden">
+          {/* Top navigation row */}
+          <div className="flex items-center justify-between gap-3">
+            <Link
+              to="/cursos"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-primary transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" /> Catálogo
+            </Link>
+
+            <button
+              type="button"
+              onClick={() => handleShareCourse(course)}
+              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold px-3 border border-slate-200"
+              title="Compartir curso"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span>Compartir</span>
+            </button>
+          </div>
+
+          {/* Course Cover preview */}
+          {course.imageUrl && (
+            <div className="w-full h-44 rounded-2xl overflow-hidden relative shadow-inner">
+              <img
+                src={getDriveImageUrl(course.imageUrl) || `https://picsum.photos/seed/${course.id}/800/400`}
+                alt={course.title}
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-primary/80 via-transparent to-transparent flex items-end p-4">
+                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest text-white shadow-sm ${
+                  isCell ? 'bg-amber-500' : 'bg-secondary'
+                }`}>
+                  {isCell ? 'Curso Celular' : 'Curso General'}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className={`w-16 h-16 rounded-3xl flex items-center justify-center mx-auto shadow-sm ${
+            isCell ? 'bg-amber-100 text-amber-700' : 'bg-secondary/15 text-primary'
+          }`}>
+            {isCell ? <Users className="w-8 h-8" /> : <LogIn className="w-8 h-8" />}
+          </div>
+
+          {/* User requested error messages */}
+          <div className="space-y-3">
+            <h2 className="text-2xl font-bold text-primary leading-tight font-kenao">
+              {isCell
+                ? 'Es necesario haber iniciado sesión y estar vinculado a una célula para ver este curso'
+                : 'Es necesario haber iniciado sesión para ver este curso'
+              }
+            </h2>
+            <p className="text-sm font-semibold text-slate-700">
+              Curso: <span className="text-primary font-bold">{course.title}</span>
+            </p>
+            <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto">
+              {isCell
+                ? 'Este curso de formación requiere seguimiento y tutoría pastoral dentro de una Célula de Huelva Church. Inicia sesión con tu cuenta para continuar.'
+                : 'Para acceder a las clases, materiales pedagógicos y evaluaciones de este curso, por favor inicia sesión con tu cuenta de Huelva Church.'
+              }
+            </p>
+          </div>
+
+          {/* Action buttons */}
+          <div className="pt-2 flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              onClick={() => navigate('/login', { state: { from: `/cursos/${course.id}` } })}
+              className="px-8 py-3.5 bg-primary text-white rounded-2xl text-xs font-bold hover:bg-secondary hover:text-primary transition-all cursor-pointer shadow-md flex items-center justify-center gap-2"
+            >
+              <LogIn className="w-4 h-4" />
+              <span>Iniciar Sesión</span>
+            </button>
+            <button
+              onClick={() => navigate('/cursos')}
+              className="px-6 py-3.5 bg-slate-100 text-slate-700 rounded-2xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer"
+            >
+              Ver Catálogo
+            </button>
+          </div>
+        </div>
+
+        {/* Share toast feedback */}
+        <AnimatePresence>
+          {shareToast && (
+            <motion.div
+              initial={{ opacity: 0, y: 40, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.95 }}
+              className="fixed bottom-6 right-6 z-50 bg-primary text-white px-5 py-4 rounded-2xl shadow-2xl flex items-center gap-3.5 border border-white/10 max-w-md text-left"
+            >
+              <div className="w-9 h-9 rounded-xl bg-secondary/20 flex items-center justify-center text-secondary shrink-0">
+                <CheckCircle className="w-5 h-5 text-secondary" />
+              </div>
+              <div className="pr-2">
+                <p className="text-xs font-bold leading-tight">{shareToast}</p>
+                <p className="text-[10px] text-white/60 mt-0.5">Listo para enviar o pegar en WhatsApp y redes.</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  }
+
+  // 2. LOGGED-IN USER ON CELLULAR COURSE, BUT NOT LINKED TO A CELL
+  const isSuperAdminOrStaff = roles?.includes('admin') || roles?.includes('profesor') || roles?.includes('superadmin');
+  if (course.requiresCellSupervision && !isSuperAdminOrStaff && userCellInfo && !userCellInfo.isLinked) {
+    return (
+      <div className="pt-28 pb-20 bg-slate-50 min-h-screen flex items-center justify-center px-4">
+        <div className="bg-white p-6 md:p-10 rounded-[2.5rem] border border-slate-200 shadow-xl max-w-xl w-full text-center space-y-6 relative overflow-hidden">
+          {/* Top navigation row */}
+          <div className="flex items-center justify-between gap-3">
+            <Link
+              to="/cursos"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-primary transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" /> Catálogo
+            </Link>
+
+            <button
+              type="button"
+              onClick={() => handleShareCourse(course)}
+              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold px-3 border border-slate-200"
+              title="Compartir curso"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span>Compartir</span>
+            </button>
+          </div>
+
+          {/* Course Cover preview */}
+          {course.imageUrl && (
+            <div className="w-full h-44 rounded-2xl overflow-hidden relative shadow-inner">
+              <img
+                src={getDriveImageUrl(course.imageUrl) || `https://picsum.photos/seed/${course.id}/800/400`}
+                alt={course.title}
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-primary/80 via-transparent to-transparent flex items-end p-4">
+                <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest text-white shadow-sm bg-amber-500">
+                  Curso Celular
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="w-16 h-16 rounded-3xl flex items-center justify-center mx-auto shadow-sm bg-amber-100 text-amber-700">
+            <Users className="w-8 h-8" />
+          </div>
+
+          {/* User requested error message and information */}
+          <div className="space-y-3">
+            <h2 className="text-2xl font-bold text-primary leading-tight font-kenao">
+              Es necesario haber iniciado sesión y estar vinculado a una célula para ver este curso
+            </h2>
+            <p className="text-sm font-semibold text-slate-700">
+              Curso: <span className="text-primary font-bold">{course.title}</span>
+            </p>
+            <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto">
+              Has iniciado sesión, pero este curso cuenta con tutoría y supervisión de los líderes de célula de la iglesia. Para poder inscribirte y realizar las clases, solicita vincularte a tu célula desde la sección Mi Célula.
+            </p>
+          </div>
+
+          {/* Action buttons */}
+          <div className="pt-2 flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              onClick={() => navigate('/micelula')}
+              className="px-8 py-3.5 bg-primary text-white rounded-2xl text-xs font-bold hover:bg-secondary hover:text-primary transition-all cursor-pointer shadow-md flex items-center justify-center gap-2"
+            >
+              <Users className="w-4 h-4" />
+              <span>Ir a Mi Célula</span>
+            </button>
+            <button
+              onClick={() => navigate('/cursos')}
+              className="px-6 py-3.5 bg-slate-100 text-slate-700 rounded-2xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer"
+            >
+              Ver Catálogo
+            </button>
+          </div>
+        </div>
+
+        <AnimatePresence>
+          {shareToast && (
+            <motion.div
+              initial={{ opacity: 0, y: 40, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.95 }}
+              className="fixed bottom-6 right-6 z-50 bg-primary text-white px-5 py-4 rounded-2xl shadow-2xl flex items-center gap-3.5 border border-white/10 max-w-md text-left"
+            >
+              <div className="w-9 h-9 rounded-xl bg-secondary/20 flex items-center justify-center text-secondary shrink-0">
+                <CheckCircle className="w-5 h-5 text-secondary" />
+              </div>
+              <div className="pr-2">
+                <p className="text-xs font-bold leading-tight">{shareToast}</p>
+                <p className="text-[10px] text-white/60 mt-0.5">Listo para enviar o pegar en WhatsApp y redes.</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  }
+
+  // 3. LOGGED-IN USER NOT ENROLLED YET
+  if (!enrollment && !isSuperAdminOrStaff) {
+    return (
+      <div className="pt-28 pb-20 bg-slate-50 min-h-screen flex items-center justify-center px-4">
+        <div className="bg-white p-6 md:p-10 rounded-[2.5rem] border border-slate-200 shadow-xl max-w-xl w-full text-center space-y-6 relative overflow-hidden">
+          <div className="flex items-center justify-between gap-3">
+            <Link
+              to="/cursos"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-primary transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" /> Catálogo
+            </Link>
+
+            <button
+              type="button"
+              onClick={() => handleShareCourse(course)}
+              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold px-3 border border-slate-200"
+              title="Compartir curso"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span>Compartir</span>
+            </button>
+          </div>
+
+          {course.imageUrl && (
+            <div className="w-full h-48 rounded-2xl overflow-hidden relative shadow-inner">
+              <img
+                src={getDriveImageUrl(course.imageUrl) || `https://picsum.photos/seed/${course.id}/800/400`}
+                alt={course.title}
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+          )}
+
+          <div className="space-y-3">
+            <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest text-white shadow-sm inline-block ${
+              course.requiresCellSupervision ? 'bg-amber-500' : 'bg-primary'
+            }`}>
+              {course.requiresCellSupervision ? 'Curso Celular Supervisado' : 'Curso General'}
+            </span>
+            <h2 className="text-2xl font-bold text-primary font-kenao leading-tight">
+              {course.title}
+            </h2>
+            <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto line-clamp-3">
+              {course.description}
+            </p>
+            <div className="flex items-center justify-center gap-4 text-xs text-slate-500 font-medium pt-2">
+              <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5 text-primary" /> {course.instructorName}</span>
+              <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5 text-primary" /> {course.modality === 'self-paced' ? 'A tu ritmo' : 'Programado'}</span>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              onClick={handleEnrollDirectly}
+              disabled={isEnrollingDirectly}
+              className="px-8 py-3.5 bg-primary text-white rounded-2xl text-xs font-bold hover:bg-secondary hover:text-primary transition-all cursor-pointer shadow-md flex items-center justify-center gap-2"
+            >
+              {isEnrollingDirectly ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <>
+                  <GraduationCap className="w-4 h-4" />
+                  <span>Inscribirme en este curso</span>
+                </>
+              )}
+            </button>
+            <button
+              onClick={() => navigate('/cursos')}
+              className="px-6 py-3.5 bg-slate-100 text-slate-700 rounded-2xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer"
+            >
+              Ver Catálogo
+            </button>
+          </div>
+        </div>
+
+        <AnimatePresence>
+          {shareToast && (
+            <motion.div
+              initial={{ opacity: 0, y: 40, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.95 }}
+              className="fixed bottom-6 right-6 z-50 bg-primary text-white px-5 py-4 rounded-2xl shadow-2xl flex items-center gap-3.5 border border-white/10 max-w-md text-left"
+            >
+              <div className="w-9 h-9 rounded-xl bg-secondary/20 flex items-center justify-center text-secondary shrink-0">
+                <CheckCircle className="w-5 h-5 text-secondary" />
+              </div>
+              <div className="pr-2">
+                <p className="text-xs font-bold leading-tight">{shareToast}</p>
+                <p className="text-[10px] text-white/60 mt-0.5">Listo para enviar o pegar en WhatsApp y redes.</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  }
+
+  // Still preparing enrollment (for admin/professors)
+  if (!enrollment) {
+    return (
+      <div className="pt-36 text-center text-primary/40 font-semibold flex flex-col items-center justify-center min-h-[60vh]">
+        <RefreshCw className="w-8 h-8 animate-spin mb-4 text-secondary" />
+        Cargando expediente...
       </div>
     );
   }
@@ -299,11 +844,11 @@ export default function CursoDetalle() {
             </h2>
             <p className="text-slate-600 text-sm leading-relaxed mb-4">
               {isPendingEnrollment ? (
-                <>Tu solicitud de inscripción para acceder a <strong className="text-primary">{course.title}</strong> ha sido enviada y está a la espera de ser aceptada por un administrador.</>
+                <>Tu solicitud de inscripción para acceder a <strong className="text-primary">{course.title}</strong> ha sido enviada y está a la espera de ser aprobada por {course.requiresCellSupervision ? `tu Líder${leaderName ? ` (${leaderName})` : ' de Célula'}` : 'el Ministerio de Formación Cristiana'}.</>
               ) : enrollment.isPaused ? (
-                <>Tu curso <strong className="text-primary">{course.title}</strong> ha sido pausado temporalmente por tu acompañante o líder de célula.</>
+                <>Tu curso <strong className="text-primary">{course.title}</strong> ha sido pausado temporalmente por {enrollment.accompanyingTeacherName || enrollment.guideName || 'tu acompañante'}.</>
               ) : (
-                <>Tu solicitud para acceder a <strong className="text-primary">{course.title}</strong> está en espera de que el Liderazgo de tu Célula{enrollment.cellName ? ` (${enrollment.cellName})` : ''} te asigne un acompañante.</>
+                <>Tu solicitud para acceder a <strong className="text-primary">{course.title}</strong> está en espera de que {course.requiresCellSupervision ? `tu Líder${leaderName ? ` (${leaderName})` : ''}` : 'el Ministerio de Formación Cristiana'} te asigne un acompañante.</>
               )}
             </p>
             {!enrollment.isPaused && (
@@ -311,9 +856,9 @@ export default function CursoDetalle() {
                 <strong>💡 ¿Qué sucede ahora?</strong>
                 <p className="mt-1 text-amber-800">
                   {isPendingEnrollment ? (
-                    <>Una vez que un administrador acepte tu inscripción, {course?.requiresCellSupervision ? 'se notificará a tu célula para la asignación de un acompañante.' : 'podrás ingresar al curso y comenzar a aprender.'}</>
+                    <>Una vez que aprueben tu inscripción, {course?.requiresCellSupervision ? 'se notificará a tu célula para la asignación de un acompañante.' : 'podrás ingresar al curso y comenzar a aprender.'}</>
                   ) : (
-                    <>Una vez que se te asigne un acompañante por parte de tu célula, el botón cambiará automáticamente a <strong>"Ingresar"</strong> y podrás acceder a tus clases.</>
+                    <>Una vez que se te asigne un acompañante, el botón cambiará automáticamente a <strong>"Ingresar"</strong> y podrás acceder a tus clases.</>
                   )}
                 </p>
               </div>
@@ -327,6 +872,14 @@ export default function CursoDetalle() {
               Ir a Mis Cursos
             </button>
             <button
+              type="button"
+              onClick={() => handleShareCourse(course)}
+              className="px-6 py-3 bg-slate-100 text-slate-700 rounded-2xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-slate-200"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span>Compartir Curso</span>
+            </button>
+            <button
               onClick={() => navigate('/cursos')}
               className="px-6 py-3 bg-slate-100 text-slate-700 rounded-2xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer"
             >
@@ -334,6 +887,25 @@ export default function CursoDetalle() {
             </button>
           </div>
         </div>
+
+        <AnimatePresence>
+          {shareToast && (
+            <motion.div
+              initial={{ opacity: 0, y: 40, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.95 }}
+              className="fixed bottom-6 right-6 z-50 bg-primary text-white px-5 py-4 rounded-2xl shadow-2xl flex items-center gap-3.5 border border-white/10 max-w-md text-left"
+            >
+              <div className="w-9 h-9 rounded-xl bg-secondary/20 flex items-center justify-center text-secondary shrink-0">
+                <CheckCircle className="w-5 h-5 text-secondary" />
+              </div>
+              <div className="pr-2">
+                <p className="text-xs font-bold leading-tight">{shareToast}</p>
+                <p className="text-[10px] text-white/60 mt-0.5">Listo para enviar o pegar en WhatsApp y redes.</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     );
   }
@@ -593,21 +1165,32 @@ export default function CursoDetalle() {
     <div className="pt-24 bg-slate-50 min-h-screen flex flex-col lg:flex-row">
       
       {/* 2B. MOBILE NAVIGATION TRIGGER CHIP */}
-      <div className="lg:hidden bg-white border-b border-slate-100 p-4 flex items-center justify-between">
+      <div className="lg:hidden bg-white border-b border-slate-100 p-4 flex items-center justify-between gap-2">
         <button
           onClick={() => navigate('/mis-cursos')}
-          className="flex items-center gap-1.5 text-xs font-bold text-primary/60 hover:text-primary transition-all cursor-pointer"
+          className="flex items-center gap-1.5 text-xs font-bold text-primary/60 hover:text-primary transition-all cursor-pointer shrink-0"
         >
           <ArrowLeft className="w-4 h-4" /> Mis Cursos
         </button>
 
-        <button
-          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="flex items-center gap-2 bg-primary/5 text-primary py-2 px-3.5 rounded-xl border border-primary/10 text-xs font-bold cursor-pointer"
-        >
-          <Menu className="w-4.5 h-4.5" />
-          Temario del curso ({enrollment.progress}%)
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleShareCourse(course)}
+            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all cursor-pointer flex items-center gap-1 text-xs font-bold border border-slate-200"
+            title="Compartir curso"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+          </button>
+
+          <button
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className="flex items-center gap-2 bg-primary/5 text-primary py-2 px-3.5 rounded-xl border border-primary/10 text-xs font-bold cursor-pointer"
+          >
+            <Menu className="w-4.5 h-4.5" />
+            Temario ({enrollment.progress}%)
+          </button>
+        </div>
       </div>
 
       {/* =========================================================
@@ -623,12 +1206,24 @@ export default function CursoDetalle() {
           >
             {/* Header profile of course inside user sidebar */}
             <div className="p-6 border-b border-slate-100 bg-slate-50/40">
-              <Link
-                to="/mis-cursos"
-                className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-primary/40 hover:text-primary mb-4 transition-colors"
-              >
-                <ArrowLeft className="w-3.5 h-3.5 text-primary/30" /> Volver a clases
-              </Link>
+              <div className="flex items-center justify-between gap-2 mb-4">
+                <Link
+                  to="/mis-cursos"
+                  className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-primary/40 hover:text-primary transition-colors"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5 text-primary/30" /> Volver a clases
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => handleShareCourse(course)}
+                  className="p-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-600 hover:text-primary transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold border border-slate-200 shadow-2xs"
+                  title="Compartir curso"
+                >
+                  <Share2 className="w-3 h-3" />
+                  <span>Compartir</span>
+                </button>
+              </div>
               
               <h2 className="text-lg font-kenao text-primary leading-tight font-normal line-clamp-1 mb-2">
                 {course.title}
@@ -776,7 +1371,7 @@ export default function CursoDetalle() {
                   <h3 className="text-3xl font-kenao text-primary mb-3">Clase Bloqueada</h3>
                   <p className="text-primary/60 text-sm leading-relaxed max-w-md mx-auto">
                     {activeClass?.requiresLeaderApproval 
-                      ? `Esta clase requiere autorización del Liderazgo (${enrollment.cellName || 'tu célula'}) para acceder.`
+                      ? `Para continuar, solicita a tu mentor o líder (${enrollment.accompanyingTeacherName || enrollment.guideName || (course.requiresCellSupervision ? leaderName || 'Liderazgo de célula' : 'Ministerio de Formación')}) que apruebe tu avance.`
                       : course.modality === 'self-paced' && course.durationMode === 'unlimited'
                       ? `Esta clase se encuentra bloqueada hasta que completes todas las teorías y cuestionarios de la clase previa.`
                       : `Esta clase se desbloqueará en el Día ${activeClass?.dayNumber || 1}.`
@@ -786,9 +1381,9 @@ export default function CursoDetalle() {
 
                 <div className="pt-2">
                   {hasRequestedUnlock ? (
-                    <div className="inline-flex items-center gap-2.5 px-6 py-3.5 bg-amber-50 text-amber-900 border border-amber-300 rounded-2xl font-bold text-xs shadow-xs">
-                      <Clock className="w-4.5 h-4.5 text-amber-600 animate-pulse" />
-                      <span>Solicitud de desbloqueo enviada a tu Líder de Célula</span>
+                    <div className="inline-flex items-center gap-2.5 px-6 py-3.5 bg-amber-50 text-amber-900 border border-amber-300 rounded-2xl font-bold text-xs shadow-xs text-left max-w-sm">
+                      <Clock className="w-4.5 h-4.5 text-amber-600 animate-pulse flex-shrink-0" />
+                      <span>Solicitud de desbloqueo enviada a <strong>{enrollment.accompanyingTeacherName || enrollment.guideName || (course.requiresCellSupervision ? leaderName || 'tu líder' : 'tu mentor')}</strong></span>
                     </div>
                   ) : (
                     <button
@@ -797,7 +1392,7 @@ export default function CursoDetalle() {
                       className="inline-flex items-center gap-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs px-8 py-4 rounded-2xl transition-all shadow-md hover:shadow-lg cursor-pointer transform hover:-translate-y-0.5"
                     >
                       <Send className="w-4 h-4" />
-                      <span>{isRequestingUnlock ? 'Enviando solicitud...' : 'Solicitar al líder desbloquear clase'}</span>
+                      <span>{isRequestingUnlock ? 'Enviando solicitud...' : `Solicitar desbloqueo a ${enrollment.accompanyingTeacherName || enrollment.guideName ? 'mentor' : (course.requiresCellSupervision ? 'líder' : 'mentor')}`}</span>
                     </button>
                   )}
                 </div>
@@ -921,9 +1516,20 @@ export default function CursoDetalle() {
             {/* COMPONENT CONDITIONAL CONTROLLER DEPENDING ON ACTIVE LEARN TYPE */}
             {activeStep.type === 'theory' ? (
               /* A. THE THEORY RENDER LAYOUT SHEET */
-              <div className="space-y-8 leading-relaxed">
+              <div 
+                ref={theoryContainerRef}
+                className={`space-y-8 leading-relaxed select-text ${isHighlightMode ? 'highlight-mode-active' : ''}`}
+              >
                 <div className="prose prose-slate max-w-none text-slate-800 leading-relaxed tracking-normal font-sans">
-                  <TheoryMarkdown content={activeStep.content || ''} />
+                  <TheoryMarkdown 
+                    content={activeStep.content || ''} 
+                    highlights={
+                      (enrollment.annotations || [])
+                        .filter(a => a.type === 'highlight' && a.stepId === activeStepId)
+                    }
+                    onRemoveHighlight={handleRemoveHighlight}
+                    isHighlightMode={isHighlightMode}
+                  />
                 </div>
 
                 {/* Attachments downloads block if files exist */}
@@ -1131,7 +1737,7 @@ export default function CursoDetalle() {
                                 value={quizAnswers[qIdx] || ''}
                                 onChange={(e) => { setQuizAnswers(prev => ({ ...prev, [qIdx]: e.target.value })); setQuizSubmitted(false); setQuizPassed(false); }}
                                 rows={5}
-                                placeholder="Escribe aquí tu ensayo, respuesta o reflexión teológica detallada..."
+                                placeholder={qItem.instructions?.trim() || "Escribe aquí tu ensayo, respuesta o reflexión teológica detallada..."}
                                 className="w-full bg-slate-50/50 p-4.5 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-[#008080] text-xs leading-relaxed font-semibold text-slate-700 shadow-inner"
                               />
                             ) : (
@@ -1145,20 +1751,22 @@ export default function CursoDetalle() {
                                   </p>
                                 </div>
 
-                                <div className="bg-emerald-500/10 p-5 rounded-[2rem] border border-emerald-300/80 space-y-2">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-sm">🗣️</span>
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-[#008080]">
-                                      Respuesta Teológica Ideal de Comparación
+                                {qItem.guidelineAnswer && qItem.guidelineAnswer.trim() && (
+                                  <div className="bg-emerald-500/10 p-5 rounded-[2rem] border border-emerald-300/80 space-y-2">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-sm">🗣️</span>
+                                      <span className="text-[10px] font-black uppercase tracking-widest text-[#008080]">
+                                        Respuesta Teológica Ideal de Comparación / Reflexión
+                                      </span>
+                                    </div>
+                                    <p className="text-xs font-medium text-emerald-950 leading-relaxed whitespace-pre-line">
+                                      {qItem.guidelineAnswer}
+                                    </p>
+                                    <span className="block text-[9px] font-black text-emerald-600 uppercase tracking-widest pt-2">
+                                      💡 Autoevalúa tu ensayo en base al modelo teológico expuesto arriba.
                                     </span>
                                   </div>
-                                  <p className="text-xs font-medium text-emerald-950 leading-relaxed">
-                                    {qItem.guidelineAnswer || 'No hay autoevaluación cargada para esta pregunta.'}
-                                  </p>
-                                  <span className="block text-[9px] font-black text-emerald-600 uppercase tracking-widest pt-2">
-                                    💡 Autoevalúa tu ensayo en base al modelo teológico expuesto arriba.
-                                  </span>
-                                </div>
+                                )}
                               </div>
                             )}
                           </div>
@@ -1300,6 +1908,12 @@ export default function CursoDetalle() {
               </div>
             )}
 
+            <AnnotationsSection 
+              annotations={enrollment.annotations || []} 
+              activeStepId={activeStepId} 
+              enrollmentId={enrollment.id}
+            />
+
             {/* Completed Course celebration badge */}
             {enrollment.progress === 100 && (
               <motion.div
@@ -1329,6 +1943,49 @@ export default function CursoDetalle() {
 
       </div>
 
+      <StudyAssistantWidget 
+        enrollmentId={enrollment.id}
+        activeStepId={activeStepId}
+        activeClassId={activeClassId}
+        isHighlightMode={isHighlightMode}
+        onToggleHighlightMode={() => setIsHighlightMode(prev => !prev)}
+        onSaveHighlight={handleSaveHighlight}
+      />
+
+      {/* Mini feedback toast when text is highlighted */}
+      <AnimatePresence>
+        {highlightToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-24 right-6 z-50 bg-slate-900 text-amber-300 px-4 py-2.5 rounded-2xl text-xs font-bold shadow-xl flex items-center gap-2 border border-slate-700 pointer-events-none"
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            {highlightToast}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Share toast feedback in active player */}
+      <AnimatePresence>
+        {shareToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 40, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            className="fixed bottom-6 right-6 z-50 bg-primary text-white px-5 py-4 rounded-2xl shadow-2xl flex items-center gap-3.5 border border-white/10 max-w-md text-left"
+          >
+            <div className="w-9 h-9 rounded-xl bg-secondary/20 flex items-center justify-center text-secondary shrink-0">
+              <CheckCircle className="w-5 h-5 text-secondary" />
+            </div>
+            <div className="pr-2">
+              <p className="text-xs font-bold leading-tight">{shareToast}</p>
+              <p className="text-[10px] text-white/60 mt-0.5">Listo para enviar o pegar en WhatsApp y redes.</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

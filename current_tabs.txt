@@ -1,0 +1,141 @@
+
+                  {workspaceTab === 'participantes' && (
+                    /* ==================================================
+                       TAB 2B. PARTICIPANT WORKSPACE (Listings & CTAs)
+                       ================================================== */
+                    <motion.div
+                      key="tab-participantes"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="p-8 space-y-6"
+                    >
+                      <div className="border-b border-slate-100 pb-5">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-secondary block mb-1">
+                          Alumnos registrados
+                        </span>
+                        <h2 className="text-3xl font-kenao text-primary font-normal leading-tight">Expedientes Académicos</h2>
+                      </div>
+
+                      <div className="space-y-4 max-w-4xl">
+                        {enrollments.filter(e => activeWorkspaceCourse && isParticipantOfCourse(e, activeWorkspaceCourse)).length === 0 ? (
+                          <div className="text-center py-20 bg-slate-50/50 rounded-3xl border border-slate-100">
+                            <Users className="w-12 h-12 text-primary/10 mx-auto mb-4" />
+                            <h3 className="text-xl font-bold text-primary mb-1">No hay alumnos inscritos</h3>
+                            <p className="text-xs text-primary/40">Los alumnos que soliciten inscribirse en el catálogo público aparecerán aquí.</p>
+                          </div>
+                        ) : (
+                          enrollments.filter(e => activeWorkspaceCourse && isParticipantOfCourse(e, activeWorkspaceCourse)).map((enrollment) => {
+                            const isPending = enrollment.status === 'pending';
+                            const isActive = enrollment.status === 'active';
+                            const isCompleted = enrollment.status === 'completed';
+
+                            return (
+                              <div key={enrollment.id} className="bg-white border border-slate-150 rounded-3xl flex flex-col shadow-xs overflow-hidden text-left">
+                                <div className="p-6 flex flex-col lg:flex-row justify-between gap-6">
+                                  <div className="flex-grow">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border inline-flex items-center gap-1.5 ${
+                                        isActive ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                        isPending ? 'bg-amber-50 text-amber-800 border-amber-200' :
+                                        isCompleted ? 'bg-blue-50 text-blue-800 border-blue-200' :
+                                        'bg-slate-100 text-slate-600 border-slate-200'
+                                      }`}>
+                                        {isPending ? 'Pendiente' : isActive ? 'Activo' : isCompleted ? 'Completado' : 'Dado de baja'}
+                                      </span>
+                                    </div>
+                                    <h3 className="font-bold text-primary text-xl flex items-center gap-2">
+                                      <Users className="w-5 h-5 text-secondary shrink-0" />
+                                      {enrollment.studentName}
+                                    </h3>
+                                      
+                                    {/* Enrollment info timeline */}
+                                    <div className="mt-1 text-xs text-slate-500 font-medium flex flex-wrap gap-4">
+                                      <span>Inscrito el: {enrollment.enrolledAt ? new Date(enrollment.enrolledAt.seconds * 1000).toLocaleDateString() : 'Desconocido'}</span>
+                                      <span className="font-bold text-primary/70">Progreso: {enrollment.progress || 0}%</span>
+                                      {isCompleted && enrollment.grade !== undefined && (
+                                        <span className="text-emerald-600 flex items-center gap-1 font-bold">
+                                          <Award className="w-3.5 h-3.5" /> Nota Final: {enrollment.grade}/10
+                                        </span>
+                                      )}
+                                    </div>
+                                    
+                                    {enrollment.teacherComments && (
+                                      <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-1.5 mb-1.5"><MessageCircle className="w-3.5 h-3.5" /> Comentarios del Acompañante</p>
+                                        <p className="text-sm text-slate-700 whitespace-pre-wrap">{enrollment.teacherComments}</p>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="flex flex-col gap-3 shrink-0">
+                                    {isPending && (
+                                      <button
+                                        onClick={() => handleEnrollmentStatusChange(enrollment.id, 'active')}
+                                        className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 text-xs font-black uppercase tracking-wider px-4 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                                      >
+                                        <CheckCircle className="w-4 h-4" /> Aprobar alumno
+                                      </button>
+                                    )}
+
+                                    {!isPending && !isActive && (
+                                      <button
+                                        onClick={() => handleEnrollmentStatusChange(enrollment.id, 'active')}
+                                        className="bg-slate-50 text-slate-500 hover:bg-slate-100 border border-slate-200 text-xs font-black uppercase tracking-wider px-4 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                                      >
+                                        Re-activar alumno
+                                      </button>
+                                    )}
+                                    
+                                    <button
+                                      onClick={() => handleDeleteEnrollment(enrollment.id)}
+                                      className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer w-fit self-end"
+                                      title="Eliminar Expediente"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                                
+                                {/* Acompañante (if not cell course) */}
+                                {!activeWorkspaceCourse?.requiresCellSupervision && (
+                                  <div className="bg-slate-50/80 p-4 border-t border-slate-150 flex flex-col sm:flex-row sm:items-center gap-4">
+                                    <div className="flex flex-col gap-1.5 flex-grow">
+                                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                        Seleccionar Acompañante Docente:
+                                      </label>
+                                      <div className="flex flex-col sm:flex-row items-center gap-2">
+                                        <select
+                                          value={selectedTeachers[enrollment.id] !== undefined ? selectedTeachers[enrollment.id] : (enrollment.accompanyingTeacherId || '')}
+                                          onChange={(e) => setSelectedTeachers(prev => ({ ...prev, [enrollment.id]: e.target.value }))}
+                                          className="bg-white border border-slate-200 text-primary text-xs font-bold rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-secondary/50 w-full sm:w-72 cursor-pointer shadow-sm"
+                                        >
+                                          <option value="">-- Sin asignar (Pendiente) --</option>
+                                          {potentialTeachers.map(t => (
+                                            <option key={t.id} value={t.id}>{t.name}</option>
+                                          ))}
+                                        </select>
+                                        {(selectedTeachers[enrollment.id] !== undefined && selectedTeachers[enrollment.id] !== (enrollment.accompanyingTeacherId || '')) && (
+                                          <button
+                                            onClick={() => handleAssignTeacher(enrollment.id, selectedTeachers[enrollment.id])}
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-bold text-xs transition-all shadow-md flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer"
+                                          >
+                                            <Check className="w-3.5 h-3.5 shrink-0" /> Guardar asignación
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {workspaceTab === 'ajustes' && (
+                    /* ==================================================
+                       TAB 2C. SETTINGS WORKSPACE (Forms details)
+                       ================================================== */

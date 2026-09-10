@@ -30,11 +30,41 @@
   --font-mono: "JetBrains Mono", monospace;
 }
 
+:root {
+  --study-font-scale: 1;
+}
+
 body {
   font-family: var(--font-gordita);
   background-color: #f8fafc;
   color: var(--color-primary);
   overflow-x: hidden;
+}
+
+.prose {
+  font-size: calc(1rem * var(--study-font-scale)) !important;
+  transition: font-size 0.2s ease-out;
+}
+.prose p, .prose li, .prose blockquote, .prose span, .prose a, .prose strong, .prose em, .prose-scale-container {
+  font-size: calc(1rem * var(--study-font-scale)) !important;
+  line-height: calc(1.75 * var(--study-font-scale)) !important;
+  transition: font-size 0.2s ease-out, line-height 0.2s ease-out;
+}
+.prose h1 {
+  font-size: calc(2.25rem * var(--study-font-scale)) !important;
+  transition: font-size 0.2s ease-out;
+}
+.prose h2 {
+  font-size: calc(1.5rem * var(--study-font-scale)) !important;
+  transition: font-size 0.2s ease-out;
+}
+.prose h3 {
+  font-size: calc(1.25rem * var(--study-font-scale)) !important;
+  transition: font-size 0.2s ease-out;
+}
+.prose h4 {
+  font-size: calc(1rem * var(--study-font-scale)) !important;
+  transition: font-size 0.2s ease-out;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -99,4 +129,20 @@ h1, h2, h3, h4, h5, h6 {
   background-color: #f1f5f9 !important;
   padding: 0.5rem !important;
   border-radius: 0.25rem !important;
+}
+
+/* Study Highlighting Mode Styles */
+.highlight-mode-active {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='%23f59e0b' stroke='%2378350f' stroke-width='1.5'%3E%3Cpath d='m9 11-6 6v3h3l6-6'/%3E%3Cpath d='m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4'/%3E%3C/svg%3E") 2 22, text !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+.highlight-mode-active * {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='%23f59e0b' stroke='%2378350f' stroke-width='1.5'%3E%3Cpath d='m9 11-6 6v3h3l6-6'/%3E%3Cpath d='m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4'/%3E%3C/svg%3E") 2 22, text !important;
+}
+
+.highlight-mode-active ::selection {
+  background-color: #fde047 !important;
+  color: #0f172a !important;
 }

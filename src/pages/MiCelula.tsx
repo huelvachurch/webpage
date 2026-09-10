@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { collection, doc, getDoc, getDocs, setDoc, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db, studiesDb } from '../firebase';
-import { Shield, BookOpen, MessageSquare, MapPin, Map, Clock, AlertCircle, ChevronRight, User as UserIcon, LogOut, Check, Heart, Bell, Calendar, Share2 } from 'lucide-react';
+import { Shield, BookOpen, MessageSquare, MapPin, Map, Clock, AlertCircle, ChevronRight, User as UserIcon, LogOut, Check, Heart, Bell, Calendar, Share2, Pencil, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useGlobalSettings } from '../utils/useSettings';
@@ -536,6 +536,88 @@ export default function MiCelula() {
   const [guidedClassesMap, setGuidedClassesMap] = useState<Record<string, any[]>>({});
   const [expandedEnrollments, setExpandedEnrollments] = useState<string[]>([]);
   const [expandedClasses, setExpandedClasses] = useState<string[]>([]);
+  
+  const [leaderCommentInputs, setLeaderCommentInputs] = useState<Record<string, string>>({});
+  const [savingCommentId, setSavingCommentId] = useState<string | null>(null);
+  const [confirmDeleteLeaderId, setConfirmDeleteLeaderId] = useState<string | null>(null);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+
+  const saveLeaderComment = async (enrollmentId: string, classId: string) => {
+    const key = `${enrollmentId}-${classId}`;
+    const comment = leaderCommentInputs[key]?.trim();
+    
+    setSavingCommentId(key);
+    try {
+      const enrollmentDoc = guidedEnrollments.find(e => e.id === enrollmentId);
+      if (!enrollmentDoc) return;
+      
+      const currentComments = enrollmentDoc.leaderComments || {};
+      const currentMetadata = enrollmentDoc.leaderCommentsMetadata || {};
+      
+      let newComments = { ...currentComments };
+      let newMetadata = { ...currentMetadata };
+
+      if (!comment) {
+        delete newComments[classId];
+        delete newMetadata[classId];
+      } else {
+        newComments[classId] = comment;
+        newMetadata[classId] = {
+          authorName: user?.displayName || user?.email || 'Líder',
+          authorId: user?.uid,
+          updatedAt: new Date().toISOString()
+        };
+      }
+      
+      await updateDoc(doc(db, 'enrollments', enrollmentId), {
+        leaderComments: newComments,
+        leaderCommentsMetadata: newMetadata,
+        updatedAt: serverTimestamp()
+      });
+      
+      // Update local state temporarily for immediate feedback
+      setGuidedEnrollments(prev => prev.map(e => e.id === enrollmentId ? { ...e, leaderComments: newComments, leaderCommentsMetadata: newMetadata } : e));
+      setEditingCommentId(null);
+    } catch (err) {
+      console.error("Error saving leader comment:", err);
+    } finally {
+      setSavingCommentId(null);
+    }
+  };
+
+  const deleteLeaderCommentConfirm = async (enrollmentId: string, classId: string) => {
+    const key = `${enrollmentId}-${classId}`;
+    setSavingCommentId(key);
+    try {
+      const enrollmentDoc = guidedEnrollments.find(e => e.id === enrollmentId);
+      if (!enrollmentDoc) return;
+      
+      const currentComments = enrollmentDoc.leaderComments || {};
+      const currentMetadata = enrollmentDoc.leaderCommentsMetadata || {};
+      const newComments = { ...currentComments };
+      const newMetadata = { ...currentMetadata };
+      delete newComments[classId];
+      delete newMetadata[classId];
+      
+      await updateDoc(doc(db, 'enrollments', enrollmentId), {
+        leaderComments: newComments,
+        leaderCommentsMetadata: newMetadata,
+        updatedAt: serverTimestamp()
+      });
+      
+      setLeaderCommentInputs(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      setGuidedEnrollments(prev => prev.map(e => e.id === enrollmentId ? { ...e, leaderComments: newComments, leaderCommentsMetadata: newMetadata } : e));
+      setConfirmDeleteLeaderId(null);
+    } catch (err) {
+      console.error("Error deleting leader comment:", err);
+    } finally {
+      setSavingCommentId(null);
+    }
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -679,7 +761,7 @@ export default function MiCelula() {
                 <option value="peticiones">Peticiones</option>
                 <option value="info">Información</option>
                 {guidedEnrollments.length > 0 && (
-                  <option value="academia">Academia ({guidedEnrollments.length})</option>
+                  <option value="academia">Acompañamiento</option>
                 )}
               </select>
               <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400">
@@ -689,10 +771,10 @@ export default function MiCelula() {
           </div>
 
           {/* Menu de Pestañas Independiente (Desktop) */}
-          <div className={`hidden lg:grid ${guidedEnrollments.length > 0 ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} bg-white p-2 rounded-2xl shadow-sm border border-slate-100 w-full mb-10 gap-1`}>
+          <div className="hidden lg:flex flex-wrap items-center justify-between bg-white p-2 rounded-2xl shadow-sm border border-slate-100 w-full mb-10 gap-1">
             <button
               onClick={() => setActiveTab('notificaciones')}
-              className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase relative cursor-pointer ${
+              className={`flex-auto whitespace-nowrap flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase relative cursor-pointer ${
                 activeTab === 'notificaciones' 
                   ? 'bg-amber-100 text-amber-950 border border-amber-200' 
                   : 'text-slate-500 hover:text-primary hover:bg-slate-50'
@@ -707,7 +789,7 @@ export default function MiCelula() {
 
             <button
               onClick={() => setActiveTab('estudios')}
-              className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase cursor-pointer ${
+              className={`flex-auto whitespace-nowrap flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase cursor-pointer ${
                 activeTab === 'estudios' 
                   ? 'bg-amber-100 text-amber-950 border border-amber-200' 
                   : 'text-slate-500 hover:text-primary hover:bg-slate-50'
@@ -719,7 +801,7 @@ export default function MiCelula() {
 
             <button
               onClick={() => setActiveTab('peticiones')}
-              className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase cursor-pointer ${
+              className={`flex-auto whitespace-nowrap flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase cursor-pointer ${
                 activeTab === 'peticiones' 
                   ? 'bg-amber-100 text-amber-950 border border-amber-200' 
                   : 'text-slate-500 hover:text-primary hover:bg-slate-50'
@@ -731,7 +813,7 @@ export default function MiCelula() {
 
             <button
               onClick={() => setActiveTab('info')}
-              className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase cursor-pointer ${
+              className={`flex-auto whitespace-nowrap flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase cursor-pointer ${
                 activeTab === 'info' 
                   ? 'bg-amber-100 text-amber-950 border border-amber-200' 
                   : 'text-slate-500 hover:text-primary hover:bg-slate-50'
@@ -744,17 +826,14 @@ export default function MiCelula() {
             {guidedEnrollments.length > 0 && (
               <button
                 onClick={() => setActiveTab('academia')}
-                className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase cursor-pointer relative ${
+                className={`flex-auto whitespace-nowrap flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold tracking-wide transition-all uppercase cursor-pointer relative ${
                   activeTab === 'academia' 
                     ? 'bg-amber-100 text-amber-950 border border-amber-200' 
                     : 'text-slate-500 hover:text-primary hover:bg-slate-50'
                 }`}
               >
                 <BookOpen className="w-4 h-4 shrink-0" />
-                Academia
-                <span className="ml-1 bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">
-                  {guidedEnrollments.length}
-                </span>
+                Acompañamiento
               </button>
             )}
           </div>
@@ -1249,8 +1328,9 @@ export default function MiCelula() {
                             onClick={() => toggleEnrollment(enrollment.id)}
                           >
                             <div className="flex-grow">
-                              <span className="text-[10px] font-black uppercase tracking-widest text-amber-800 bg-amber-50 px-3 py-1 rounded-full border border-amber-200 inline-block mb-2">
-                                🧩 {course?.title || 'Curso Supervisado'}
+                              <span className="text-[10px] font-black uppercase tracking-widest text-amber-800 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-200 inline-flex items-center gap-1.5 mb-2">
+                                <BookOpen className="w-3.5 h-3.5 text-amber-800" />
+                                {course?.title || 'Curso Supervisado'}
                               </span>
                               <h3 className="text-xl font-bold text-primary flex items-center gap-2">
                                 <UserIcon className="w-5 h-5 text-secondary shrink-0" />
@@ -1384,6 +1464,104 @@ export default function MiCelula() {
                                                   })}
                                                 </div>
                                               )}
+                                              
+                                              {/* Comentario del Alumno */}
+                                              {enrollment.classComments?.[clase.id] && (
+                                                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mt-4">
+                                                  <h6 className="font-bold text-primary mb-2 flex items-center gap-2">
+                                                    <MessageSquare className="w-4 h-4 text-secondary" />
+                                                    Comentario final del alumno
+                                                  </h6>
+                                                  <p className="text-slate-700 italic border-l-2 border-secondary/30 pl-3">
+                                                    "{enrollment.classComments[clase.id]}"
+                                                  </p>
+                                                </div>
+                                              )}
+
+                                              {/* Comentario del Líder */}
+                                              <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mt-4 relative">
+                                                  <div className="flex items-center justify-between mb-2">
+                                                    <h6 className="font-bold text-primary flex items-center gap-2">
+                                                      <UserIcon className="w-4 h-4 text-amber-500" />
+                                                      Tu comentario
+                                                    </h6>
+                                                    {enrollment.leaderComments?.[clase.id] && editingCommentId !== `${enrollment.id}-${clase.id}` && (
+                                                      <div className="flex items-center gap-1">
+                                                        <button
+                                                          onClick={() => {
+                                                            setEditingCommentId(`${enrollment.id}-${clase.id}`);
+                                                            if (leaderCommentInputs[`${enrollment.id}-${clase.id}`] === undefined) {
+                                                              setLeaderCommentInputs(prev => ({ ...prev, [`${enrollment.id}-${clase.id}`]: enrollment.leaderComments?.[clase.id] || '' }));
+                                                            }
+                                                          }}
+                                                          className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                                                          title="Editar comentario"
+                                                        >
+                                                          <Pencil className="w-4 h-4" />
+                                                        </button>
+                                                        {confirmDeleteLeaderId === `${enrollment.id}-${clase.id}` ? (
+                                                          <div className="flex items-center gap-2 bg-red-50 px-2 py-1 rounded-lg border border-red-100 absolute right-4 top-2 z-10 shadow-sm">
+                                                            <span className="text-[9px] font-bold text-red-800 uppercase px-1">¿Eliminar?</span>
+                                                            <button
+                                                              onClick={() => deleteLeaderCommentConfirm(enrollment.id, clase.id)}
+                                                              disabled={savingCommentId === `${enrollment.id}-${clase.id}`}
+                                                              className="px-2 py-1 text-xs font-bold bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
+                                                            >
+                                                              Sí
+                                                            </button>
+                                                            <button
+                                                              onClick={() => setConfirmDeleteLeaderId(null)}
+                                                              disabled={savingCommentId === `${enrollment.id}-${clase.id}`}
+                                                              className="px-2 py-1 text-xs font-bold bg-white text-slate-600 rounded-md hover:bg-slate-100 border border-slate-200 transition-colors"
+                                                            >
+                                                              No
+                                                            </button>
+                                                          </div>
+                                                        ) : (
+                                                          <button
+                                                            onClick={() => setConfirmDeleteLeaderId(`${enrollment.id}-${clase.id}`)}
+                                                            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                                            title="Eliminar comentario"
+                                                          >
+                                                            <Trash2 className="w-4 h-4" />
+                                                          </button>
+                                                        )}
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                  
+                                                  {enrollment.leaderComments?.[clase.id] && editingCommentId !== `${enrollment.id}-${clase.id}` ? (
+                                                    <div className="text-slate-700 bg-amber-50/50 p-3 rounded-lg border border-amber-100/50">
+                                                      {enrollment.leaderComments[clase.id]}
+                                                    </div>
+                                                  ) : (
+                                                    <div className="flex flex-col gap-2">
+                                                      <textarea 
+                                                        className="w-full text-sm border border-slate-200 rounded-xl p-3 focus:ring-2 focus:ring-amber-500/50 outline-none transition-shadow min-h-[80px]"
+                                                        placeholder="Escribe un comentario sobre el desarrollo del alumno..."
+                                                        value={leaderCommentInputs[`${enrollment.id}-${clase.id}`] !== undefined ? leaderCommentInputs[`${enrollment.id}-${clase.id}`] : (enrollment.leaderComments?.[clase.id] || '')}
+                                                        onChange={(e) => setLeaderCommentInputs(prev => ({ ...prev, [`${enrollment.id}-${clase.id}`]: e.target.value }))}
+                                                      />
+                                                      <div className="flex items-center justify-end gap-2 mt-2">
+                                                        {editingCommentId === `${enrollment.id}-${clase.id}` && (
+                                                          <button
+                                                            onClick={() => setEditingCommentId(null)}
+                                                            className="px-4 py-2 text-xs font-bold bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors cursor-pointer"
+                                                          >
+                                                            Cancelar
+                                                          </button>
+                                                        )}
+                                                        <button
+                                                          onClick={() => saveLeaderComment(enrollment.id, clase.id)}
+                                                          disabled={savingCommentId === `${enrollment.id}-${clase.id}` || (!leaderCommentInputs[`${enrollment.id}-${clase.id}`]?.trim() && !enrollment.leaderComments?.[clase.id])}
+                                                          className="bg-primary text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-50"
+                                                        >
+                                                          {savingCommentId === `${enrollment.id}-${clase.id}` ? 'Guardando...' : 'Guardar Comentario'}
+                                                        </button>
+                                                      </div>
+                                                    </div>
+                                                  )}
+                                              </div>
                                             </div>
                                           )}
                                         </div>

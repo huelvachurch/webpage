@@ -13,6 +13,7 @@ export const db = getFirestore(app, databaseId);
 export const studiesDatabaseId = "ai-studio-a2eeb6ca-be40-4061-b380-b75b9d9fb2ef";
 export const studiesDb = getFirestore(app, studiesDatabaseId);
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 // Initialize Messaging (ensuring compatibility with server-side and unsupported situations)
 export let messaging: any = null;
@@ -118,8 +119,17 @@ export const loginWithGoogle = async () => {
     }
     
     return user;
-  } catch (error) {
-    console.error('Login error:', error);
+  } catch (error: any) {
+    if (
+      error?.code === 'auth/popup-closed-by-user' ||
+      error?.code === 'auth/cancelled-popup-request' ||
+      error?.message?.includes('popup-closed-by-user') ||
+      error?.message?.includes('cancelled-popup-request')
+    ) {
+      console.warn('Login popup closed or cancelled by user.');
+    } else {
+      console.error('Login error:', error);
+    }
     throw error;
   }
 };

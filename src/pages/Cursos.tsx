@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Filter, GraduationCap, Calendar, Clock, User, ChevronRight, CheckCircle, AlertCircle, LogIn, Play } from 'lucide-react';
+import { Search, Filter, GraduationCap, Calendar, Clock, User, ChevronRight, CheckCircle, AlertCircle, LogIn, Play, Share2 } from 'lucide-react';
 import { collection, addDoc, onSnapshot, query, where, orderBy, serverTimestamp, doc, updateDoc, setDoc, getDoc, getDocs } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { shareCourse } from '../utils/shareCourse';
 
 interface Course {
   id: string;
@@ -135,8 +136,25 @@ export default function Cursos() {
   const [searchTerm, setSearchTerm] = useState('');
   const [modalityFilter, setModalityFilter] = useState<string>('all');
   const [isEnrolling, setIsEnrolling] = useState<string | null>(null);
+  const [shareToast, setShareToast] = useState<string | null>(null);
   const { t, i18n } = useTranslation();
   const currentLang = i18n.language.substring(0, 2);
+
+  const handleShareCourse = async (course: Course) => {
+    const courseTitle = getCourseTitle(course);
+    const result = await shareCourse({
+      id: course.id,
+      title: courseTitle,
+      requiresCellSupervision: course.requiresCellSupervision
+    });
+
+    if (result.success) {
+      setShareToast(result.message);
+      setTimeout(() => {
+        setShareToast(null);
+      }, 4000);
+    }
+  };
 
   // Fetch published courses
   useEffect(() => {
@@ -223,7 +241,7 @@ export default function Cursos() {
         studentName: user.displayName || 'Alumno',
         cellId: effectiveCellId,
         cellName: effectiveCellName,
-        status: 'active',
+        status: 'pending',
         leaderApproved: !selectedCourse?.requiresCellSupervision ? null : false, // null for no supervision required, false for pending
         approvedClassIds: [],
         progress: 0,
@@ -377,8 +395,23 @@ export default function Cursos() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.1 }}
-                    className="bg-white rounded-[3rem] shadow-sm border border-slate-100 overflow-hidden group hover:shadow-2xl transition-all duration-500 flex flex-col"
+                    className="bg-white rounded-[3rem] shadow-sm border border-slate-100 overflow-hidden group hover:shadow-2xl transition-all duration-500 flex flex-col relative"
                   >
+                    {/* Share Button Floating on Card */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleShareCourse(course);
+                      }}
+                      title="Compartir curso"
+                      aria-label="Compartir curso"
+                      className="absolute top-6 right-6 p-2.5 rounded-full bg-white/90 hover:bg-white text-primary hover:text-secondary shadow-md backdrop-blur-md transition-all cursor-pointer hover:scale-110 active:scale-95 z-20 flex items-center justify-center border border-white/50"
+                    >
+                      <Share2 className="w-4 h-4" />
+                    </button>
+
                     {canAccess ? (
                       <Link to={`/cursos/${course.id}`} className="aspect-[16/10] relative overflow-hidden block cursor-pointer">
                         <img 
@@ -509,6 +542,26 @@ export default function Cursos() {
               </div>
             )}
       </div>
+
+      {/* Toast Notification for course sharing */}
+      <AnimatePresence>
+        {shareToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 40, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            className="fixed bottom-6 right-6 z-50 bg-primary text-white px-5 py-4 rounded-2xl shadow-2xl flex items-center gap-3.5 border border-white/10 max-w-md"
+          >
+            <div className="w-9 h-9 rounded-xl bg-secondary/20 flex items-center justify-center text-secondary shrink-0">
+              <CheckCircle className="w-5 h-5 text-secondary" />
+            </div>
+            <div className="pr-2">
+              <p className="text-xs font-bold leading-tight">{shareToast}</p>
+              <p className="text-[10px] text-white/60 mt-0.5">Listo para enviar o pegar en WhatsApp y redes.</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -1669,7 +1669,7 @@ export default function Lideres() {
             >
               <option value="form">Formularios</option>
               <option value="attendees">Asistentes</option>
-              <option value="supervision">Acompañamientos</option>
+              <option value="supervision">Academia</option>
               <option value="stats">Estadísticas</option>
               <option value="announcements">Notificaciones</option>
               <option value="cell">Mi Célula</option>
@@ -1715,7 +1715,7 @@ export default function Lideres() {
             }`}
           >
             <BookOpen className="w-4 h-4 shrink-0" />
-            Acompañamientos
+            Academia
             {supervisedEnrollments.some(e => !e.leaderApproved) && (
               <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></span>
             )}
@@ -2412,11 +2412,13 @@ export default function Lideres() {
                       const isSavingThis = savingGuideId === enrollment.id;
                       
                       return (
-                        <div key={enrollment.id} className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden text-left p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                        <div key={enrollment.id} className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden text-left flex flex-col">
+                          <div className="p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                           <div className="flex-grow">
                             <div className="flex flex-wrap items-center gap-2 mb-2">
-                              <span className="text-[10px] font-black uppercase tracking-widest text-amber-800 bg-amber-50 px-3 py-1 rounded-full border border-amber-200 inline-block">
-                                🧩 {course?.title || 'Curso Supervisado'}
+                              <span className="text-[10px] font-black uppercase tracking-widest text-amber-800 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-200 inline-flex items-center gap-1.5">
+                                <BookOpen className="w-3.5 h-3.5 text-amber-800" />
+                                {course?.title || 'Curso Supervisado'}
                               </span>
                               {isPaused && (
                                 <span className="text-rose-600 font-black tracking-widest uppercase text-[10px] bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200">
@@ -2542,8 +2544,47 @@ export default function Lideres() {
                             </div>
                           </div>
                         </div>
+                          
+                          {/* Comments section */}
+                          {enrollment.leaderComments && Object.keys(enrollment.leaderComments).length > 0 && (
+                            <div className="border-t border-slate-100 bg-amber-50/30 p-6">
+                              <h4 className="text-sm font-bold text-primary mb-4 flex items-center gap-2">
+                                <MessageSquare className="w-4 h-4 text-amber-600" />
+                                Comentarios de Acompañamiento
+                              </h4>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {Object.entries(enrollment.leaderComments).map(([classId, comment]) => {
+                                  const classData = course?.classes?.find(c => c.id === classId);
+                                  const metadata = (enrollment as any).leaderCommentsMetadata?.[classId];
+                                  const authorName = metadata?.authorName || enrollment.guideName || 'Acompañante';
+                                  
+                                  return (
+                                    <div key={classId} className="bg-white p-4 rounded-2xl border border-amber-100 shadow-sm flex flex-col">
+                                      <div className="flex items-start justify-between gap-2 mb-2">
+                                        <h5 className="text-xs font-bold text-amber-900 line-clamp-1">{classData?.title || 'Lección'}</h5>
+                                        {metadata?.updatedAt && (
+                                          <span className="text-[9px] font-medium text-slate-400 whitespace-nowrap bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100">
+                                            {new Date(metadata.updatedAt).toLocaleDateString()}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-xs text-slate-700 mb-4 whitespace-pre-wrap">{comment as string}</p>
+                                      <div className="flex items-center gap-1.5 mt-auto border-t border-slate-50 pt-3">
+                                        <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                                          <User className="w-3 h-3 text-amber-700" />
+                                        </div>
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide line-clamp-1">{authorName}</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       );
-                    })}                  </div>
+                    })}
+                  </div>
                 )}
               </motion.div>
             )}

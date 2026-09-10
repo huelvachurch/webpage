@@ -1,0 +1,78 @@
+--- src/pages/admin/AdminCursos.tsx
++++ src/pages/admin/AdminCursos.tsx
+@@ -2280,10 +2280,68 @@
+ 
+                   {workspaceTab === 'participantes' && (
+                     /* ==================================================
+-                       TAB 2B. PARTICIPANT WORKSPACE (Listings & CTAs)
++                       TAB 2B. PARTICIPANT WORKSPACE (Simple List)
+                        ================================================== */
+                     <motion.div
+                       key="tab-participantes"
++                      initial={{ opacity: 0 }}
++                      animate={{ opacity: 1 }}
++                      exit={{ opacity: 0 }}
++                      className="p-8 space-y-6"
++                    >
++                      <div className="border-b border-slate-100 pb-5">
++                        <span className="text-[10px] font-black uppercase tracking-widest text-secondary block mb-1">
++                          Listado general
++                        </span>
++                        <h2 className="text-3xl font-kenao text-primary font-normal leading-tight">Participantes del Curso</h2>
++                      </div>
++
++                      <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
++                        <div className="overflow-x-auto">
++                          <table className="w-full text-left border-collapse">
++                            <thead>
++                              <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase tracking-widest text-slate-500">
++                                <th className="p-4 font-black">Participante</th>
++                                <th className="p-4 font-black">Estado</th>
++                                <th className="p-4 font-black">Fecha de Inicio</th>
++                                <th className="p-4 font-black">Progreso</th>
++                              </tr>
++                            </thead>
++                            <tbody className="divide-y divide-slate-100">
++                              {enrollments.filter(e => activeWorkspaceCourse && isParticipantOfCourse(e, activeWorkspaceCourse)).length === 0 ? (
++                                <tr>
++                                  <td colSpan={4} className="p-8 text-center text-slate-500 text-sm">No hay alumnos inscritos.</td>
++                                </tr>
++                              ) : (
++                                enrollments.filter(e => activeWorkspaceCourse && isParticipantOfCourse(e, activeWorkspaceCourse)).map((enrollment) => (
++                                  <tr key={enrollment.id} className="hover:bg-slate-50/50 transition-colors">
++                                    <td className="p-4 text-sm font-bold text-primary flex items-center gap-2">
++                                      <Users className="w-4 h-4 text-slate-400" />
++                                      {enrollment.studentName}
++                                    </td>
++                                    <td className="p-4">
++                                      <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-md ${
++                                        enrollment.status === 'active' ? 'bg-emerald-50 text-emerald-700' :
++                                        enrollment.status === 'pending' ? 'bg-amber-50 text-amber-700' :
++                                        enrollment.status === 'completed' ? 'bg-blue-50 text-blue-700' :
++                                        'bg-slate-100 text-slate-600'
++                                      }`}>
++                                        {enrollment.status === 'pending' ? 'Pendiente' : enrollment.status === 'active' ? 'Cursando' : enrollment.status === 'completed' ? 'Completado' : 'Baja'}
++                                      </span>
++                                    </td>
++                                    <td className="p-4 text-sm text-slate-600 font-medium">
++                                      {enrollment.enrolledAt ? new Date(enrollment.enrolledAt.seconds * 1000).toLocaleDateString() : '-'}
++                                    </td>
++                                    <td className="p-4 text-sm text-slate-600 font-bold">
++                                      {enrollment.progress || 0}%
++                                    </td>
++                                  </tr>
++                                ))
++                              )}
++                            </tbody>
++                          </table>
++                        </div>
++                      </div>
++                    </motion.div>
++                  )}
++
++                  {workspaceTab === 'academia' && (
++                    /* ==================================================
++                       TAB 2C. ACADEMIA WORKSPACE (Cards & Mentors)
++                       ================================================== */
++                    <motion.div
++                      key="tab-academia"
