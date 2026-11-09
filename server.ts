@@ -2153,6 +2153,80 @@ Genera el resultado en formato JSON con la siguiente estructura exacta:
     next();
   });
 
+  // Render static fallbacks for Google for Nonprofits crawlers on essential pages
+  app.use(async (req, res, next) => {
+    // Only intercept GET requests for HTML routes (avoiding API, static assets, etc)
+    if (req.method !== 'GET') return next();
+    
+    // Check if the route is one of the target routes
+    if (["/", "/nosotros", "/legal"].includes(req.path) || req.path.startsWith("/nosotros/") || req.path.startsWith("/legal")) {
+      const isProd = process.env.NODE_ENV === "production";
+      const htmlPath = isProd 
+        ? path.join(process.cwd(), "dist", "index.html")
+        : path.join(process.cwd(), "index.html");
+
+      if (fs.existsSync(htmlPath)) {
+        let html = fs.readFileSync(htmlPath, "utf8");
+
+        let prerenderHtml = "";
+        
+        const prerenderStyle = 'style="font-family: system-ui, sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; color: #334155; line-height: 1.6;"';
+
+        if (req.path === "/") {
+          prerenderHtml = `
+            <div id="prerender-content" ${prerenderStyle}>
+              <h1>Huelva Church - Iglesia Cristiana Evangélica en Huelva</h1>
+              <p>Somos Huelva Church (Iglesia Bautista de Huelva), una Iglesia Cristiana Evangélica en Huelva dedicada a compartir el amor de Jesús.</p>
+              <br/>
+              <footer>
+                <p>Huelva Church es el nombre comercial de IGLESIA BAUTISTA DE HUELVA, entidad religiosa inscrita en el Registro de Entidades Religiosas del Ministerio de Justicia con el número 022983, CIF R2100464C, con domicilio en Calle Marismeños, 6, 1º, 21006 Huelva, España.</p>
+              </footer>
+            </div>
+          `;
+        } else if (req.path.startsWith("/nosotros")) {
+          prerenderHtml = `
+            <div id="prerender-content" ${prerenderStyle}>
+              <h1>Nosotros - Huelva Church</h1>
+              <p>Huelva Church es el nombre bajo el cual la Iglesia Bautista de Huelva —entidad inscrita en el Registro de Entidades Religiosas del Ministerio de Justicia con el número 022983— desarrolla su vida comunitaria y su testimonio en la ciudad.</p>
+              <br/>
+              <footer>
+                <p>Huelva Church es el nombre comercial de IGLESIA BAUTISTA DE HUELVA, entidad religiosa inscrita en el Registro de Entidades Religiosas del Ministerio de Justicia con el número 022983, CIF R2100464C, con domicilio en Calle Marismeños, 6, 1º, 21006 Huelva, España.</p>
+              </footer>
+            </div>
+          `;
+        } else if (req.path.startsWith("/legal")) {
+          prerenderHtml = `
+            <div id="prerender-content" ${prerenderStyle}>
+              <h1>Aviso Legal y Privacidad - Huelva Church</h1>
+              <h2>Identificación de la entidad</h2>
+              <p>Este sitio web (huelvachurch.com) es propiedad y está operado por IGLESIA BAUTISTA DE HUELVA, entidad religiosa española inscrita en el Registro de Entidades Religiosas del Ministerio de Justicia con el número de inscripción 022983 (Sección Especial de Religiones Minoritarias, confesión Evangélicos, grupo confesional Bautistas), con CIF R2100464C y domicilio social en Calle Marismeños, 6, 1º, 21006 Huelva, España.</p>
+              <p>"Huelva Church" es el nombre comercial bajo el cual esta entidad desarrolla su actividad pública y de comunicación.</p>
+              <br/>
+              <footer>
+                <p>Huelva Church es el nombre comercial de IGLESIA BAUTISTA DE HUELVA, entidad religiosa inscrita en el Registro de Entidades Religiosas del Ministerio de Justicia con el número 022983, CIF R2100464C, con domicilio en Calle Marismeños, 6, 1º, 21006 Huelva, España.</p>
+              </footer>
+            </div>
+          `;
+        }
+
+        // Inject the prerender block right inside the root div, so React overwrites it on load but crawlers read it
+        if (prerenderHtml) {
+          html = html.replace('<div id="root"></div>', `<div id="root">${prerenderHtml}</div>`);
+        }
+
+        // Apply Vite HMR transforms if in development
+        if (!isProd && vite) {
+          html = await vite.transformIndexHtml(req.originalUrl || req.url, html);
+        }
+
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        return res.send(html);
+      }
+    }
+    
+    next();
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     vite = await createViteServer({

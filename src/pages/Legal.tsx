@@ -500,6 +500,15 @@ export default function Legal() {
                       <FileText className="w-7 h-7 text-secondary shrink-0" />
                       Términos y Condiciones de Uso
                     </h2>
+                    
+                    <h3 className="text-xl font-bold text-primary mb-3">Identificación de la entidad</h3>
+                    <p className="mb-8 font-medium">
+                      Este sitio web (huelvachurch.com) es propiedad y está operado por IGLESIA BAUTISTA DE HUELVA, entidad religiosa española inscrita en el Registro de Entidades Religiosas del Ministerio de Justicia con el número de inscripción 022983 (Sección Especial de Religiones Minoritarias, confesión Evangélicos, grupo confesional Bautistas), con CIF R2100464C y domicilio social en Calle Marismeños, 6, 1º, 21006 Huelva, España.<br/><br/>
+                      "Huelva Church" es el nombre comercial bajo el cual esta entidad desarrolla su actividad pública y de comunicación.
+                    </p>
+                    <hr className="border-slate-100 py-6" />
+
+                    <h3 className="text-xl font-bold text-primary mb-4">Uso del Sitio Web</h3>
                     <p className="mb-6">
                       El acceso y el uso de este sitio web atribuyen la condición de usuario e implican la aceptación plena y sin reservas de todas y cada una de las disposiciones incluidas en estos Términos y Condiciones. El usuario se compromete a hacer un uso adecuado y lícito del sitio web y de sus contenidos, de conformidad con la legislación aplicable, la moral, las buenas costumbres y el orden público.
                     </p>

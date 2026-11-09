@@ -36,12 +36,17 @@ export default function Footer() {
             </ul>
           </div>
         </div>
-        <div className="border-t border-white/10 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs md:text-sm text-center md:text-left">
-          <p>&copy; {new Date().getFullYear()} HuelvaChurch. {t('footer.rights')}</p>
-          <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-white/50">
-            <Link to="/legal?tab=privacy" className="hover:text-secondary transition-colors">{t('footer.links.privacy')}</Link>
-            <Link to="/legal?tab=terms" className="hover:text-secondary transition-colors">{t('footer.links.terms')}</Link>
-            <Link to="/legal?tab=cookies" className="hover:text-secondary transition-colors">{t('footer.links.cookies')}</Link>
+        <div className="border-t border-white/10 pt-8 flex flex-col items-center gap-6 text-xs md:text-sm text-center">
+          <p className="text-white/40 max-w-4xl text-[10px] leading-relaxed mx-auto px-4">
+            Huelva Church es el nombre comercial de IGLESIA BAUTISTA DE HUELVA, entidad religiosa inscrita en el Registro de Entidades Religiosas del Ministerio de Justicia con el número 022983, CIF R2100464C, con domicilio en Calle Marismeños, 6, 1º, 21006 Huelva, España.
+          </p>
+          <div className="flex flex-col md:flex-row justify-between w-full items-center gap-4">
+            <p className="text-white/70">&copy; {new Date().getFullYear()} HuelvaChurch. {t('footer.rights')}</p>
+            <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-white/50">
+              <Link to="/legal?tab=privacy" className="hover:text-secondary transition-colors">{t('footer.links.privacy')}</Link>
+              <Link to="/legal?tab=terms" className="hover:text-secondary transition-colors">{t('footer.links.terms')}</Link>
+              <Link to="/legal?tab=cookies" className="hover:text-secondary transition-colors">{t('footer.links.cookies')}</Link>
+            </div>
           </div>
         </div>
       </div>

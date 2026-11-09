@@ -17,8 +17,11 @@ export default function Nosotros() {
         >
           <h2 className="text-secondary tracking-wider uppercase text-sm font-bold mb-4">{t('about.tag')}</h2>
           <h1 className="text-5xl md:text-6xl font-kenao text-primary mb-6">{t('about.title')}</h1>
-          <p className="text-primary/70 text-xl max-w-3xl mx-auto leading-relaxed">
+          <p className="text-primary/70 text-xl max-w-3xl mx-auto leading-relaxed mb-6">
             {t('about.desc')}
+          </p>
+          <p className="text-primary/60 text-sm max-w-2xl mx-auto leading-relaxed border-t border-slate-100 pt-6">
+            Huelva Church es el nombre bajo el cual la Iglesia Bautista de Huelva —entidad inscrita en el Registro de Entidades Religiosas del Ministerio de Justicia con el número 022983— desarrolla su vida comunitaria y su testimonio en la ciudad.
           </p>
         </motion.div>
 

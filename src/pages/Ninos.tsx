@@ -295,7 +295,7 @@ export default function Ninos() {
       <div className="py-16 bg-white border-t border-b border-slate-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Escuela Dominical Card */}
+            {/* Escuela Bíblica Card */}
             <div className="bg-slate-50 rounded-[2rem] p-8 border border-slate-100 shadow-xs relative overflow-hidden group hover:shadow-md transition-all duration-300">
               <div className="absolute top-0 left-0 w-2 h-full bg-secondary" />
               <div className="flex items-start gap-4">
